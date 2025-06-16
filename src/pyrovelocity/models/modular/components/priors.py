@@ -344,11 +344,11 @@ class PiecewiseActivationPriorModel:
         gamma_star_loc: float = -0.405, # log(0.667) for LogNormal prior (target mode ≈ 0.5, realistic splicing/degradation ratio)
         gamma_star_scale: float = 0.5,  # Scale for γ* prior (HPDI ≈ [0.25, 1.7])
 
-        # Relative temporal parameters (scaled by T_M_star to create absolute parameters)
-        tilde_t_on_star_loc: float = 0.5,    # Mean for Normal prior on relative onset time
-        tilde_t_on_star_scale: float = 0.8,  # Scale for tilde_t*_on Normal prior (allows negatives)
-        tilde_delta_star_loc: float = -0.8,  # log(0.45) for LogNormal prior on relative duration
-        tilde_delta_star_scale: float = 0.45, # Scale for tilde_δ* prior
+        # Independent absolute temporal parameters (eliminates scaling symmetry)
+        t_on_star_loc: float = 1.5,        # Absolute onset time mean
+        t_on_star_scale: float = 0.8,      # Absolute onset time std
+        delta_star_loc: float = 0.0,       # log(1.0) - absolute duration loc
+        delta_star_scale: float = 0.45,    # Absolute duration scale
 
         # Characteristic concentration scale parameter hyperparameters
         U_0i_loc: float = 2.3,          # log(10) for LogNormal prior - REDUCED from log(100) for realistic single-cell count scales
@@ -375,10 +375,10 @@ class PiecewiseActivationPriorModel:
             R_on_scale: Scale parameter for R_on ~ LogNormal distribution
             gamma_star_loc: Location parameter for γ* ~ LogNormal distribution
             gamma_star_scale: Scale parameter for γ* ~ LogNormal distribution
-            tilde_t_on_star_loc: Location parameter for tilde_t*_on ~ Normal distribution (relative onset time)
-            tilde_t_on_star_scale: Scale parameter for tilde_t*_on ~ Normal distribution
-            tilde_delta_star_loc: Location parameter for tilde_δ* ~ LogNormal distribution (relative duration)
-            tilde_delta_star_scale: Scale parameter for tilde_δ* ~ LogNormal distribution
+            t_on_star_loc: Location parameter for t*_on ~ Normal distribution (absolute onset time)
+            t_on_star_scale: Scale parameter for t*_on ~ Normal distribution
+            delta_star_loc: Location parameter for δ* ~ LogNormal distribution (absolute duration)
+            delta_star_scale: Scale parameter for δ* ~ LogNormal distribution
             U_0i_loc: Location parameter for U_0i ~ LogNormal distribution
             U_0i_scale: Scale parameter for U_0i ~ LogNormal distribution
             lambda_loc: Location parameter for λ_j ~ LogNormal distribution
@@ -407,11 +407,11 @@ class PiecewiseActivationPriorModel:
         self.gamma_star_loc = gamma_star_loc
         self.gamma_star_scale = gamma_star_scale
 
-        # Store hyperparameters for relative temporal parameters
-        self.tilde_t_on_star_loc = tilde_t_on_star_loc
-        self.tilde_t_on_star_scale = tilde_t_on_star_scale
-        self.tilde_delta_star_loc = tilde_delta_star_loc
-        self.tilde_delta_star_scale = tilde_delta_star_scale
+        # Store hyperparameters for independent absolute temporal parameters
+        self.t_on_star_loc = t_on_star_loc
+        self.t_on_star_scale = t_on_star_scale
+        self.delta_star_loc = delta_star_loc
+        self.delta_star_scale = delta_star_scale
 
         # Store hyperparameters for characteristic concentration scale
         self.U_0i_loc = U_0i_loc
@@ -565,33 +565,24 @@ class PiecewiseActivationPriorModel:
             )
             params["gamma_star"] = gamma_star
 
-            # Relative temporal parameters (scaled by T_M_star)
-            tilde_t_on_star = pyro.sample(
-                "tilde_t_on_star",
+            # Independent absolute temporal parameters (eliminates scaling symmetry)
+            t_on_star = pyro.sample(
+                "t_on_star",
                 dist.Normal(
-                    torch.tensor(self.tilde_t_on_star_loc),
-                    torch.tensor(self.tilde_t_on_star_scale)
+                    torch.tensor(self.t_on_star_loc),
+                    torch.tensor(self.t_on_star_scale)
                 ).mask(include_prior),
             )
-            params["tilde_t_on_star"] = tilde_t_on_star
+            params["t_on_star"] = t_on_star
 
-            tilde_delta_star = pyro.sample(
-                "tilde_delta_star",
+            delta_star = pyro.sample(
+                "delta_star",
                 dist.LogNormal(
-                    torch.tensor(self.tilde_delta_star_loc),
-                    torch.tensor(self.tilde_delta_star_scale)
+                    torch.tensor(self.delta_star_loc),
+                    torch.tensor(self.delta_star_scale)
                 ).mask(include_prior),
             )
-            params["tilde_delta_star"] = tilde_delta_star
-
-        # Compute absolute temporal parameters outside the gene plate to avoid broadcasting issues
-        # t_on_star = T_M_star * tilde_t_on_star (allows negatives for pre-activation)
-        t_on_star = pyro.deterministic("t_on_star", T_M_star * tilde_t_on_star)
-        params["t_on_star"] = t_on_star
-
-        # delta_star = T_M_star * tilde_delta_star (activation duration)
-        delta_star = pyro.deterministic("delta_star", T_M_star * tilde_delta_star)
-        params["delta_star"] = delta_star
+            params["delta_star"] = delta_star
 
         # Sample remaining gene-specific parameters
         with pyro.plate(f"{self.name}_genes_plate_2", n_genes):
@@ -681,20 +672,16 @@ class PiecewiseActivationPriorModel:
             torch.tensor(self.gamma_star_scale)
         ).sample((n_genes,))
 
-        # Sample relative temporal parameters
-        params["tilde_t_on_star"] = dist.Normal(
-            torch.tensor(self.tilde_t_on_star_loc),
-            torch.tensor(self.tilde_t_on_star_scale)
+        # Sample independent absolute temporal parameters
+        params["t_on_star"] = dist.Normal(
+            torch.tensor(self.t_on_star_loc),
+            torch.tensor(self.t_on_star_scale)
         ).sample((n_genes,))
 
-        params["tilde_delta_star"] = dist.LogNormal(
-            torch.tensor(self.tilde_delta_star_loc),
-            torch.tensor(self.tilde_delta_star_scale)
+        params["delta_star"] = dist.LogNormal(
+            torch.tensor(self.delta_star_loc),
+            torch.tensor(self.delta_star_scale)
         ).sample((n_genes,))
-
-        # Compute absolute temporal parameters via scaling
-        params["t_on_star"] = T_M_star * params["tilde_t_on_star"]
-        params["delta_star"] = T_M_star * params["tilde_delta_star"]
 
         # Sample characteristic concentration scale (per gene)
         params["U_0i"] = dist.LogNormal(
@@ -769,9 +756,7 @@ class PiecewiseActivationPriorModel:
             'alpha_on': [],   # Computed from R_on
             'R_on': [],       # New fold-change parameter
             'gamma_star': [],
-            'tilde_t_on_star': [],  # Relative temporal parameters
-            'tilde_delta_star': [],
-            't_on_star': [],        # Absolute temporal parameters (computed)
+            't_on_star': [],        # Independent absolute temporal parameters
             'delta_star': [],
             'U_0i': [],
             'lambda_j': []
@@ -851,17 +836,9 @@ class PiecewiseActivationPriorModel:
         # Use R_on directly (fold-change parameter)
         R_on = params.get('R_on', params.get('alpha_on', torch.tensor(1.0)))
 
-        # Use relative temporal parameters if available, otherwise fall back to absolute
-        if 'tilde_t_on_star' in params and 'tilde_delta_star' in params:
-            tilde_t_on_star = params['tilde_t_on_star']
-            tilde_delta_star = params['tilde_delta_star']
-            use_relative_params = True
-        else:
-            # Fallback to absolute parameters with adjusted thresholds
-            t_on_star = params['t_on_star']
-            delta_star = params['delta_star']
-            T_M_star = params.get('T_M_star', torch.tensor(50.0))  # Typical value
-            use_relative_params = False
+        # Use independent absolute temporal parameters
+        t_on_star = params['t_on_star']
+        delta_star = params['delta_star']
 
         # Soft scoring function for more flexible pattern matching
         def sigmoid_score(value: torch.Tensor, threshold: float, direction: str, steepness: float = 5.0) -> float:
@@ -871,53 +848,28 @@ class PiecewiseActivationPriorModel:
             else:  # direction == '<'
                 return torch.sigmoid(steepness * (threshold - value)).mean().item()
 
-        if use_relative_params:
-            # Use relative temporal parameters (preferred approach)
-            if pattern == 'pre_activation':
-                scores = [
-                    sigmoid_score(R_on, 2.0, '>'),
-                    sigmoid_score(tilde_t_on_star, 0.0, '<')
-                ]
-            elif pattern == 'transient':
-                scores = [
-                    sigmoid_score(R_on, 2.0, '>'),
-                    sigmoid_score(tilde_t_on_star, 0.0, '>'),
-                    sigmoid_score(tilde_t_on_star, 0.5, '<'),
-                    sigmoid_score(tilde_delta_star, 0.4, '<')
-                ]
-            elif pattern == 'sustained':
-                scores = [
-                    sigmoid_score(R_on, 2.0, '>'),
-                    sigmoid_score(tilde_t_on_star, 0.0, '>'),
-                    sigmoid_score(tilde_t_on_star, 0.3, '<'),
-                    sigmoid_score(tilde_delta_star, 0.5, '>')
-                ]
-            else:
-                return False
+        # Use independent absolute temporal parameters with mathematical specification thresholds
+        if pattern == 'pre_activation':
+            scores = [
+                sigmoid_score(R_on, 2.0, '>'),
+                sigmoid_score(t_on_star, 0.0, '<')
+            ]
+        elif pattern == 'transient':
+            scores = [
+                sigmoid_score(R_on, 2.0, '>'),
+                sigmoid_score(t_on_star, 0.0, '>'),
+                sigmoid_score(t_on_star, 1.5, '<'),  # Absolute early onset
+                sigmoid_score(delta_star, 2.0, '<')  # Absolute short duration
+            ]
+        elif pattern == 'sustained':
+            scores = [
+                sigmoid_score(R_on, 2.0, '>'),
+                sigmoid_score(t_on_star, 0.0, '>'),
+                sigmoid_score(t_on_star, 1.5, '<'),  # Absolute early onset
+                sigmoid_score(delta_star, 2.5, '>')  # Absolute long duration
+            ]
         else:
-            # Fallback to absolute parameters with adjusted thresholds
-            # Note: These thresholds assume T_M_star ~ 50-60 for scaling
-            if pattern == 'pre_activation':
-                scores = [
-                    sigmoid_score(R_on, 2.0, '>'),
-                    sigmoid_score(t_on_star, 0.0, '<')
-                ]
-            elif pattern == 'transient':
-                scores = [
-                    sigmoid_score(R_on, 2.0, '>'),
-                    sigmoid_score(t_on_star, 0.0, '>'),
-                    sigmoid_score(t_on_star, 25.0, '<'),  # 0.5 * 50 (typical T_M_star)
-                    sigmoid_score(delta_star, 20.0, '<')  # 0.4 * 50 (typical T_M_star)
-                ]
-            elif pattern == 'sustained':
-                scores = [
-                    sigmoid_score(R_on, 2.0, '>'),
-                    sigmoid_score(t_on_star, 0.0, '>'),
-                    sigmoid_score(t_on_star, 15.0, '<'),  # 0.3 * 50 (typical T_M_star)
-                    sigmoid_score(delta_star, 25.0, '>')  # 0.5 * 50 (typical T_M_star)
-                ]
-            else:
-                return False
+            return False
 
         # Compute geometric mean of scores and use threshold for acceptance
         if scores:
