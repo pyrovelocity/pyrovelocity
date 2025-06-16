@@ -2346,7 +2346,7 @@ class PyroVelocityModel:
                         repeated = processed_value.repeat(repeat_factor)
                         processed[key] = repeated.flatten()[:num_cells]
 
-                elif key in ["R_on", "alpha_on", "alpha_off", "gamma_star", "tilde_t_on_star", "tilde_delta_star", "U_0i"]:
+                elif key in ["R_on", "alpha_on", "alpha_off", "gamma_star", "t_on_star", "delta_star", "U_0i"]:
                     # Gene-specific parameters should have shape [num_genes]
                     if processed_value.numel() == num_genes:
                         processed[key] = processed_value.reshape(num_genes)
