@@ -193,8 +193,6 @@ def _format_parameter_name(param_name: str) -> str:
     special_cases = {
         'T_M_star': r'T^*_M',
         't_star': r't^*',
-        'tilde_t_on_star': r'\tilde{t}^*_{on}',
-        'tilde_delta_star': r'\tilde{\delta}^*',
         't_on_star': r't^*_{on}',
         'delta_star': r'\delta^*',
         'lambda_j': r'\lambda_j',
@@ -1670,54 +1668,19 @@ def _classify_parameters_into_patterns(
     Returns:
         Dictionary mapping pattern names to lists of parameter dictionaries
     """
-    # Check for required parameters - prefer relative temporal parameters
-    required_params_relative = ['R_on', 'tilde_t_on_star', 'tilde_delta_star', 'gamma_star', 'T_M_star']
-    required_params_absolute = ['R_on', 't_on_star', 'delta_star', 'gamma_star']
+    # Check for required parameters - use independent absolute parameters only
+    required_params = ['R_on', 't_on_star', 'delta_star', 'gamma_star']
 
-    use_relative_params = all(param in parameters for param in required_params_relative)
-    use_absolute_params = all(param in parameters for param in required_params_absolute)
-
-    if not (use_relative_params or use_absolute_params):
+    if not all(param in parameters for param in required_params):
         print(f"Warning: Missing required parameters for pattern classification")
-        print(f"  Relative params needed: {required_params_relative}")
-        print(f"  Absolute params needed: {required_params_absolute}")
+        print(f"  Required params: {required_params}")
         return {}
 
     # Get parameter values (flatten to 1D if needed)
     R_on = parameters['R_on'].flatten()
     gamma_star = parameters['gamma_star'].flatten()
-
-    if use_relative_params:
-        tilde_t_on_star = parameters['tilde_t_on_star'].flatten()
-        tilde_delta_star = parameters['tilde_delta_star'].flatten()
-        T_M_star = parameters['T_M_star'].flatten()
-
-        # Compute absolute parameters from relative ones
-        # Handle broadcasting: T_M_star might be scalar or per-sample
-        if len(T_M_star) == 1:
-            # Single T_M_star value - broadcast to all genes
-            t_on_star = T_M_star.item() * tilde_t_on_star
-            delta_star = T_M_star.item() * tilde_delta_star
-        elif len(T_M_star) == len(tilde_t_on_star):
-            # Same length - element-wise multiplication
-            t_on_star = T_M_star * tilde_t_on_star
-            delta_star = T_M_star * tilde_delta_star
-        else:
-            # Assume T_M_star is per-sample, tilde params are per-gene
-            num_samples = len(T_M_star)
-            num_genes = len(tilde_t_on_star) // num_samples
-            if len(tilde_t_on_star) % num_samples == 0:
-                T_M_expanded = T_M_star.repeat_interleave(num_genes)
-                t_on_star = T_M_expanded * tilde_t_on_star
-                delta_star = T_M_expanded * tilde_delta_star
-            else:
-                print(f"Warning: Cannot broadcast T_M_star (len={len(T_M_star)}) with tilde params (len={len(tilde_t_on_star)})")
-                return {}
-    else:
-        t_on_star = parameters['t_on_star'].flatten()
-        delta_star = parameters['delta_star'].flatten()
-        # Extract T_M_star if available for time range computation
-        T_M_star = parameters.get('T_M_star', torch.tensor([55.0])).flatten()  # Default to ~55
+    t_on_star = parameters['t_on_star'].flatten()
+    delta_star = parameters['delta_star'].flatten()
 
     # Ensure all parameters have the same length
     min_length = min(len(R_on), len(t_on_star), len(delta_star), len(gamma_star))
@@ -1744,62 +1707,33 @@ def _classify_parameters_into_patterns(
         else:  # direction == '<'
             return torch.sigmoid(torch.tensor(steepness * (threshold - value))).item()
 
-    # Compute pattern scores for each sample
+    # Compute pattern scores for each sample using independent absolute parameters
     pattern_scores = {pattern: torch.zeros(min_length) for pattern in pattern_examples.keys()}
 
     for i in range(min_length):
-        if use_relative_params:
-            # Use relative temporal parameters (preferred approach)
-            tilde_t_on = tilde_t_on_star[i].item()
-            tilde_delta = tilde_delta_star[i].item()
+        # Use independent absolute temporal parameters with mathematical specification thresholds
+        
+        # Pre-activation: negative onset time
+        pattern_scores['pre_activation'][i] = torch.prod(torch.tensor([
+            sigmoid_score(R_on[i].item(), 2.0, '>'),
+            sigmoid_score(t_on_star[i].item(), 0.0, '<')
+        ])) ** (1.0 / 2)
 
-            # Pre-activation: negative onset time
-            pattern_scores['pre_activation'][i] = torch.prod(torch.tensor([
-                sigmoid_score(R_on[i].item(), 2.0, '>'),
-                sigmoid_score(tilde_t_on, 0.0, '<')
-            ])) ** (1.0 / 2)
+        # Transient: positive onset, early timing, short duration
+        pattern_scores['transient'][i] = torch.prod(torch.tensor([
+            sigmoid_score(R_on[i].item(), 2.0, '>'),
+            sigmoid_score(t_on_star[i].item(), 0.0, '>'),
+            sigmoid_score(t_on_star[i].item(), 1.5, '<'),  # Absolute early onset
+            sigmoid_score(delta_star[i].item(), 2.0, '<')  # Absolute short duration
+        ])) ** (1.0 / 4)
 
-            # Transient: positive onset, early timing, short duration
-            pattern_scores['transient'][i] = torch.prod(torch.tensor([
-                sigmoid_score(R_on[i].item(), 2.0, '>'),
-                sigmoid_score(tilde_t_on, 0.0, '>'),
-                sigmoid_score(tilde_t_on, 0.5, '<'),
-                sigmoid_score(tilde_delta, 0.4, '<')
-            ])) ** (1.0 / 4)
-
-            # Sustained: positive onset, early timing, long duration
-            pattern_scores['sustained'][i] = torch.prod(torch.tensor([
-                sigmoid_score(R_on[i].item(), 2.0, '>'),
-                sigmoid_score(tilde_t_on, 0.0, '>'),
-                sigmoid_score(tilde_t_on, 0.3, '<'),
-                sigmoid_score(tilde_delta, 0.5, '>')
-            ])) ** (1.0 / 4)
-        else:
-            # Fallback to absolute parameters with adjusted thresholds
-            # Assume T_M_star ~ 50-60 for scaling
-            typical_T_M = T_M_star[0].item() if len(T_M_star) > 0 else 55.0
-
-            # Pre-activation: negative onset time
-            pattern_scores['pre_activation'][i] = torch.prod(torch.tensor([
-                sigmoid_score(R_on[i].item(), 2.0, '>'),
-                sigmoid_score(t_on_star[i].item(), 0.0, '<')
-            ])) ** (1.0 / 2)
-
-            # Transient: positive onset, early timing, short duration
-            pattern_scores['transient'][i] = torch.prod(torch.tensor([
-                sigmoid_score(R_on[i].item(), 2.0, '>'),
-                sigmoid_score(t_on_star[i].item(), 0.0, '>'),
-                sigmoid_score(t_on_star[i].item(), 0.5 * typical_T_M, '<'),
-                sigmoid_score(delta_star[i].item(), 0.4 * typical_T_M, '<')
-            ])) ** (1.0 / 4)
-
-            # Sustained: positive onset, early timing, long duration
-            pattern_scores['sustained'][i] = torch.prod(torch.tensor([
-                sigmoid_score(R_on[i].item(), 2.0, '>'),
-                sigmoid_score(t_on_star[i].item(), 0.0, '>'),
-                sigmoid_score(t_on_star[i].item(), 0.3 * typical_T_M, '<'),
-                sigmoid_score(delta_star[i].item(), 0.5 * typical_T_M, '>')
-            ])) ** (1.0 / 4)
+        # Sustained: positive onset, early timing, long duration
+        pattern_scores['sustained'][i] = torch.prod(torch.tensor([
+            sigmoid_score(R_on[i].item(), 2.0, '>'),
+            sigmoid_score(t_on_star[i].item(), 0.0, '>'),
+            sigmoid_score(t_on_star[i].item(), 1.5, '<'),  # Absolute early onset
+            sigmoid_score(delta_star[i].item(), 2.5, '>')  # Absolute long duration
+        ])) ** (1.0 / 4)
 
     # Assign each sample to the pattern with highest score and collect examples
     pattern_names = list(pattern_examples.keys())
@@ -2489,97 +2423,8 @@ def _process_parameters_for_plotting(
         else:
             print(f"⚠️  Cannot compute t_star: unexpected tensor dimensions T_M_star: {T_M_star.shape}, tilde_t: {tilde_t.shape}")
 
-    # Compute t_on_star if missing but required components are available
-    # t_on_star = T_M_star * tilde_t_on_star
-    if ('t_on_star' not in processed_parameters and
-        'T_M_star' in processed_parameters and
-        'tilde_t_on_star' in processed_parameters):
-
-        T_M_star = processed_parameters['T_M_star']
-        tilde_t_on_star = processed_parameters['tilde_t_on_star']
-
-        # Ensure both tensors are 1D for consistent processing
-        if T_M_star.dim() > 1:
-            T_M_star = T_M_star.flatten()
-        if tilde_t_on_star.dim() > 1:
-            tilde_t_on_star = tilde_t_on_star.flatten()
-
-        # Compute t_on_star = T_M_star * tilde_t_on_star
-        # Handle broadcasting for gene-level parameters
-        num_samples = len(T_M_star)
-        num_genes = len(tilde_t_on_star) // num_samples if len(tilde_t_on_star) % num_samples == 0 else None
-
-        if num_genes is not None:
-            # Reshape tilde_t_on_star to [num_samples, num_genes] for proper broadcasting
-            tilde_t_on_star_reshaped = tilde_t_on_star.view(num_samples, num_genes)
-            # Broadcast T_M_star to match: [num_samples, 1] -> [num_samples, num_genes]
-            T_M_star_expanded = T_M_star.unsqueeze(-1).expand(-1, num_genes)
-            # Element-wise multiplication
-            t_on_star_computed = T_M_star_expanded * tilde_t_on_star_reshaped
-            # Flatten back to 1D for consistency
-            t_on_star_computed = t_on_star_computed.flatten()
-        elif len(T_M_star) == len(tilde_t_on_star):
-            # Same length - element-wise multiplication
-            t_on_star_computed = T_M_star * tilde_t_on_star
-        elif len(T_M_star) == 1:
-            # Broadcast single T_M_star to all genes
-            t_on_star_computed = T_M_star.item() * tilde_t_on_star
-        elif len(tilde_t_on_star) == 1:
-            # Broadcast single tilde_t_on_star to all samples
-            t_on_star_computed = T_M_star * tilde_t_on_star.item()
-        else:
-            print(f"⚠️  Cannot compute t_on_star: incompatible shapes T_M_star: {T_M_star.shape}, tilde_t_on_star: {tilde_t_on_star.shape}")
-            t_on_star_computed = None
-
-        if t_on_star_computed is not None:
-            processed_parameters['t_on_star'] = t_on_star_computed
-            print(f"ℹ️  Computed missing t_on_star from T_M_star and tilde_t_on_star (shape: {t_on_star_computed.shape})")
-
-    # Compute delta_star if missing but required components are available
-    # delta_star = T_M_star * tilde_delta_star
-    if ('delta_star' not in processed_parameters and
-        'T_M_star' in processed_parameters and
-        'tilde_delta_star' in processed_parameters):
-
-        T_M_star = processed_parameters['T_M_star']
-        tilde_delta_star = processed_parameters['tilde_delta_star']
-
-        # Ensure both tensors are 1D for consistent processing
-        if T_M_star.dim() > 1:
-            T_M_star = T_M_star.flatten()
-        if tilde_delta_star.dim() > 1:
-            tilde_delta_star = tilde_delta_star.flatten()
-
-        # Compute delta_star = T_M_star * tilde_delta_star
-        # Handle broadcasting for gene-level parameters
-        num_samples = len(T_M_star)
-        num_genes = len(tilde_delta_star) // num_samples if len(tilde_delta_star) % num_samples == 0 else None
-
-        if num_genes is not None:
-            # Reshape tilde_delta_star to [num_samples, num_genes] for proper broadcasting
-            tilde_delta_star_reshaped = tilde_delta_star.view(num_samples, num_genes)
-            # Broadcast T_M_star to match: [num_samples, 1] -> [num_samples, num_genes]
-            T_M_star_expanded = T_M_star.unsqueeze(-1).expand(-1, num_genes)
-            # Element-wise multiplication
-            delta_star_computed = T_M_star_expanded * tilde_delta_star_reshaped
-            # Flatten back to 1D for consistency
-            delta_star_computed = delta_star_computed.flatten()
-        elif len(T_M_star) == len(tilde_delta_star):
-            # Same length - element-wise multiplication
-            delta_star_computed = T_M_star * tilde_delta_star
-        elif len(T_M_star) == 1:
-            # Broadcast single T_M_star to all genes
-            delta_star_computed = T_M_star.item() * tilde_delta_star
-        elif len(tilde_delta_star) == 1:
-            # Broadcast single tilde_delta_star to all samples
-            delta_star_computed = T_M_star * tilde_delta_star.item()
-        else:
-            print(f"⚠️  Cannot compute delta_star: incompatible shapes T_M_star: {T_M_star.shape}, tilde_delta_star: {tilde_delta_star.shape}")
-            delta_star_computed = None
-
-        if delta_star_computed is not None:
-            processed_parameters['delta_star'] = delta_star_computed
-            print(f"ℹ️  Computed missing delta_star from T_M_star and tilde_delta_star (shape: {delta_star_computed.shape})")
+    # Note: t_on_star and delta_star are now independent absolute parameters
+    # No computation from tilde_* parameters needed with independent parameterization
 
     return processed_parameters
 
@@ -2859,13 +2704,11 @@ def _compute_adaptive_timing_thresholds(
     parameters: Dict[str, torch.Tensor]
 ) -> Dict[str, float]:
     """
-    Compute adaptive thresholds for activation timing classification.
+    Compute thresholds for activation timing classification using independent absolute parameters.
 
-    Based on PyroVelocity pattern classification logic:
-    - For relative parameters (tilde_t_on_star, tilde_delta_star):
-      - Transient/Sustained boundary: tilde_delta_star = 0.4 vs 0.5
-      - Early/Late activation: tilde_t_on_star = 0.3 vs 0.5
-    - For absolute parameters: scale by typical T_M_star values
+    Based on PyroVelocity mathematical specification:
+    - Transient/Sustained boundary: delta_star = 2.0 vs 2.5
+    - Early/Late activation: t_on_star = 1.5
 
     Args:
         parameters: Dictionary of parameter tensors
@@ -2873,29 +2716,13 @@ def _compute_adaptive_timing_thresholds(
     Returns:
         Dictionary with threshold values
     """
-    # Check if we have relative or absolute parameters
-    use_relative_params = ('tilde_t_on_star' in parameters and 'tilde_delta_star' in parameters)
-
-    if use_relative_params:
-        # Use relative parameter thresholds from pattern classification
-        return {
-            'transient_sustained_boundary': 0.4,  # tilde_delta_star threshold
-            'early_late_activation': 0.3,         # tilde_t_on_star threshold
-            'use_relative': True
-        }
-    else:
-        # Use absolute parameters with adaptive scaling
-        if 'T_M_star' in parameters:
-            T_M_star = parameters['T_M_star'].flatten().numpy()
-            typical_T_M = np.mean(T_M_star)
-        else:
-            typical_T_M = 55.0  # Default from pattern classification
-
-        return {
-            'transient_sustained_boundary': 0.4 * typical_T_M,  # delta_star threshold
-            'early_late_activation': 0.3 * typical_T_M,         # t_on_star threshold
-            'use_relative': False
-        }
+    # Use mathematical specification thresholds for independent absolute parameters
+    return {
+        'transient_sustained_boundary': 2.0,  # delta_star threshold
+        'early_late_activation': 1.5,         # t_on_star threshold
+        'sustained_boundary': 2.5,            # sustained delta_star threshold
+        'use_relative': False
+    }
 
 
 def _plot_activation_timing(
@@ -2916,27 +2743,8 @@ def _plot_activation_timing(
     if model is None:
         component_name = infer_component_name_from_parameters(parameters)
 
-    # Check for relative parameters first (preferred)
-    if 'tilde_t_on_star' in parameters and 'tilde_delta_star' in parameters:
-        t_on = parameters['tilde_t_on_star'].flatten().numpy()
-        delta = parameters['tilde_delta_star'].flatten().numpy()
-
-        # Get parameter labels
-        t_on_label = get_parameter_label(
-            param_name="tilde_t_on_star",
-            label_type="display",
-            model=model,
-            component_name=component_name,
-            fallback_to_legacy=True
-        )
-        delta_label = get_parameter_label(
-            param_name="tilde_delta_star",
-            label_type="display",
-            model=model,
-            component_name=component_name,
-            fallback_to_legacy=True
-        )
-    elif 't_on_star' in parameters and 'delta_star' in parameters:
+    # Use independent absolute parameters only
+    if 't_on_star' in parameters and 'delta_star' in parameters:
         t_on = parameters['t_on_star'].flatten().numpy()
         delta = parameters['delta_star'].flatten().numpy()
 
@@ -3817,55 +3625,42 @@ def _classify_patterns_from_parameters(parameters: Dict[str, torch.Tensor]) -> D
     - transient: Complete activation-decay cycle within observation window
     - sustained: Net increase over observation window (includes late activation)
     """
-    # Check for required parameters - now using relative temporal parameters
-    required_params = ['R_on', 'tilde_t_on_star', 'tilde_delta_star']
+    # Check for required parameters - use independent absolute parameters only
+    required_params = ['R_on', 't_on_star', 'delta_star']
     if not all(key in parameters for key in required_params):
-        # Fallback to absolute parameters if relative ones not available
-        required_params = ['R_on', 't_on_star', 'delta_star']
-        if not all(key in parameters for key in required_params):
-            return {}
-        use_relative_params = False
-    else:
-        use_relative_params = True
+        return {}
 
     # Extract parameter arrays
     R_on = parameters['R_on'].flatten()
-
-    if use_relative_params:
-        # Use relative temporal parameters (preferred)
-        tilde_t_on_star = parameters['tilde_t_on_star'].flatten()
-        tilde_delta_star = parameters['tilde_delta_star'].flatten()
-    else:
-        # Fallback to absolute parameters
-        t_on_star = parameters['t_on_star'].flatten()
-        delta_star = parameters['delta_star'].flatten()
+    t_on_star = parameters['t_on_star'].flatten()
+    delta_star = parameters['delta_star'].flatten()
 
     n_samples = len(R_on)
 
-    # Updated pattern constraints matching prior-hyperparameter-calibration.py
-    # These work with relative temporal parameters (tilde_t_on_star, tilde_delta_star)
+    # Updated pattern constraints using independent absolute parameters
+    # These match the mathematical specification thresholds
     pattern_constraints = {
         'pre_activation': {
             # All patterns where activation occurred before observation window
             # Results in observable decay-only dynamics from activated steady-state
-            'tilde_t_on_star': ('<', 0.0),      # Relative activation before observation starts
-            'R_on': ('>', 2.0),                  # Moderate to strong fold change
+            't_on_star': ('<', 0.0),      # Absolute activation before observation starts
+            'R_on': ('>', 2.0),           # Moderate to strong fold change
         },
         'transient': {
             # Complete activation-decay cycle within observation window
             # Activation early enough and pulse short enough to see full cycle
-            'tilde_t_on_star': ('>', 0.0),      # Relative activation within observation window
-            'tilde_t_on_star_upper': ('<', 0.5), # Early enough to complete cycle (50% of timeline)
-            'tilde_delta_star': ('<', 0.4),     # Short enough pulse to see decay (40% of timeline)
-            'R_on': ('>', 2.0),                  # Sufficient fold change to observe
+            't_on_star': ('>', 0.0),      # Absolute activation within observation window
+            't_on_star_upper': ('<', 1.5), # Early enough to complete cycle (absolute early onset)
+            'delta_star': ('<', 2.0),     # Short enough pulse to see decay (absolute short duration)
+            'R_on': ('>', 2.0),           # Sufficient fold change to observe
         },
         'sustained': {
             # Net increase over observation window (includes late activation)
             # Either long pulse or late activation that doesn't complete decay
-            'tilde_t_on_star': ('>', 0.0),      # Relative activation within observation window
-            'tilde_t_on_star_upper': ('<', 0.3), # Early activation onset (30% of timeline)
-            'tilde_delta_star': ('>', 0.5),     # Long activation duration (50% of timeline)
-            'R_on': ('>', 2.0),                  # Strong fold change
+            't_on_star': ('>', 0.0),      # Absolute activation within observation window
+            't_on_star_upper': ('<', 1.5), # Early activation onset (absolute early onset)
+            'delta_star': ('>', 2.5),     # Long activation duration (absolute long duration)
+            'R_on': ('>', 2.0),           # Strong fold change
         }
     }
 
@@ -3886,49 +3681,26 @@ def _classify_patterns_from_parameters(parameters: Dict[str, torch.Tensor]) -> D
         for pattern, constraints in pattern_constraints.items():
             scores = []
 
-            if use_relative_params:
-                # Use relative temporal parameters (preferred approach)
-                if pattern == 'pre_activation':
-                    scores = [
-                        sigmoid_score(R_on[i], 2.0, '>'),
-                        sigmoid_score(tilde_t_on_star[i], 0.0, '<')
-                    ]
-                elif pattern == 'transient':
-                    scores = [
-                        sigmoid_score(R_on[i], 2.0, '>'),
-                        sigmoid_score(tilde_t_on_star[i], 0.0, '>'),
-                        sigmoid_score(tilde_t_on_star[i], 0.5, '<'),
-                        sigmoid_score(tilde_delta_star[i], 0.4, '<')
-                    ]
-                elif pattern == 'sustained':
-                    scores = [
-                        sigmoid_score(R_on[i], 2.0, '>'),
-                        sigmoid_score(tilde_t_on_star[i], 0.0, '>'),
-                        sigmoid_score(tilde_t_on_star[i], 0.3, '<'),
-                        sigmoid_score(tilde_delta_star[i], 0.5, '>')
-                    ]
-            else:
-                # Fallback to absolute parameters with adjusted thresholds
-                # Note: These thresholds assume T_M_star ~ 50-60 for scaling
-                if pattern == 'pre_activation':
-                    scores = [
-                        sigmoid_score(R_on[i], 2.0, '>'),
-                        sigmoid_score(t_on_star[i], 0.0, '<')
-                    ]
-                elif pattern == 'transient':
-                    scores = [
-                        sigmoid_score(R_on[i], 2.0, '>'),
-                        sigmoid_score(t_on_star[i], 0.0, '>'),
-                        sigmoid_score(t_on_star[i], 25.0, '<'),  # 0.5 * 50 (typical T_M_star)
-                        sigmoid_score(delta_star[i], 20.0, '<')  # 0.4 * 50 (typical T_M_star)
-                    ]
-                elif pattern == 'sustained':
-                    scores = [
-                        sigmoid_score(R_on[i], 2.0, '>'),
-                        sigmoid_score(t_on_star[i], 0.0, '>'),
-                        sigmoid_score(t_on_star[i], 15.0, '<'),  # 0.3 * 50 (typical T_M_star)
-                        sigmoid_score(delta_star[i], 25.0, '>')  # 0.5 * 50 (typical T_M_star)
-                    ]
+            # Use independent absolute temporal parameters with mathematical specification thresholds
+            if pattern == 'pre_activation':
+                scores = [
+                    sigmoid_score(R_on[i], 2.0, '>'),
+                    sigmoid_score(t_on_star[i], 0.0, '<')
+                ]
+            elif pattern == 'transient':
+                scores = [
+                    sigmoid_score(R_on[i], 2.0, '>'),
+                    sigmoid_score(t_on_star[i], 0.0, '>'),
+                    sigmoid_score(t_on_star[i], 1.5, '<'),  # Absolute early onset
+                    sigmoid_score(delta_star[i], 2.0, '<')  # Absolute short duration
+                ]
+            elif pattern == 'sustained':
+                scores = [
+                    sigmoid_score(R_on[i], 2.0, '>'),
+                    sigmoid_score(t_on_star[i], 0.0, '>'),
+                    sigmoid_score(t_on_star[i], 1.5, '<'),  # Absolute early onset
+                    sigmoid_score(delta_star[i], 2.5, '>')  # Absolute long duration
+                ]
 
             # Compute geometric mean of scores
             if scores:
