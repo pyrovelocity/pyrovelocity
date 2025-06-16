@@ -2391,40 +2391,8 @@ def _process_parameters_for_plotting(
             # Non-tensor values: keep as-is
             processed_parameters[key] = value
 
-    # Compute t_star if missing but required components are available
-    # t_star = T_M_star * max(tilde_t, epsilon) where tilde_t ~ Normal(t_loc, t_scale)
-    if ('t_star' not in processed_parameters and
-        'T_M_star' in processed_parameters and
-        'tilde_t' in processed_parameters):
-
-        T_M_star = processed_parameters['T_M_star']
-        tilde_t = processed_parameters['tilde_t']
-
-        # Use same epsilon as in the prior model (default 1e-6)
-        t_epsilon = 1e-6
-
-        # Compute t_star: T_M_star * max(tilde_t, epsilon)
-        # Handle broadcasting: T_M_star is [num_samples], tilde_t is [num_samples * num_cells]
-        if T_M_star.ndim == 1 and tilde_t.ndim == 1:
-            # Determine number of cells from tilde_t length
-            num_samples = len(T_M_star)
-            num_cells = len(tilde_t) // num_samples
-
-            if len(tilde_t) % num_samples == 0:  # Valid division
-                # Reshape tilde_t to [num_samples, num_cells] for broadcasting
-                tilde_t_reshaped = tilde_t.view(num_samples, num_cells)
-                t_star_computed = T_M_star.unsqueeze(-1) * torch.clamp(tilde_t_reshaped, min=t_epsilon)
-                # Flatten back to 1D for consistency with other parameters
-                processed_parameters['t_star'] = t_star_computed.flatten()
-
-                print(f"ℹ️  Computed missing t_star from T_M_star and tilde_t (shape: {t_star_computed.shape} -> flattened)")
-            else:
-                print(f"⚠️  Cannot compute t_star: tilde_t length {len(tilde_t)} not divisible by T_M_star length {num_samples}")
-        else:
-            print(f"⚠️  Cannot compute t_star: unexpected tensor dimensions T_M_star: {T_M_star.shape}, tilde_t: {tilde_t.shape}")
-
-    # Note: t_on_star and delta_star are now independent absolute parameters
-    # No computation from tilde_* parameters needed with independent parameterization
+    # Note: With independent absolute parameterization, no hierarchical computation needed
+    # t_on_star and delta_star are now independent absolute parameters sampled directly
 
     return processed_parameters
 
