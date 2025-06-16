@@ -106,27 +106,6 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             plot_order=7
         ),
 
-        "tilde_t_on_star": ParameterMetadata(
-            name="tilde_t_on_star",
-            display_name=r"$\tilde{t}^*_{on}$",
-            short_label="Rel Onset Time",
-            description="Relative activation onset time (scaled by T*_M to get absolute onset)",
-            units="dimensionless",
-            typical_range=(-1.0, 2.0),
-            biological_interpretation="Relative timing of gene activation onset; scaled by maximum time to determine absolute onset timing",
-            plot_order=7
-        ),
-
-        "tilde_delta_star": ParameterMetadata(
-            name="tilde_delta_star",
-            display_name=r"$\tilde{\delta}^*$",
-            short_label="Rel Duration",
-            description="Relative activation duration (scaled by T*_M to get absolute duration)",
-            units="dimensionless",
-            typical_range=(0.1, 1.0),
-            biological_interpretation="Relative duration of gene activation phase; scaled by maximum time to determine absolute duration",
-            plot_order=8
-        ),
 
         "t_on_star": ParameterMetadata(
             name="t_on_star",
