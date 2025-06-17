@@ -389,10 +389,8 @@ class PriorHyperparameterCalibrator:
             't_on_star': {'loc': 1.5, 'scale': 2.296},    # Normal(1.5, 2.296²), HPDI [-3, 6] - broad activation timing range
             'delta_star': {'loc': 0.48, 'scale': 0.464},  # LogNormal(0.48, 0.464²), HPDI [0.65, 4.0] - improved duration range
 
-            # Hierarchical time structure parameters
+            # Global time structure parameters
             'T_M_star': {'alpha': 5.0, 'beta': 1.0},    # Gamma(5.0, 1.0), mean = 5 - dimensionless global time scale
-            't_loc': {'alpha': 1.0, 'beta': 2.0},        # Gamma(1.0, 2.0), mean = 0.5
-            't_scale': {'alpha': 1.0, 'beta': 4.0},      # Gamma(1.0, 4.0), mean = 0.25
 
             # Technical parameters
             'U_0i': {'loc': 2.3, 'scale': 0.4},          # log(10) (LogNormal) - REDUCED from log(100) for realistic single-cell count scales
@@ -689,8 +687,6 @@ class PriorHyperparameterCalibrator:
             'delta_star': f"  Interpretation: Absolute activation duration from {lower:.2f} to {upper:.2f} (intrinsic duration)",
             'gamma_star': f"  Interpretation: Relative degradation rate from {lower:.2f} to {upper:.2f} (1.0 = balanced)",
             'T_M_star': f"  Interpretation: Maximum timeline from {lower:.1f} to {upper:.1f} time units",
-            't_loc': f"  Interpretation: Population time center from {lower:.2f} to {upper:.2f}",
-            't_scale': f"  Interpretation: Population time spread from {lower:.2f} to {upper:.2f}",
             'U_0i': f"  Interpretation: Concentration scale from {lower:.0f} to {upper:.0f} counts",
             'lambda_j': f"  Interpretation: Capture efficiency from {lower:.2f} to {upper:.2f} (1.0 = perfect)"
         }
@@ -1290,13 +1286,9 @@ class PriorHyperparameterCalibrator:
         print("\n4. Conditional dependency analysis...")
         dependency_analysis = self._analyze_parameter_dependencies(param_samples, pattern_scores)
 
-        # Step 5: Hierarchical parameter impact
-        print("\n5. Hierarchical parameter impact assessment...")
-        hierarchical_impact = self._assess_hierarchical_impact(param_samples)
-
-        # Step 6: Generate comprehensive visualizations
-        print("\n6. Generating comprehensive visualizations...")
-        self._create_comprehensive_plots(param_samples, pattern_scores, phase_diagrams, dependency_analysis, hierarchical_impact, trajectory_seed)
+        # Step 5: Generate comprehensive visualizations
+        print("\n5. Generating comprehensive visualizations...")
+        self._create_comprehensive_plots(param_samples, pattern_scores, phase_diagrams, dependency_analysis, trajectory_seed)
 
         # Step 7: Optimization recommendations
         print("\n7. Generating optimization recommendations...")
@@ -1341,18 +1333,10 @@ class PriorHyperparameterCalibrator:
         # Sample all parameters including hierarchical time structure
         samples = {}
 
-        # Hierarchical time parameters - use updated priors
+        # Global time parameters - use updated priors
         samples['T_M_star'] = torch.distributions.Gamma(
             self.current_priors['T_M_star']['alpha'],
             self.current_priors['T_M_star']['beta']
-        ).sample((n_samples,))
-        samples['t_loc'] = torch.distributions.Gamma(
-            self.current_priors['t_loc']['alpha'],
-            self.current_priors['t_loc']['beta']
-        ).sample((n_samples,))
-        samples['t_scale'] = torch.distributions.Gamma(
-            self.current_priors['t_scale']['alpha'],
-            self.current_priors['t_scale']['beta']
         ).sample((n_samples,))
 
         # Piecewise activation parameters
@@ -1536,31 +1520,7 @@ class PriorHyperparameterCalibrator:
             'param_names': param_names
         }
 
-    @beartype
-    def _assess_hierarchical_impact(self, param_samples: Dict[str, torch.Tensor]) -> Dict[str, Any]:
-        """Assess impact of hierarchical time parameters on pattern formation."""
-        print("  Assessing hierarchical parameter impact...")
 
-        # Analyze how T_M_star affects pattern boundaries
-        T_M_values = param_samples['T_M_star'].numpy()
-        t_on_values = param_samples['t_on_star'].numpy()  # Independent absolute values
-        delta_values = param_samples['delta_star'].numpy()  # Independent absolute values
-
-        # Analyze independence of temporal parameters from process duration
-        t_on_T_M_correlation = np.corrcoef(T_M_values, t_on_values)[0, 1]
-        delta_T_M_correlation = np.corrcoef(T_M_values, delta_values)[0, 1]
-
-        # Analyze independent parameter structure
-        impact_analysis = {
-            'T_M_range': (T_M_values.min(), T_M_values.max()),
-            'T_M_mean_std': (T_M_values.mean(), T_M_values.std()),
-            't_on_absolute_range': (t_on_values.min(), t_on_values.max()),
-            'delta_absolute_range': (delta_values.min(), delta_values.max()),
-            't_on_T_M_independence': abs(t_on_T_M_correlation),  # Should be near 0 for independence
-            'delta_T_M_independence': abs(delta_T_M_correlation)  # Should be near 0 for independence
-        }
-
-        return impact_analysis
 
     @beartype
     def _create_comprehensive_plots(
@@ -1569,7 +1529,6 @@ class PriorHyperparameterCalibrator:
         pattern_scores: Dict[str, torch.Tensor],
         phase_diagrams: Dict[str, Any],
         dependency_analysis: Dict[str, Any],
-        hierarchical_impact: Dict[str, Any],
         trajectory_seed: int = DEFAULT_TRAJECTORY_SEED
     ) -> None:
         """Create comprehensive visualization plots."""
@@ -1601,23 +1560,17 @@ class PriorHyperparameterCalibrator:
         fig4.savefig(self.save_path / "04_correlation_analysis.pdf", bbox_inches='tight')
         plt.close(fig4)
 
-        # Plot 5: Hierarchical impact analysis
-        fig5 = self._plot_hierarchical_impact(param_samples, hierarchical_impact)
-        fig5.savefig(self.save_path / "05_hierarchical_impact.png", dpi=300, bbox_inches='tight')
-        fig5.savefig(self.save_path / "05_hierarchical_impact.pdf", bbox_inches='tight')
+        # Plot 5: Enhanced prior distributions with pattern overlays
+        fig5 = self._plot_enhanced_prior_distributions(param_samples, pattern_scores)
+        fig5.savefig(self.save_path / "05_enhanced_prior_distributions.png", dpi=300, bbox_inches='tight')
+        fig5.savefig(self.save_path / "05_enhanced_prior_distributions.pdf", bbox_inches='tight')
         plt.close(fig5)
 
-        # Plot 6: Enhanced prior distributions with pattern overlays
-        fig6 = self._plot_enhanced_prior_distributions(param_samples, pattern_scores)
-        fig6.savefig(self.save_path / "06_enhanced_prior_distributions.png", dpi=300, bbox_inches='tight')
-        fig6.savefig(self.save_path / "06_enhanced_prior_distributions.pdf", bbox_inches='tight')
+        # Plot 6: Pattern coverage analysis
+        fig6 = self._plot_pattern_coverage_analysis(pattern_scores)
+        fig6.savefig(self.save_path / "06_pattern_coverage.png", dpi=300, bbox_inches='tight')
+        fig6.savefig(self.save_path / "06_pattern_coverage.pdf", bbox_inches='tight')
         plt.close(fig6)
-
-        # Plot 7: Pattern coverage analysis
-        fig7 = self._plot_pattern_coverage_analysis(pattern_scores)
-        fig7.savefig(self.save_path / "07_pattern_coverage.png", dpi=300, bbox_inches='tight')
-        fig7.savefig(self.save_path / "07_pattern_coverage.pdf", bbox_inches='tight')
-        plt.close(fig7)
 
         # Step 8: Save comprehensive analysis report
         print("  Computing constraint feasibility for summary...")
@@ -1630,8 +1583,8 @@ class PriorHyperparameterCalibrator:
         fig, axes = plt.subplots(3, 3, figsize=(18, 15))
         axes = axes.flatten()
 
-        # Parameters to plot (9 parameters for 3x3 grid)
-        params_to_plot = ['R_on', 't_on_star', 'delta_star', 'gamma_star', 'T_M_star', 't_loc', 't_scale', 'U_0i', 'lambda_j']
+        # Parameters to plot (7 parameters for updated grid)
+        params_to_plot = ['R_on', 't_on_star', 'delta_star', 'gamma_star', 'T_M_star', 'U_0i', 'lambda_j']
 
         for idx, param_name in enumerate(params_to_plot):
             ax = axes[idx]
@@ -1643,8 +1596,6 @@ class PriorHyperparameterCalibrator:
                 'delta_star': 'lognormal',
                 'gamma_star': 'lognormal',
                 'T_M_star': 'gamma',
-                't_loc': 'gamma',
-                't_scale': 'gamma',
                 'U_0i': 'lognormal',
                 'lambda_j': 'lognormal'
             }
@@ -1927,85 +1878,7 @@ class PriorHyperparameterCalibrator:
         plt.tight_layout()
         return fig
 
-    @beartype
-    def _plot_hierarchical_impact(
-        self,
-        param_samples: Dict[str, torch.Tensor],
-        hierarchical_impact: Dict[str, Any]
-    ) -> plt.Figure:
-        """Plot hierarchical parameter impact analysis."""
-        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
 
-        T_M_values = param_samples['T_M_star'].numpy()
-        t_on_values = param_samples['t_on_star'].numpy()
-
-        # Get proper parameter labels using metadata system
-        T_M_label = get_parameter_label(
-            param_name='T_M_star',
-            label_type="display",
-            model=self.model,
-            fallback_to_legacy=True
-        )
-        t_on_label = get_parameter_label(
-            param_name='t_on_star',
-            label_type="display",
-            model=self.model,
-            fallback_to_legacy=True
-        )
-        T_M_short = get_parameter_label(
-            param_name='T_M_star',
-            label_type="short",
-            model=self.model,
-            fallback_to_legacy=True
-        )
-        t_on_short = get_parameter_label(
-            param_name='t_on_star',
-            label_type="short",
-            model=self.model,
-            fallback_to_legacy=True
-        )
-
-        # Plot 1: T_M_star distribution
-        axes[0, 0].hist(T_M_values, bins=50, alpha=0.7, color='blue')
-        axes[0, 0].set_xlabel(T_M_label)
-        axes[0, 0].set_ylabel('Frequency')
-        axes[0, 0].set_title(f'{T_M_short} Distribution')
-        axes[0, 0].grid(True, alpha=0.3)
-
-        # Plot 2: t_on_star vs T_M_star
-        axes[0, 1].scatter(T_M_values, t_on_values, alpha=0.5, s=1)
-        axes[0, 1].set_xlabel(T_M_label)
-        axes[0, 1].set_ylabel(t_on_label)
-        axes[0, 1].set_title(f'{t_on_short} vs {T_M_short}')
-        axes[0, 1].grid(True, alpha=0.3)
-
-        # Plot 3: Effective onset times
-        t_on_effective = t_on_values * T_M_values
-        axes[1, 0].hist(t_on_effective, bins=50, alpha=0.7, color='green')
-        axes[1, 0].set_xlabel(f'Effective Onset Time ({t_on_short} × {T_M_short})')
-        axes[1, 0].set_ylabel('Frequency')
-        axes[1, 0].set_title('Effective Onset Time Distribution')
-        axes[1, 0].grid(True, alpha=0.3)
-
-        # Plot 4: Impact summary text
-        axes[1, 1].axis('off')
-        impact_text = f"""
-Hierarchical Impact Analysis
-
-T_M_star Range: {hierarchical_impact['T_M_range'][0]:.2f} - {hierarchical_impact['T_M_range'][1]:.2f}
-T_M_star Mean ± Std: {hierarchical_impact['T_M_mean_std'][0]:.2f} ± {hierarchical_impact['T_M_mean_std'][1]:.2f}
-
-Independent Absolute Onset Range: {hierarchical_impact['t_on_absolute_range'][0]:.2f} - {hierarchical_impact['t_on_absolute_range'][1]:.2f}
-Independent Absolute Duration Range: {hierarchical_impact['delta_absolute_range'][0]:.2f} - {hierarchical_impact['delta_absolute_range'][1]:.2f}
-
-t_on_star-T_M Independence: {hierarchical_impact['t_on_T_M_independence']:.3f} (should be $\\approx$0)
-delta_star-T_M Independence: {hierarchical_impact['delta_T_M_independence']:.3f} (should be $\\approx$0)
-        """
-        axes[1, 1].text(0.05, 0.95, impact_text.strip(), transform=axes[1, 1].transAxes,
-                        fontsize=10, verticalalignment='top', fontfamily='monospace')
-
-        plt.tight_layout()
-        return fig
 
     @beartype
     def _plot_pattern_coverage_analysis(self, pattern_scores: Dict[str, torch.Tensor]) -> plt.Figure:
