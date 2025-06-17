@@ -193,6 +193,7 @@ def _format_parameter_name(param_name: str) -> str:
     special_cases = {
         'T_M_star': r'T^*_M',
         't_star': r't^*',
+        't_star_normalized': r't^*_N',
         't_on_star': r't^*_{on}',
         'delta_star': r'\delta^*',
         'lambda_j': r'\lambda_j',

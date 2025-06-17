@@ -81,6 +81,17 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             biological_interpretation="Progression of individual cells through the biological process",
             plot_order=5
         ),
+
+        "t_star_normalized": ParameterMetadata(
+            name="t_star_normalized",
+            display_name=r"$t^*_N$",
+            short_label="Normalized Cell Time",
+            description="Normalized cell time coordinates in [0,1] interval",
+            units="dimensionless fraction",
+            typical_range=(0.0, 1.0),
+            biological_interpretation="Relative progression of individual cells through the biological process (0=start, 1=end)",
+            plot_order=6
+        ),
         
         # Piecewise activation parameters (corrected parameterization)
         # Note: alpha_off is fixed at 1.0 (not inferred), alpha_on computed from R_on
@@ -92,7 +103,7 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless ratio",
             typical_range=(1.5, 4.2),
             biological_interpretation="Magnitude of transcriptional upregulation during gene activation phase",
-            plot_order=6
+            plot_order=7
         ),
 
         "gamma_star": ParameterMetadata(
@@ -103,7 +114,7 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless rate ratio",
             typical_range=(0.3, 3.0),
             biological_interpretation="Balance between mRNA splicing and degradation kinetics; γ*=1 represents balanced kinetics",
-            plot_order=7
+            plot_order=8
         ),
 
 
