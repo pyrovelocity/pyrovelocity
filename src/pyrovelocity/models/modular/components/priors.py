@@ -327,9 +327,9 @@ class PiecewiseActivationPriorModel:
     @beartype
     def __init__(
         self,
-        # Hierarchical time structure hyperparameters (updated for observable complete cycles)
-        T_M_alpha: float = 2.5,     # Shape parameter for T*_M ~ Gamma (mean = 50)
-        T_M_beta: float = 0.05,      # Rate parameter for T*_M ~ Gamma (mean = 50)
+        # Hierarchical time structure hyperparameters (optimized for dimensionless variables)
+        T_M_alpha: float = 5.0,     # Shape parameter for T*_M ~ Gamma (mean = 5)
+        T_M_beta: float = 1.0,      # Rate parameter for T*_M ~ Gamma (mean = 5)
         t_loc_alpha: float = 1.0,    # Shape parameter for t_loc ~ Gamma
         t_loc_beta: float = 2.0,     # Rate parameter for t_loc ~ Gamma (mean = 0.5)
         t_scale_alpha: float = 1.0,  # Shape parameter for t_scale ~ Gamma
@@ -344,11 +344,11 @@ class PiecewiseActivationPriorModel:
         gamma_star_loc: float = -0.405, # log(0.667) for LogNormal prior (target mode ≈ 0.5, realistic splicing/degradation ratio)
         gamma_star_scale: float = 0.5,  # Scale for γ* prior (HPDI ≈ [0.25, 1.7])
 
-        # Independent absolute temporal parameters (eliminates scaling symmetry)
-        t_on_star_loc: float = 1.5,        # Absolute onset time mean
-        t_on_star_scale: float = 0.8,      # Absolute onset time std
-        delta_star_loc: float = 0.0,       # log(1.0) - absolute duration loc
-        delta_star_scale: float = 0.45,    # Absolute duration scale
+        # Independent absolute temporal parameters (optimized for balanced pattern coverage)
+        t_on_star_loc: float = 1.5,        # Absolute onset time mean (HPDI [-3, 6])
+        t_on_star_scale: float = 2.296,    # Absolute onset time std (optimized)
+        delta_star_loc: float = 0.48,      # Absolute duration loc (HPDI [0.65, 4.0])
+        delta_star_scale: float = 0.464,   # Absolute duration scale (optimized)
 
         # Characteristic concentration scale parameter hyperparameters
         U_0i_loc: float = 2.3,          # log(10) for LogNormal prior - REDUCED from log(100) for realistic single-cell count scales
