@@ -81,7 +81,7 @@ print("\nPrior parameter range validation:")
 print(f"Total parameters extracted: {len(prior_parameter_samples)}")
 
 for param_name, samples in prior_parameter_samples.items():
-    if param_name.startswith(('R_on', 'tilde_t_on', 'tilde_delta', 't_on', 'delta', 'gamma_star', 'T_M_star')):
+    if param_name.startswith(('R_on', 't_on_star', 'delta_star', 'gamma_star', 'T_M_star')):
         # Convert to tensor if needed and handle different shapes
         if isinstance(samples, np.ndarray):
             samples_tensor = torch.tensor(samples)
