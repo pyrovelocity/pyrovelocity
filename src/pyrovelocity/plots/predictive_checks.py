@@ -1755,11 +1755,12 @@ def _classify_parameters_into_patterns(
                 'R_on': R_on[i]
             }
 
-            # Add T_M_star if available
-            if use_relative_params and len(T_M_star) > 0:
+            # Add T_M_star if available (independent absolute parameterization)
+            if 'T_M_star' in parameters:
+                T_M_star = parameters['T_M_star'].flatten()
                 if len(T_M_star) == 1:
                     params['T_M_star'] = T_M_star[0]
-                elif len(T_M_star) == min_length:
+                elif len(T_M_star) >= i + 1:
                     params['T_M_star'] = T_M_star[i]
                 else:
                     # Use first T_M_star value as it's a global parameter
