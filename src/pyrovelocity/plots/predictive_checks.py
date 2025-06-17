@@ -423,7 +423,7 @@ def plot_parameter_marginals(
 
     # Extract true parameters if provided for validation
     true_parameters = {}
-    global_true_params = ['T_M_star', 't_loc', 't_scale']  # Global parameters that should appear on global marginals
+    global_true_params = ['T_M_star']  # Global parameters that should appear on global marginals
 
     if true_parameters_adata is not None and 'true_parameters' in true_parameters_adata.uns:
         true_params_dict = true_parameters_adata.uns['true_parameters']
@@ -579,8 +579,8 @@ def plot_parameter_relationships(
     """
     fig, axes = plt.subplots(1, 3, figsize=figsize)
 
-    # Hierarchical time structure
-    _plot_hierarchical_time_structure(parameters, axes[0], check_type, model=model, default_fontsize=default_fontsize)
+    # Temporal coordinate distribution
+    _plot_temporal_coordinate_distribution(parameters, axes[0], check_type, model=model, default_fontsize=default_fontsize)
 
     # Fold-change distribution
     _plot_fold_change_distribution(parameters, axes[1], check_type, model=model, default_fontsize=default_fontsize)
@@ -2446,14 +2446,14 @@ def _plot_parameter_marginals_summary(
 
 
 
-def _plot_hierarchical_time_structure(
+def _plot_temporal_coordinate_distribution(
     parameters: Dict[str, torch.Tensor],
     ax: plt.Axes,
     check_type: str,
     model: Optional[Any] = None,
     default_fontsize: Union[int, float] = 8
 ) -> None:
-    """Plot hierarchical time parameter relationships."""
+    """Plot temporal coordinate distribution (t_star)."""
     from pyrovelocity.plots.parameter_metadata import (
         get_parameter_label,
         infer_component_name_from_parameters,
@@ -2464,82 +2464,38 @@ def _plot_hierarchical_time_structure(
     if model is None:
         component_name = infer_component_name_from_parameters(parameters)
 
-    # Check for hierarchical time parameters
-    time_params = ['T_M_star', 't_loc', 't_scale']
-    available_time_params = [p for p in time_params if p in parameters]
+    if 't_star' in parameters:
+        t_star = parameters['t_star'].flatten().numpy()
 
-    if len(available_time_params) >= 2:
-        # Plot T_M_star vs population time spread (t_scale)
-        if 'T_M_star' in parameters and 't_scale' in parameters:
-            T_M = parameters['T_M_star'].flatten().numpy()
-            t_scale = parameters['t_scale'].flatten().numpy()
+        # Plot histogram of temporal coordinates
+        ax.hist(t_star, bins=50, alpha=0.7, color='purple', density=True)
 
-            ax.scatter(T_M, t_scale, alpha=0.6, s=5, color='purple')
+        # Get parameter label using metadata system
+        t_star_label = get_parameter_label(
+            param_name="t_star",
+            label_type="display",
+            model=model,
+            component_name=component_name,
+            fallback_to_legacy=True
+        )
 
-            # Get parameter labels using new metadata system
-            T_M_label = get_parameter_label(
-                param_name="T_M_star",
-                label_type="display",
-                model=model,
-                component_name=component_name,
-                fallback_to_legacy=True
-            )
-            t_scale_label = get_parameter_label(
-                param_name="t_scale",
-                label_type="display",
-                model=model,
-                component_name=component_name,
-                fallback_to_legacy=True
-            )
+        ax.set_xlabel(f'Temporal Coordinate ({t_star_label})', fontsize=default_fontsize)
+        ax.set_ylabel('Density', fontsize=default_fontsize)
+        ax.set_title(f'{check_type.title()} Temporal Coordinates', fontsize=default_fontsize)
+        ax.tick_params(labelsize=default_fontsize * 0.75)
 
-            ax.set_xlabel(f'Global Time Scale ({T_M_label})', fontsize=default_fontsize * 0.9)
-            ax.set_ylabel(f'Population Time Spread ({t_scale_label})', fontsize=default_fontsize * 0.9)
-            ax.set_title(f'{check_type.title()} Hierarchical Time Structure', fontsize=default_fontsize)
-            ax.tick_params(labelsize=default_fontsize * 0.75)
-
-            # Add adaptive interpretation guidelines
-            # Compute adaptive thresholds based on actual data
-            t_scale_median = np.median(t_scale)
-            T_M_median = np.median(T_M)
-
-            ax.axhline(t_scale_median, color='orange', linestyle='--', alpha=0.7,
-                      label=f'Median temporal spread: {t_scale_median:.2f}')
-            ax.axvline(T_M_median, color='green', linestyle='--', alpha=0.7,
-                      label=f'Median process duration: {T_M_median:.1f}')
-            ax.legend(fontsize=default_fontsize * 0.8)
-
-        # Alternative: t_loc vs t_scale if T_M_star not available
-        elif 't_loc' in parameters and 't_scale' in parameters:
-            t_loc = parameters['t_loc'].flatten().numpy()
-            t_scale = parameters['t_scale'].flatten().numpy()
-
-            ax.scatter(t_loc, t_scale, alpha=0.6, s=5, color='purple')
-
-            # Get parameter labels using new metadata system
-            t_loc_label = get_parameter_label(
-                param_name="t_loc",
-                label_type="display",
-                model=model,
-                component_name=component_name,
-                fallback_to_legacy=True
-            )
-            t_scale_label = get_parameter_label(
-                param_name="t_scale",
-                label_type="display",
-                model=model,
-                component_name=component_name,
-                fallback_to_legacy=True
-            )
-
-            ax.set_xlabel(f'Population Time Location ({t_loc_label})', fontsize=default_fontsize)
-            ax.set_ylabel(f'Population Time Spread ({t_scale_label})', fontsize=default_fontsize)
-            ax.set_title(f'{check_type.title()} Population Time Parameters', fontsize=default_fontsize)
-            ax.tick_params(labelsize=default_fontsize * 0.75)  # Reduce tick label size
-            ax.legend(fontsize=default_fontsize * 0.75)
+        # Add summary statistics
+        t_star_mean = np.mean(t_star)
+        t_star_median = np.median(t_star)
+        ax.axvline(t_star_mean, color='red', linestyle='--', alpha=0.7,
+                  label=f'Mean: {t_star_mean:.2f}')
+        ax.axvline(t_star_median, color='orange', linestyle='--', alpha=0.7,
+                  label=f'Median: {t_star_median:.2f}')
+        ax.legend(fontsize=default_fontsize * 0.8)
     else:
-        ax.text(0.5, 0.5, 'Hierarchical time parameters\nnot available',
+        ax.text(0.5, 0.5, 'Temporal coordinates\nnot available',
                ha='center', va='center', transform=ax.transAxes)
-        ax.set_title(f'{check_type.title()} Hierarchical Time Structure', fontsize=8)
+        ax.set_title(f'{check_type.title()} Temporal Coordinates', fontsize=default_fontsize)
 
     ax.grid(True, alpha=0.3)
 
