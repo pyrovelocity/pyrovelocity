@@ -22,6 +22,7 @@ from typing import Dict, Tuple, Any, List
 from pathlib import Path
 from beartype import beartype
 import random
+from scipy.optimize import fsolve
 
 # Import PyroVelocity components
 from pyrovelocity.models.modular.factory import create_piecewise_activation_model
@@ -155,6 +156,191 @@ def set_trajectory_generation_seed(seed: int = DEFAULT_TRAJECTORY_SEED) -> None:
     np.random.seed(seed)
     random.seed(seed)
 
+
+@beartype
+def solve_distribution_hyperparameters(
+    distribution_type: str,
+    target_mean: float,
+    target_hpdi_lower: float,
+    target_hpdi_upper: float,
+    confidence: float = 0.95
+) -> Dict[str, float]:
+    """
+    Solve for distribution hyperparameters given target mean and HPDI range.
+    
+    Args:
+        distribution_type: 'normal' or 'lognormal'
+        target_mean: Target expectation value
+        target_hpdi_lower: Lower bound of target HPDI
+        target_hpdi_upper: Upper bound of target HPDI
+        confidence: Confidence level for HPDI (default: 0.95)
+    
+    Returns:
+        Dictionary with solved hyperparameters
+    """
+    alpha = 1 - confidence
+    z_score = stats.norm.ppf(1 - alpha/2)  # For 95%: z ≈ 1.96
+    
+    if distribution_type.lower() == 'normal':
+        # For Normal(μ, σ): mean = μ, HPDI = [μ - z*σ, μ + z*σ]
+        # HPDI width = 2*z*σ, so σ = (upper - lower) / (2*z)
+        sigma = (target_hpdi_upper - target_hpdi_lower) / (2 * z_score)
+        mu = target_mean
+        
+        # Validate that target_mean is centered in HPDI
+        expected_center = (target_hpdi_lower + target_hpdi_upper) / 2
+        if abs(mu - expected_center) > 0.01:
+            print(f"⚠️  Warning: target_mean ({mu:.3f}) not centered in HPDI ({expected_center:.3f})")
+            print(f"   Using HPDI center as mean: {expected_center:.3f}")
+            mu = expected_center
+        
+        return {'loc': mu, 'scale': sigma}
+    
+    elif distribution_type.lower() == 'lognormal':
+        # For LogNormal(μ, σ): 
+        # mean = exp(μ + σ²/2)
+        # P5 = exp(μ - z*σ), P95 = exp(μ + z*σ)
+        
+        def equations(params):
+            mu, sigma = params
+            eq1 = np.exp(mu + sigma**2/2) - target_mean  # Mean constraint
+            eq2 = np.exp(mu - z_score*sigma) - target_hpdi_lower  # Lower HPDI
+            eq3 = np.exp(mu + z_score*sigma) - target_hpdi_upper  # Upper HPDI
+            return [eq1, eq2**2 + eq3**2]  # Use 2 equations for 2 unknowns
+        
+        # Initial guess based on log of target values
+        mu_init = np.log(target_mean) - 0.1  # Slight adjustment for variance
+        sigma_init = 0.5
+        
+        try:
+            mu, sigma = fsolve(equations, [mu_init, sigma_init])
+            
+            # Validate solution
+            actual_mean = np.exp(mu + sigma**2/2)
+            actual_lower = np.exp(mu - z_score*sigma)
+            actual_upper = np.exp(mu + z_score*sigma)
+            
+            print(f"LogNormal solution validation:")
+            print(f"  Target mean: {target_mean:.3f}, Actual: {actual_mean:.3f}")
+            print(f"  Target HPDI: [{target_hpdi_lower:.3f}, {target_hpdi_upper:.3f}]")
+            print(f"  Actual HPDI: [{actual_lower:.3f}, {actual_upper:.3f}]")
+            
+            return {'loc': mu, 'scale': sigma}
+            
+        except Exception as e:
+            print(f"❌ Failed to solve LogNormal parameters: {e}")
+            # Fallback to approximate solution
+            mu_approx = np.log(target_mean) - 0.125  # Rough adjustment
+            sigma_approx = (np.log(target_hpdi_upper) - np.log(target_hpdi_lower)) / (2 * z_score)
+            print(f"Using approximate solution: μ={mu_approx:.3f}, σ={sigma_approx:.3f}")
+            return {'loc': mu_approx, 'scale': sigma_approx}
+    
+    else:
+        raise ValueError(f"Unsupported distribution type: {distribution_type}")
+
+
+@beartype
+def validate_pattern_constraint_feasibility(
+    t_on_params: Dict[str, float],
+    delta_params: Dict[str, float],
+    R_on_params: Dict[str, float]
+) -> Dict[str, Dict[str, float]]:
+    """
+    Validate pattern constraint feasibility with proposed hyperparameters.
+    
+    Args:
+        t_on_params: Normal distribution parameters for t_on_star
+        delta_params: LogNormal distribution parameters for delta_star  
+        R_on_params: LogNormal distribution parameters for R_on
+    
+    Returns:
+        Dictionary with pattern constraint probabilities
+    """
+    print("\n" + "="*50)
+    print("PATTERN CONSTRAINT FEASIBILITY VALIDATION")
+    print("="*50)
+    
+    # Current pattern constraints (from the implementation)
+    constraints = {
+        'pre_activation': {
+            't_on_star': ('<', 0.0),
+            'R_on': ('>', 2.0)
+        },
+        'transient': {
+            't_on_star': ('>', 0.0),
+            't_on_star_upper': ('<', 1.5),
+            'delta_star': ('<', 2.0),
+            'R_on': ('>', 2.0)
+        },
+        'sustained': {
+            't_on_star': ('>', 0.0),
+            't_on_star_upper': ('<', 1.5),
+            'delta_star': ('>', 2.5),
+            'R_on': ('>', 2.0)
+        }
+    }
+    
+    results = {}
+    
+    for pattern_name, pattern_constraints in constraints.items():
+        joint_prob = 1.0
+        pattern_results = {}
+        
+        print(f"\n{pattern_name.upper()} PATTERN:")
+        
+        for constraint_name, (operator, threshold) in pattern_constraints.items():
+            # Handle special constraint names
+            param_name = constraint_name
+            if constraint_name.endswith('_upper'):
+                param_name = constraint_name.replace('_upper', '')
+            
+            # Calculate probability based on parameter type
+            if param_name == 't_on_star':
+                if operator == '>':
+                    prob = 1 - stats.norm.cdf(threshold, 
+                                            loc=t_on_params['loc'], 
+                                            scale=t_on_params['scale'])
+                else:  # operator == '<'
+                    prob = stats.norm.cdf(threshold, 
+                                        loc=t_on_params['loc'], 
+                                        scale=t_on_params['scale'])
+            elif param_name == 'delta_star':
+                if operator == '>':
+                    prob = 1 - stats.lognorm.cdf(threshold, 
+                                                s=delta_params['scale'], 
+                                                scale=np.exp(delta_params['loc']))
+                else:  # operator == '<'
+                    prob = stats.lognorm.cdf(threshold, 
+                                           s=delta_params['scale'], 
+                                           scale=np.exp(delta_params['loc']))
+            elif param_name == 'R_on':
+                if operator == '>':
+                    prob = 1 - stats.lognorm.cdf(threshold, 
+                                                s=R_on_params['scale'], 
+                                                scale=np.exp(R_on_params['loc']))
+                else:  # operator == '<'
+                    prob = stats.lognorm.cdf(threshold, 
+                                           s=R_on_params['scale'], 
+                                           scale=np.exp(R_on_params['loc']))
+            else:
+                continue
+            
+            pattern_results[constraint_name] = prob
+            joint_prob *= prob
+            
+            # Status indicator
+            status = "✅" if prob > 0.15 else "⚠️" if prob > 0.05 else "❌"
+            print(f"  P({param_name} {operator} {threshold}) = {prob:.3f} {status}")
+        
+        pattern_results['joint_probability'] = joint_prob
+        results[pattern_name] = pattern_results
+        
+        # Overall status
+        status = "✅" if joint_prob > 0.15 else "⚠️" if joint_prob > 0.05 else "❌"
+        print(f"  JOINT PROBABILITY: {joint_prob:.4f} {status}")
+    
+    return results
+
 # Set initial seed
 set_trajectory_generation_seed(DEFAULT_TRAJECTORY_SEED)
 
@@ -167,19 +353,18 @@ class PriorHyperparameterCalibrator:
     and provides optimization recommendations for balanced gene expression patterns.
 
     **Temporal Parameter Structure:**
-    This implementation uses the new temporal parameter structure that cleanly separates
-    relative temporal parameters from absolute ones:
+    This implementation uses independent absolute parameterization that eliminates
+    scaling symmetry while maintaining biological interpretability:
 
-    - **Relative temporal parameters** (sampled from priors):
-      - tilde_t_on_star: Relative activation onset time
-      - tilde_delta_star: Relative activation duration
+    - **Independent absolute temporal parameters** (sampled directly from priors):
+      - t_on_star: Absolute activation onset time ~ Normal(1.5, 0.8²)
+      - delta_star: Absolute activation duration ~ LogNormal(0.0, 0.45²)
 
-    - **Absolute temporal parameters** (computed deterministically):
-      - t_on_star = T_M_star * tilde_t_on_star
-      - delta_star = T_M_star * tilde_delta_star
+    - **No hierarchical scaling relationships**: Parameters represent intrinsic
+      biological properties independent of observation window duration.
 
-    This structure eliminates dimensional inconsistencies and provides cleaner
-    separation between temporal scaling (T_M_star) and temporal patterns.
+    This structure eliminates parameter redundancy and scaling symmetry issues
+    while providing direct biological interpretability of temporal parameters.
     """
     
     def __init__(self, save_path: str = "reports/docs/prior_calibration"):
@@ -200,12 +385,12 @@ class PriorHyperparameterCalibrator:
             'R_on': {'loc': 0.916, 'scale': 0.4},        # log(2.5), fold-change (LogNormal)
             'gamma_star': {'loc': -0.405, 'scale': 0.5}, # log(0.667), relative degradation rate (LogNormal) - realistic splicing/degradation ratio
 
-            # Relative temporal gene-specific parameters (scaled by T_M_star)
-            'tilde_t_on_star': {'loc': 0.5, 'scale': 0.8},     # Normal(0.5, 0.8²), relative activation onset time
-            'tilde_delta_star': {'loc': -0.8, 'scale': 0.45},  # log(0.45), relative activation duration (LogNormal)
+            # Independent absolute temporal gene-specific parameters (optimized for balanced pattern coverage)
+            't_on_star': {'loc': 1.5, 'scale': 2.296},    # Normal(1.5, 2.296²), HPDI [-3, 6] - broad activation timing range
+            'delta_star': {'loc': 0.48, 'scale': 0.464},  # LogNormal(0.48, 0.464²), HPDI [0.65, 4.0] - improved duration range
 
             # Hierarchical time structure parameters
-            'T_M_star': {'alpha': 2.5, 'beta': 0.05},   # Gamma(12.1, 0.22), mean = 55 - global time scale
+            'T_M_star': {'alpha': 5.0, 'beta': 1.0},    # Gamma(5.0, 1.0), mean = 5 - dimensionless global time scale
             't_loc': {'alpha': 1.0, 'beta': 2.0},        # Gamma(1.0, 2.0), mean = 0.5
             't_scale': {'alpha': 1.0, 'beta': 4.0},      # Gamma(1.0, 4.0), mean = 0.25
 
@@ -214,31 +399,30 @@ class PriorHyperparameterCalibrator:
             'lambda_j': {'loc': 0.0, 'scale': 0.2},      # log(1.0) (LogNormal)
         }
         
-        # Pattern constraints now work with computed absolute temporal parameters
-        # These constraints are applied to t*_on = T_M_star * tilde_t_on_star and delta* = T_M_star * tilde_delta_star
-        # Note: We'll need to compute absolute parameters during constraint checking
+        # Pattern constraints using independent absolute temporal parameters
+        # These constraints use absolute thresholds based on mathematical specification
         self.pattern_constraints = {
             'pre_activation': {
                 # All patterns where activation occurred before observation window
                 # Results in observable decay-only dynamics from activated steady-state
-                'tilde_t_on_star': ('<', 0.0),      # Relative activation before observation starts
-                'R_on': ('>', 2.0),                  # Moderate to strong fold change
+                't_on_star': ('<', 0.0),     # Absolute onset before observation
+                'R_on': ('>', 2.0),          # Moderate to strong fold change
             },
             'transient': {
                 # Complete activation-decay cycle within observation window
                 # Activation early enough and pulse short enough to see full cycle
-                'tilde_t_on_star': ('>', 0.0),      # Relative activation within observation window
-                'tilde_t_on_star_upper': ('<', 0.5), # Early enough to complete cycle (50% of timeline)
-                'tilde_delta_star': ('<', 0.4),     # Short enough pulse to see decay (40% of timeline)
-                'R_on': ('>', 2.0),                  # Sufficient fold change to observe
+                't_on_star': ('>', 0.0),         # Absolute onset within observation window
+                't_on_star_upper': ('<', 1.5),  # Absolute early onset
+                'delta_star': ('<', 2.0),       # Absolute short duration
+                'R_on': ('>', 2.0),             # Sufficient fold change to observe
             },
             'sustained': {
                 # Net increase over observation window (includes late activation)
                 # Either long pulse or late activation that doesn't complete decay
-                'tilde_t_on_star': ('>', 0.0),      # Relative activation within observation window
-                'tilde_t_on_star_upper': ('<', 0.3), # Early activation onset (30% of timeline)
-                'tilde_delta_star': ('>', 0.5),     # Long activation duration (50% of timeline)
-                'R_on': ('>', 2.0),                  # Strong fold change
+                't_on_star': ('>', 0.0),         # Absolute onset within observation window
+                't_on_star_upper': ('<', 1.5),  # Absolute early onset
+                'delta_star': ('>', 2.5),       # Absolute long duration
+                'R_on': ('>', 2.0),             # Strong fold change
             }
         }
         
@@ -355,7 +539,7 @@ class PriorHyperparameterCalibrator:
                 upper = (operator == '>')
 
                 # Calculate probability based on distribution type
-                if param_name == 'tilde_t_on_star':  # Normal distribution
+                if param_name == 't_on_star':  # Normal distribution
                     prob = self.calculate_normal_cdf_probability(
                         prior['loc'], prior['scale'], threshold, upper=upper
                     )
@@ -409,7 +593,7 @@ class PriorHyperparameterCalibrator:
         for param_name, prior_config in self.current_priors.items():
             if 'loc' in prior_config and 'scale' in prior_config:
                 # LogNormal or Normal distribution
-                if param_name == 'tilde_t_on_star':  # Normal distribution
+                if param_name == 't_on_star':  # Normal distribution
                     lower = stats.norm.ppf(alpha/2, loc=prior_config['loc'], scale=prior_config['scale'])
                     upper = stats.norm.ppf(1-alpha/2, loc=prior_config['loc'], scale=prior_config['scale'])
                     dist_type = "Normal"
@@ -468,7 +652,7 @@ class PriorHyperparameterCalibrator:
 
         if 'loc' in prior_config and 'scale' in prior_config:
             # LogNormal or Normal distribution
-            if param_name == 'tilde_t_on_star':  # Normal distribution
+            if param_name == 't_on_star':  # Normal distribution
                 lower = stats.norm.ppf(alpha/2, loc=prior_config['loc'], scale=prior_config['scale'])
                 upper = stats.norm.ppf(1-alpha/2, loc=prior_config['loc'], scale=prior_config['scale'])
                 mean_val = prior_config['loc']
@@ -501,8 +685,8 @@ class PriorHyperparameterCalibrator:
         """Add biological interpretation for parameter ranges."""
         interpretations = {
             'R_on': f"  Interpretation: Activation fold-change from {lower:.1f}× to {upper:.1f}× (mean: {mean:.1f}×)",
-            'tilde_t_on_star': f"  Interpretation: Relative onset time from {lower:.2f} to {upper:.2f} (negative = pre-activation)",
-            'tilde_delta_star': f"  Interpretation: Relative activation duration from {lower:.2f} to {upper:.2f} (fraction of timeline)",
+            't_on_star': f"  Interpretation: Absolute onset time from {lower:.2f} to {upper:.2f} (negative = pre-activation)",
+            'delta_star': f"  Interpretation: Absolute activation duration from {lower:.2f} to {upper:.2f} (intrinsic duration)",
             'gamma_star': f"  Interpretation: Relative degradation rate from {lower:.2f} to {upper:.2f} (1.0 = balanced)",
             'T_M_star': f"  Interpretation: Maximum timeline from {lower:.1f} to {upper:.1f} time units",
             't_loc': f"  Interpretation: Population time center from {lower:.2f} to {upper:.2f}",
@@ -578,23 +762,19 @@ class PriorHyperparameterCalibrator:
                     self.current_priors['R_on']['scale']
                 ))
 
-                # Sample relative temporal parameters
-                tilde_t_on_star = np.random.normal(
-                    self.current_priors['tilde_t_on_star']['loc'],
-                    self.current_priors['tilde_t_on_star']['scale']
+                # Sample independent absolute temporal parameters directly
+                t_on_star = np.random.normal(
+                    self.current_priors['t_on_star']['loc'],
+                    self.current_priors['t_on_star']['scale']
                 )
-                tilde_delta_star = np.exp(np.random.normal(
-                    self.current_priors['tilde_delta_star']['loc'],
-                    self.current_priors['tilde_delta_star']['scale']
+                delta_star = np.exp(np.random.normal(
+                    self.current_priors['delta_star']['loc'],
+                    self.current_priors['delta_star']['scale']
                 ))
 
-                # Use the global T*_M value (sampled once for all examples)
-                # This respects the hierarchical structure where T*_M is global
+                # Use the global T*_M value for process duration only
+                # No hierarchical scaling - temporal parameters are independent
                 T_M_star = global_T_M_star
-
-                # Compute absolute temporal parameters via scaling
-                t_on_star = T_M_star * tilde_t_on_star
-                delta_star = T_M_star * tilde_delta_star
 
                 gamma_star = np.exp(np.random.normal(
                     self.current_priors['gamma_star']['loc'],
@@ -615,10 +795,10 @@ class PriorHyperparameterCalibrator:
                     # Get parameter value (use relative parameters for constraints)
                     if param_name == 'R_on':
                         value = R_on
-                    elif param_name == 'tilde_t_on_star':
-                        value = tilde_t_on_star
-                    elif param_name == 'tilde_delta_star':
-                        value = tilde_delta_star
+                    elif param_name == 't_on_star':
+                        value = t_on_star
+                    elif param_name == 'delta_star':
+                        value = delta_star
                     elif param_name == 'gamma_star':
                         value = gamma_star
                     else:
@@ -635,11 +815,9 @@ class PriorHyperparameterCalibrator:
                 if satisfies_constraints:
                     examples.append({
                         'R_on': torch.tensor(R_on),
-                        'tilde_t_on_star': torch.tensor(tilde_t_on_star),  # Relative parameter
-                        'tilde_delta_star': torch.tensor(tilde_delta_star),  # Relative parameter
-                        'T_M_star': torch.tensor(T_M_star),  # Global time scale
-                        't_on_star': torch.tensor(t_on_star),  # Absolute parameter (computed)
-                        'delta_star': torch.tensor(delta_star),  # Absolute parameter (computed)
+                        't_on_star': torch.tensor(t_on_star),  # Independent absolute parameter
+                        'delta_star': torch.tensor(delta_star),  # Independent absolute parameter
+                        'T_M_star': torch.tensor(T_M_star),  # Process duration (independent)
                         'gamma_star': torch.tensor(gamma_star),
                         'alpha_off': torch.tensor(1.0),  # Fixed in dimensionless parameterization
                         'alpha_on': torch.tensor(R_on),  # Since alpha_off = 1.0
@@ -1183,20 +1361,18 @@ class PriorHyperparameterCalibrator:
             self.current_priors['R_on']['scale']
         ).sample((n_samples,))
 
-        # Sample relative temporal parameters
-        samples['tilde_t_on_star'] = torch.distributions.Normal(
-            self.current_priors['tilde_t_on_star']['loc'],
-            self.current_priors['tilde_t_on_star']['scale']
+        # Sample independent absolute temporal parameters directly
+        samples['t_on_star'] = torch.distributions.Normal(
+            self.current_priors['t_on_star']['loc'],
+            self.current_priors['t_on_star']['scale']
         ).sample((n_samples,))
 
-        samples['tilde_delta_star'] = torch.distributions.LogNormal(
-            self.current_priors['tilde_delta_star']['loc'],
-            self.current_priors['tilde_delta_star']['scale']
+        samples['delta_star'] = torch.distributions.LogNormal(
+            self.current_priors['delta_star']['loc'],
+            self.current_priors['delta_star']['scale']
         ).sample((n_samples,))
 
-        # Compute absolute temporal parameters via scaling
-        samples['t_on_star'] = samples['T_M_star'] * samples['tilde_t_on_star']
-        samples['delta_star'] = samples['T_M_star'] * samples['tilde_delta_star']
+        # No hierarchical computation - temporal parameters are independent
 
         samples['gamma_star'] = torch.distributions.LogNormal(
             self.current_priors['gamma_star']['loc'],
@@ -1250,8 +1426,8 @@ class PriorHyperparameterCalibrator:
     def _compute_soft_pattern_score(self, param_samples: Dict[str, torch.Tensor], idx: int, pattern: str) -> float:
         """Compute soft membership score for a pattern using sigmoid functions."""
         R_on = param_samples['R_on'][idx].item()
-        tilde_t_on_star = param_samples['tilde_t_on_star'][idx].item()
-        tilde_delta_star = param_samples['tilde_delta_star'][idx].item()
+        t_on_star = param_samples['t_on_star'][idx].item()
+        delta_star = param_samples['delta_star'][idx].item()
 
         def sigmoid_score(value: float, threshold: float, direction: str, steepness: float = 5.0) -> float:
             """Sigmoid function for soft constraint scoring."""
@@ -1260,25 +1436,25 @@ class PriorHyperparameterCalibrator:
             else:  # direction == '<'
                 return torch.sigmoid(torch.tensor(steepness * (threshold - value))).item()
 
-        # Pattern-specific scoring based on relative temporal parameters
+        # Pattern-specific scoring based on independent absolute temporal parameters
         if pattern == 'pre_activation':
             scores = [
                 sigmoid_score(R_on, 2.0, '>'),
-                sigmoid_score(tilde_t_on_star, 0.0, '<')
+                sigmoid_score(t_on_star, 0.0, '<')
             ]
         elif pattern == 'transient':
             scores = [
                 sigmoid_score(R_on, 2.0, '>'),
-                sigmoid_score(tilde_t_on_star, 0.0, '>'),
-                sigmoid_score(tilde_t_on_star, 0.5, '<'),
-                sigmoid_score(tilde_delta_star, 0.4, '<')
+                sigmoid_score(t_on_star, 0.0, '>'),
+                sigmoid_score(t_on_star, 1.5, '<'),
+                sigmoid_score(delta_star, 2.0, '<')
             ]
         elif pattern == 'sustained':
             scores = [
                 sigmoid_score(R_on, 2.0, '>'),
-                sigmoid_score(tilde_t_on_star, 0.0, '>'),
-                sigmoid_score(tilde_t_on_star, 0.3, '<'),
-                sigmoid_score(tilde_delta_star, 0.5, '>')
+                sigmoid_score(t_on_star, 0.0, '>'),
+                sigmoid_score(t_on_star, 1.5, '<'),
+                sigmoid_score(delta_star, 2.5, '>')
             ]
         else:
             scores = [0.0]
@@ -1298,10 +1474,10 @@ class PriorHyperparameterCalibrator:
 
         # Key parameter pairs for phase diagrams
         param_pairs = [
-            ('R_on', 'tilde_delta_star'),
-            ('tilde_t_on_star', 'tilde_delta_star'),
-            ('R_on', 'tilde_t_on_star'),
-            ('gamma_star', 'tilde_delta_star')
+            ('R_on', 'delta_star'),
+            ('t_on_star', 'delta_star'),
+            ('R_on', 't_on_star'),
+            ('gamma_star', 'delta_star')
         ]
 
         for param_x, param_y in param_pairs:
@@ -1331,14 +1507,14 @@ class PriorHyperparameterCalibrator:
         # Convert to numpy for correlation analysis
         param_matrix = torch.stack([
             param_samples['R_on'],
-            param_samples['tilde_t_on_star'],
-            param_samples['tilde_delta_star'],
+            param_samples['t_on_star'],
+            param_samples['delta_star'],
             param_samples['gamma_star'],
             param_samples['T_M_star'],
             param_samples['U_0i']
         ], dim=1).numpy()
 
-        param_names = ['R_on', 'tilde_t_on_star', 'tilde_delta_star', 'gamma_star', 'T_M_star', 'U_0i']
+        param_names = ['R_on', 't_on_star', 'delta_star', 'gamma_star', 'T_M_star', 'U_0i']
 
         # Compute correlation matrix
         correlation_matrix = np.corrcoef(param_matrix.T)
@@ -1367,20 +1543,21 @@ class PriorHyperparameterCalibrator:
 
         # Analyze how T_M_star affects pattern boundaries
         T_M_values = param_samples['T_M_star'].numpy()
-        tilde_t_on_values = param_samples['tilde_t_on_star'].numpy()
-        t_on_values = param_samples['t_on_star'].numpy()  # Computed absolute values
+        t_on_values = param_samples['t_on_star'].numpy()  # Independent absolute values
+        delta_values = param_samples['delta_star'].numpy()  # Independent absolute values
 
-        # Analyze scaling relationship: t_on_star = T_M_star * tilde_t_on_star
-        scaling_correlation = np.corrcoef(T_M_values, t_on_values)[0, 1]
+        # Analyze independence of temporal parameters from process duration
+        t_on_T_M_correlation = np.corrcoef(T_M_values, t_on_values)[0, 1]
+        delta_T_M_correlation = np.corrcoef(T_M_values, delta_values)[0, 1]
 
-        # Analyze impact on pattern feasibility
+        # Analyze independent parameter structure
         impact_analysis = {
             'T_M_range': (T_M_values.min(), T_M_values.max()),
             'T_M_mean_std': (T_M_values.mean(), T_M_values.std()),
-            'tilde_t_on_range': (tilde_t_on_values.min(), tilde_t_on_values.max()),
             't_on_absolute_range': (t_on_values.min(), t_on_values.max()),
-            'scaling_correlation': scaling_correlation,
-            'relative_vs_absolute_correlation': np.corrcoef(tilde_t_on_values, t_on_values)[0, 1]
+            'delta_absolute_range': (delta_values.min(), delta_values.max()),
+            't_on_T_M_independence': abs(t_on_T_M_correlation),  # Should be near 0 for independence
+            'delta_T_M_independence': abs(delta_T_M_correlation)  # Should be near 0 for independence
         }
 
         return impact_analysis
@@ -1454,7 +1631,7 @@ class PriorHyperparameterCalibrator:
         axes = axes.flatten()
 
         # Parameters to plot (9 parameters for 3x3 grid)
-        params_to_plot = ['R_on', 'tilde_t_on_star', 'tilde_delta_star', 'gamma_star', 'T_M_star', 't_loc', 't_scale', 'U_0i', 'lambda_j']
+        params_to_plot = ['R_on', 't_on_star', 'delta_star', 'gamma_star', 'T_M_star', 't_loc', 't_scale', 'U_0i', 'lambda_j']
 
         for idx, param_name in enumerate(params_to_plot):
             ax = axes[idx]
@@ -1462,8 +1639,8 @@ class PriorHyperparameterCalibrator:
             # Get distribution type configuration
             distribution_types = {
                 'R_on': 'lognormal',
-                'tilde_t_on_star': 'normal',
-                'tilde_delta_star': 'lognormal',
+                't_on_star': 'normal',
+                'delta_star': 'lognormal',
                 'gamma_star': 'lognormal',
                 'T_M_star': 'gamma',
                 't_loc': 'gamma',
@@ -1586,7 +1763,7 @@ class PriorHyperparameterCalibrator:
         axes = axes.flatten()
 
         # Parameters to plot
-        params_to_plot = ['R_on', 'tilde_t_on_star', 'tilde_delta_star', 'gamma_star', 'T_M_star', 'U_0i']
+        params_to_plot = ['R_on', 't_on_star', 'delta_star', 'gamma_star', 'T_M_star', 'U_0i']
         pattern_names = list(self.pattern_constraints.keys())
         colors = ['red', 'blue', 'green', 'orange', 'purple']
 
@@ -1818,11 +1995,11 @@ Hierarchical Impact Analysis
 T_M_star Range: {hierarchical_impact['T_M_range'][0]:.2f} - {hierarchical_impact['T_M_range'][1]:.2f}
 T_M_star Mean ± Std: {hierarchical_impact['T_M_mean_std'][0]:.2f} ± {hierarchical_impact['T_M_mean_std'][1]:.2f}
 
-Absolute Onset Range: {hierarchical_impact['t_on_absolute_range'][0]:.2f} - {hierarchical_impact['t_on_absolute_range'][1]:.2f}
-Relative Onset Range: {hierarchical_impact['tilde_t_on_range'][0]:.2f} - {hierarchical_impact['tilde_t_on_range'][1]:.2f}
+Independent Absolute Onset Range: {hierarchical_impact['t_on_absolute_range'][0]:.2f} - {hierarchical_impact['t_on_absolute_range'][1]:.2f}
+Independent Absolute Duration Range: {hierarchical_impact['delta_absolute_range'][0]:.2f} - {hierarchical_impact['delta_absolute_range'][1]:.2f}
 
-Scaling Correlation: {hierarchical_impact['scaling_correlation']:.3f}
-Relative vs Absolute Correlation: {hierarchical_impact['relative_vs_absolute_correlation']:.3f}
+t_on_star-T_M Independence: {hierarchical_impact['t_on_T_M_independence']:.3f} (should be $\\approx$0)
+delta_star-T_M Independence: {hierarchical_impact['delta_T_M_independence']:.3f} (should be $\\approx$0)
         """
         axes[1, 1].text(0.05, 0.95, impact_text.strip(), transform=axes[1, 1].transAxes,
                         fontsize=10, verticalalignment='top', fontfamily='monospace')
@@ -1906,7 +2083,7 @@ Relative vs Absolute Correlation: {hierarchical_impact['relative_vs_absolute_cor
         assignments = pattern_scores['assignments'].numpy()
 
         importance_scores = {}
-        for param_name in ['R_on', 'tilde_t_on_star', 'tilde_delta_star', 'gamma_star']:
+        for param_name in ['R_on', 't_on_star', 'delta_star', 'gamma_star']:
             param_values = param_samples[param_name].numpy()
 
             # Compute between-pattern variance vs within-pattern variance
@@ -1947,23 +2124,23 @@ Relative vs Absolute Correlation: {hierarchical_impact['relative_vs_absolute_cor
 
         if 'sustained' in under_represented:
             # Sustained pattern needs longer durations
-            current_delta_mean = param_samples['tilde_delta_star'].mean().item()
-            adjustments['tilde_delta_star'] = {
-                'current_loc': self.current_priors['tilde_delta_star']['loc'],
-                'suggested_loc': self.current_priors['tilde_delta_star']['loc'] + 0.2,  # Increase mean
-                'current_scale': self.current_priors['tilde_delta_star']['scale'],
-                'suggested_scale': self.current_priors['tilde_delta_star']['scale'] + 0.1,  # Increase spread
-                'rationale': f'Increase relative duration to support sustained patterns (current mean: {current_delta_mean:.3f})'
+            current_delta_mean = param_samples['delta_star'].mean().item()
+            adjustments['delta_star'] = {
+                'current_loc': self.current_priors['delta_star']['loc'],
+                'suggested_loc': self.current_priors['delta_star']['loc'] + 0.2,  # Increase mean
+                'current_scale': self.current_priors['delta_star']['scale'],
+                'suggested_scale': self.current_priors['delta_star']['scale'] + 0.1,  # Increase spread
+                'rationale': f'Increase absolute duration to support sustained patterns (current mean: {current_delta_mean:.3f})'
             }
 
         if 'pre_activation' in under_represented:
             # Pre-activation pattern needs earlier onset times (more negative values)
-            adjustments['tilde_t_on_star'] = {
-                'current_loc': self.current_priors['tilde_t_on_star']['loc'],
-                'suggested_loc': self.current_priors['tilde_t_on_star']['loc'] - 0.3,  # Shift toward earlier times
-                'current_scale': self.current_priors['tilde_t_on_star']['scale'],
-                'suggested_scale': self.current_priors['tilde_t_on_star']['scale'] + 0.2,  # Increase spread
-                'rationale': 'Shift relative onset times earlier to support pre-activation patterns'
+            adjustments['t_on_star'] = {
+                'current_loc': self.current_priors['t_on_star']['loc'],
+                'suggested_loc': self.current_priors['t_on_star']['loc'] - 0.3,  # Shift toward earlier times
+                'current_scale': self.current_priors['t_on_star']['scale'],
+                'suggested_scale': self.current_priors['t_on_star']['scale'] + 0.2,  # Increase spread
+                'rationale': 'Shift absolute onset times earlier to support pre-activation patterns'
             }
 
         return adjustments
@@ -2050,15 +2227,6 @@ Relative vs Absolute Correlation: {hierarchical_impact['relative_vs_absolute_cor
                 f.write(f"{improvement_type}:\n  {suggestion}\n\n")
 
         print(f"Comprehensive report saved to: {report_path}")
-
-
-
-
-
-
-
-
-
 
 def main(trajectory_seed: int = DEFAULT_TRAJECTORY_SEED):
     """
