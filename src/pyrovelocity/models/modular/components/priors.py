@@ -296,23 +296,20 @@ class PiecewiseActivationPriorModel:
     """
     Piecewise activation prior model for RNA velocity parameters.
 
-    This model implements hierarchical priors for the piecewise activation dynamics
-    model with dimensionless analytical solutions. It follows the cell2fate approach
-    for hierarchical time modeling and uses LogNormal priors for activation parameters.
+    This model implements priors for the piecewise activation dynamics
+    model with dimensionless analytical solutions. It uses direct uniform
+    sampling for temporal coordinates to eliminate scaling symmetry.
 
-    The hierarchical time structure is:
+    The temporal coordinate structure is:
         T*_M ~ Gamma(alpha_T, beta_T)
-        t_loc ~ Gamma(alpha_t_loc, beta_t_loc)
-        t_scale ~ Gamma(alpha_t_scale, beta_t_scale)
-        tilde_t_j ~ Normal(t_loc, t_scale^2)
-        t*_j = T*_M * max(tilde_t_j, epsilon)
+        t*_j ~ Uniform(0, T*_M)  # DIRECT UNIFORM SAMPLING
 
     The piecewise activation parameters are:
         α*_off = 1.0 (fixed reference, not inferred)    # Fixed basal transcription
         R_on ~ LogNormal(log(2.5), 0.4^2)               # Activation fold-change
         γ* ~ LogNormal(log(1.0), 0.5^2)                 # Relative degradation
-        t*_on ~ Normal(0.5, 0.8^2)                      # Activation onset time (allows negatives) - CALIBRATED
-        δ* ~ LogNormal(log(0.45), 0.45^2)               # Activation duration - CALIBRATED for balanced patterns
+        t*_on ~ Normal(0.5, 0.8^2)                      # Activation onset time (allows negatives)
+        δ* ~ LogNormal(log(0.45), 0.45^2)               # Activation duration
 
     The capture efficiency parameter is:
         λ_j ~ LogNormal(log(1.0), 0.2^2)     # Lumped technical factors
@@ -327,14 +324,9 @@ class PiecewiseActivationPriorModel:
     @beartype
     def __init__(
         self,
-        # Hierarchical time structure hyperparameters (optimized for dimensionless variables)
+        # Global time structure hyperparameters (optimized for dimensionless variables)
         T_M_alpha: float = 5.0,     # Shape parameter for T*_M ~ Gamma (mean = 5)
         T_M_beta: float = 1.0,      # Rate parameter for T*_M ~ Gamma (mean = 5)
-        t_loc_alpha: float = 1.0,    # Shape parameter for t_loc ~ Gamma
-        t_loc_beta: float = 2.0,     # Rate parameter for t_loc ~ Gamma (mean = 0.5)
-        t_scale_alpha: float = 1.0,  # Shape parameter for t_scale ~ Gamma
-        t_scale_beta: float = 4.0,   # Rate parameter for t_scale ~ Gamma (mean = 0.25)
-        t_epsilon: float = 1e-6,     # Small epsilon to prevent negative times
 
         # Piecewise activation parameter hyperparameters (updated for complete cycles)
         # Mathematical constraint: t*_on + δ* + 3/γ* ≤ T*_M
@@ -366,11 +358,6 @@ class PiecewiseActivationPriorModel:
         Args:
             T_M_alpha: Shape parameter for T*_M ~ Gamma distribution
             T_M_beta: Rate parameter for T*_M ~ Gamma distribution
-            t_loc_alpha: Shape parameter for t_loc ~ Gamma distribution
-            t_loc_beta: Rate parameter for t_loc ~ Gamma distribution
-            t_scale_alpha: Shape parameter for t_scale ~ Gamma distribution
-            t_scale_beta: Rate parameter for t_scale ~ Gamma distribution
-            t_epsilon: Small epsilon to prevent negative times
             R_on_loc: Location parameter for R_on ~ LogNormal distribution (fold-change)
             R_on_scale: Scale parameter for R_on ~ LogNormal distribution
             gamma_star_loc: Location parameter for γ* ~ LogNormal distribution
@@ -391,14 +378,9 @@ class PiecewiseActivationPriorModel:
 
         self.name = name
 
-        # Store hyperparameters for hierarchical time structure
+        # Store hyperparameters for global time structure
         self.T_M_alpha = T_M_alpha
         self.T_M_beta = T_M_beta
-        self.t_loc_alpha = t_loc_alpha
-        self.t_loc_beta = t_loc_beta
-        self.t_scale_alpha = t_scale_alpha
-        self.t_scale_beta = t_scale_beta
-        self.t_epsilon = t_epsilon
 
         # Store hyperparameters for piecewise activation parameters (corrected parameterization)
         # Note: alpha_off is fixed at 1.0, not stored as hyperparameter
@@ -424,7 +406,6 @@ class PiecewiseActivationPriorModel:
         # Register buffers for commonly used tensors
         register_buffer(self, "zero", torch.tensor(0.0))
         register_buffer(self, "one", torch.tensor(1.0))
-        register_buffer(self, "epsilon", torch.tensor(t_epsilon))
 
     @jaxtyped
     @beartype
@@ -475,43 +456,25 @@ class PiecewiseActivationPriorModel:
         )
         params["T_M_star"] = T_M_star
 
-        # Hierarchical parameters for cell-specific time
-        t_loc = pyro.sample(
-            "t_loc",
-            dist.Gamma(
-                torch.tensor(self.t_loc_alpha),
-                torch.tensor(self.t_loc_beta)
-            ).mask(include_prior),
-        )
-        params["t_loc"] = t_loc
-
-        t_scale = pyro.sample(
-            "t_scale",
-            dist.Gamma(
-                torch.tensor(self.t_scale_alpha),
-                torch.tensor(self.t_scale_beta)
-            ).mask(include_prior),
-        )
-        params["t_scale"] = t_scale
-
         # Check if observed times are provided in context for trajectory-based sampling
         observed_times = context.get("observed_times")
 
         # Sample cell-specific parameters (time and capture efficiency)
         with pyro.plate(f"{self.name}_cells_plate", n_cells):
             if observed_times is not None:
-                # Use observed times for coherent trajectory sampling
-                # Convert observed times to normalized times (tilde_t)
-                tilde_t_observed = observed_times / T_M_star
-                tilde_t = pyro.sample(
-                    "tilde_t",
-                    dist.Delta(tilde_t_observed).mask(include_prior),
+                # Use observed times directly for coherent trajectory sampling
+                t_star = pyro.sample(
+                    "t_star",
+                    dist.Delta(observed_times).mask(include_prior),
                 )
             else:
-                # Standard stochastic sampling from prior
-                tilde_t = pyro.sample(
-                    "tilde_t",
-                    dist.Normal(t_loc, t_scale).mask(include_prior),
+                # Direct uniform sampling of temporal coordinates
+                t_star = pyro.sample(
+                    "t_star",
+                    dist.Uniform(
+                        torch.zeros(n_cells),
+                        T_M_star.expand(n_cells)
+                    ).mask(include_prior),
                 )
 
             # Sample capture efficiency parameters (per cell)
@@ -523,15 +486,6 @@ class PiecewiseActivationPriorModel:
                 ).mask(include_prior),
             )
             params["lambda_j"] = lambda_j
-
-        # Compute t_star outside the plate to avoid broadcasting issues
-        if observed_times is not None:
-            # Use observed times directly
-            t_star = pyro.deterministic("t_star", observed_times)
-        else:
-            # Ensure non-negative times and scale by T_M_star
-            t_star_computed = T_M_star * torch.clamp(tilde_t, min=self.t_epsilon)
-            t_star = pyro.deterministic("t_star", t_star_computed)
 
         params["t_star"] = t_star
 
@@ -629,29 +583,18 @@ class PiecewiseActivationPriorModel:
         # Create a dictionary to store sampled parameters
         params = {}
 
-        # Sample hierarchical time structure
+        # Sample global time structure
         T_M_star = dist.Gamma(
             torch.tensor(self.T_M_alpha),
             torch.tensor(self.T_M_beta)
         ).sample()
         params["T_M_star"] = T_M_star
 
-        t_loc = dist.Gamma(
-            torch.tensor(self.t_loc_alpha),
-            torch.tensor(self.t_loc_beta)
+        # Direct uniform sampling of temporal coordinates
+        t_star = dist.Uniform(
+            torch.zeros(n_cells),
+            T_M_star.expand(n_cells)
         ).sample()
-        params["t_loc"] = t_loc
-
-        t_scale = dist.Gamma(
-            torch.tensor(self.t_scale_alpha),
-            torch.tensor(self.t_scale_beta)
-        ).sample()
-        params["t_scale"] = t_scale
-
-        # Sample cell-specific normalized times
-        tilde_t = dist.Normal(t_loc, t_scale).sample((n_cells,))
-        t_star = T_M_star * torch.clamp(tilde_t, min=self.t_epsilon)
-        params["tilde_t"] = tilde_t  # Store the normalized times
         params["t_star"] = t_star
 
         # Sample piecewise activation parameters (per gene) - corrected parameterization
@@ -748,9 +691,6 @@ class PiecewiseActivationPriorModel:
         # Initialize storage for parameter samples
         parameter_samples = {
             'T_M_star': [],
-            't_loc': [],
-            't_scale': [],
-            'tilde_t': [],  # Include normalized times
             't_star': [],
             'alpha_off': [],  # Fixed at 1.0
             'alpha_on': [],   # Computed from R_on
