@@ -463,17 +463,19 @@ class PiecewiseActivationPriorModel:
         with pyro.plate(f"{self.name}_cells_plate", n_cells):
             if observed_times is not None:
                 # Use observed times directly for coherent trajectory sampling
-                t_star = pyro.sample(
-                    "t_star",
-                    dist.Delta(observed_times).mask(include_prior),
+                # Convert to normalized coordinates to maintain consistency
+                t_star_normalized = pyro.sample(
+                    "t_star_normalized",
+                    dist.Delta(observed_times / T_M_star).mask(include_prior),
                 )
             else:
-                # Direct uniform sampling of temporal coordinates
-                t_star = pyro.sample(
-                    "t_star",
+                # Sample normalized temporal coordinates from fixed Uniform(0,1)
+                # This prevents bounds violations during inference
+                t_star_normalized = pyro.sample(
+                    "t_star_normalized",
                     dist.Uniform(
                         torch.zeros(n_cells),
-                        T_M_star.expand(n_cells)
+                        torch.ones(n_cells)
                     ).mask(include_prior),
                 )
 
@@ -487,7 +489,12 @@ class PiecewiseActivationPriorModel:
             )
             params["lambda_j"] = lambda_j
 
+        # Compute t_star deterministically outside the plate to avoid shape issues
+        # T_M_star (scalar) * t_star_normalized (vector) -> t_star (vector)
+        t_star = pyro.deterministic("t_star", T_M_star * t_star_normalized)
+
         params["t_star"] = t_star
+        params["t_star_normalized"] = t_star_normalized
 
         # Sample piecewise activation parameters (per gene)
         with pyro.plate(f"{self.name}_genes_plate", n_genes):
@@ -590,11 +597,15 @@ class PiecewiseActivationPriorModel:
         ).sample()
         params["T_M_star"] = T_M_star
 
-        # Direct uniform sampling of temporal coordinates
-        t_star = dist.Uniform(
+        # Sample normalized temporal coordinates from fixed Uniform(0,1)
+        t_star_normalized = dist.Uniform(
             torch.zeros(n_cells),
-            T_M_star.expand(n_cells)
+            torch.ones(n_cells)
         ).sample()
+        params["t_star_normalized"] = t_star_normalized
+
+        # Compute t_star deterministically to avoid bounds violations
+        t_star = T_M_star * t_star_normalized
         params["t_star"] = t_star
 
         # Sample piecewise activation parameters (per gene) - corrected parameterization
@@ -692,6 +703,7 @@ class PiecewiseActivationPriorModel:
         parameter_samples = {
             'T_M_star': [],
             't_star': [],
+            't_star_normalized': [],  # NEW: Store normalized temporal coordinates
             'alpha_off': [],  # Fixed at 1.0
             'alpha_on': [],   # Computed from R_on
             'R_on': [],       # New fold-change parameter
