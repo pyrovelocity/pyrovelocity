@@ -37,7 +37,23 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             biological_interpretation="Overall duration of the biological process being modeled",
             plot_order=1
         ),
-        
+
+        "boundary_concentration": ParameterMetadata(
+            name="boundary_concentration",
+            display_name=r"$\kappa$",
+            short_label="Boundary Conc",
+            description="Boundary concentration parameter for temporal coordinate distribution",
+            units="dimensionless",
+            typical_range=(0.5, 5.0),
+            biological_interpretation=(
+                "Controls temporal coordinate boundary concentration. "
+                "Values < 1 concentrate cells at boundaries (t≈0, t≈T_M). "
+                "Values > 1 concentrate cells away from boundaries. "
+                "Value = 1 gives uniform distribution."
+            ),
+            plot_order=2
+        ),
+
         "t_loc": ParameterMetadata(
             name="t_loc",
             display_name=r"$t_{loc}$",
@@ -46,9 +62,9 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless",
             typical_range=(0.1, 2.0),
             biological_interpretation="Central tendency of cell time coordinates in the population",
-            plot_order=2
+            plot_order=3
         ),
-        
+
         "t_scale": ParameterMetadata(
             name="t_scale",
             display_name=r"$t_{scl}$",
@@ -57,7 +73,7 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless",
             typical_range=(0.1, 1.0),
             biological_interpretation="Spread of cell time coordinates around the population mean",
-            plot_order=3
+            plot_order=4
         ),
 
         "tilde_t": ParameterMetadata(
@@ -68,7 +84,7 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless",
             typical_range=(-2.0, 4.0),
             biological_interpretation="Cell-specific time coordinates sampled from hierarchical Normal distribution",
-            plot_order=4
+            plot_order=5
         ),
 
         "t_star": ParameterMetadata(
@@ -79,7 +95,7 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless time",
             typical_range=(0.0, 10.0),
             biological_interpretation="Progression of individual cells through the biological process",
-            plot_order=5
+            plot_order=6
         ),
 
         "t_star_normalized": ParameterMetadata(
@@ -90,7 +106,7 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless fraction",
             typical_range=(0.0, 1.0),
             biological_interpretation="Relative progression of individual cells through the biological process (0=start, 1=end)",
-            plot_order=6
+            plot_order=7
         ),
         
         # Piecewise activation parameters (corrected parameterization)
@@ -103,7 +119,7 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless ratio",
             typical_range=(1.5, 4.2),
             biological_interpretation="Magnitude of transcriptional upregulation during gene activation phase",
-            plot_order=7
+            plot_order=8
         ),
 
         "gamma_star": ParameterMetadata(
@@ -114,7 +130,7 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless rate ratio",
             typical_range=(0.3, 3.0),
             biological_interpretation="Balance between mRNA splicing and degradation kinetics; γ*=1 represents balanced kinetics",
-            plot_order=8
+            plot_order=9
         ),
 
 
@@ -126,7 +142,7 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless time",
             typical_range=(-1.0, 1.4),
             biological_interpretation="When during the process each gene begins its activation phase; negative values indicate pre-activation",
-            plot_order=9
+            plot_order=10
         ),
 
         "delta_star": ParameterMetadata(
@@ -137,7 +153,7 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless time",
             typical_range=(0.1, 1.0),
             biological_interpretation="How long each gene remains in its activated state",
-            plot_order=10
+            plot_order=11
         ),
         
         # Observation model parameters
@@ -149,7 +165,7 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="count scale",
             typical_range=(10.0, 1000.0),
             biological_interpretation="Gene-specific expression scale, accounting for differences in gene expression levels",
-            plot_order=11
+            plot_order=12
         ),
 
         "lambda_j": ParameterMetadata(
@@ -160,7 +176,7 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="efficiency ratio",
             typical_range=(0.1, 2.0),
             biological_interpretation="Technical variation in RNA capture and sequencing efficiency across cells",
-            plot_order=12
+            plot_order=13
         ),
 
         # Latent RNA concentrations (true/unobserved values)
@@ -172,7 +188,7 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless concentration",
             typical_range=(0.0, 10.0),
             biological_interpretation="True underlying unspliced RNA concentrations before observation noise and technical effects",
-            plot_order=13
+            plot_order=14
         ),
 
         "st": ParameterMetadata(
@@ -183,7 +199,7 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless concentration",
             typical_range=(0.0, 10.0),
             biological_interpretation="True underlying spliced RNA concentrations before observation noise and technical effects",
-            plot_order=14
+            plot_order=15
         ),
 
         # Observed RNA counts (measured values)
@@ -195,7 +211,7 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="RNA counts",
             typical_range=(0.0, 1000.0),
             biological_interpretation="Measured unspliced RNA counts including technical noise, capture efficiency, and sequencing depth effects",
-            plot_order=15
+            plot_order=16
         ),
 
         "s_obs": ParameterMetadata(
@@ -206,7 +222,7 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="RNA counts",
             typical_range=(0.0, 1000.0),
             biological_interpretation="Measured spliced RNA counts including technical noise, capture efficiency, and sequencing depth effects",
-            plot_order=16
+            plot_order=17
         ),
     }
     

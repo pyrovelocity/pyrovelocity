@@ -297,12 +297,18 @@ class PiecewiseActivationPriorModel:
     Piecewise activation prior model for RNA velocity parameters.
 
     This model implements priors for the piecewise activation dynamics
-    model with dimensionless analytical solutions. It uses direct uniform
-    sampling for temporal coordinates to eliminate scaling symmetry.
+    model with dimensionless analytical solutions. It uses Beta distribution
+    temporal coordinates with learnable boundary concentration to eliminate
+    temporal floating and ensure identifiability.
 
     The temporal coordinate structure is:
         T*_M ~ Gamma(alpha_T, beta_T)
-        t*_j ~ Uniform(0, T*_M)  # DIRECT UNIFORM SAMPLING
+        κ ~ Gamma(2.0, 1.0)                    # Boundary concentration
+        t*_j ~ Beta(1/κ, 1/κ) × T*_M           # BETA DISTRIBUTION WITH BOUNDARY ANCHORING
+
+    When κ < 1: Concentrates cells at boundaries (t≈0, t≈T_M)
+    When κ = 1: Uniform distribution (previous problematic case)
+    When κ > 1: Concentrates cells away from boundaries
 
     The piecewise activation parameters are:
         α*_off = 1.0 (fixed reference, not inferred)    # Fixed basal transcription
@@ -327,6 +333,10 @@ class PiecewiseActivationPriorModel:
         # Global time structure hyperparameters (optimized for dimensionless variables)
         T_M_alpha: float = 5.0,     # Shape parameter for T*_M ~ Gamma (mean = 5)
         T_M_beta: float = 1.0,      # Rate parameter for T*_M ~ Gamma (mean = 5)
+
+        # Boundary concentration hyperparameters
+        boundary_concentration_alpha: float = 2.0,  # Gamma shape parameter
+        boundary_concentration_beta: float = 1.0,   # Gamma rate parameter
 
         # Piecewise activation parameter hyperparameters (updated for complete cycles)
         # Mathematical constraint: t*_on + δ* + 3/γ* ≤ T*_M
@@ -358,6 +368,8 @@ class PiecewiseActivationPriorModel:
         Args:
             T_M_alpha: Shape parameter for T*_M ~ Gamma distribution
             T_M_beta: Rate parameter for T*_M ~ Gamma distribution
+            boundary_concentration_alpha: Shape parameter for boundary concentration ~ Gamma distribution
+            boundary_concentration_beta: Rate parameter for boundary concentration ~ Gamma distribution
             R_on_loc: Location parameter for R_on ~ LogNormal distribution (fold-change)
             R_on_scale: Scale parameter for R_on ~ LogNormal distribution
             gamma_star_loc: Location parameter for γ* ~ LogNormal distribution
@@ -381,6 +393,10 @@ class PiecewiseActivationPriorModel:
         # Store hyperparameters for global time structure
         self.T_M_alpha = T_M_alpha
         self.T_M_beta = T_M_beta
+
+        # Store hyperparameters for boundary concentration
+        self.boundary_concentration_alpha = boundary_concentration_alpha
+        self.boundary_concentration_beta = boundary_concentration_beta
 
         # Store hyperparameters for piecewise activation parameters (corrected parameterization)
         # Note: alpha_off is fixed at 1.0, not stored as hyperparameter
@@ -459,6 +475,19 @@ class PiecewiseActivationPriorModel:
         # Check if observed times are provided in context for trajectory-based sampling
         observed_times = context.get("observed_times")
 
+        # Sample global boundary concentration parameter
+        boundary_concentration = pyro.sample(
+            "boundary_concentration",
+            dist.Gamma(
+                torch.tensor(self.boundary_concentration_alpha),
+                torch.tensor(self.boundary_concentration_beta)
+            ).mask(include_prior),
+        )
+        params["boundary_concentration"] = boundary_concentration
+
+        # Beta parameters for boundary concentration (α = β < 1 concentrates at boundaries)
+        beta_alpha = beta_beta = 1.0 / boundary_concentration
+
         # Sample cell-specific parameters (time and capture efficiency)
         with pyro.plate(f"{self.name}_cells_plate", n_cells):
             if observed_times is not None:
@@ -469,14 +498,13 @@ class PiecewiseActivationPriorModel:
                     dist.Delta(observed_times / T_M_star).mask(include_prior),
                 )
             else:
-                # Sample normalized temporal coordinates from fixed Uniform(0,1)
-                # This prevents bounds violations during inference
+                # Sample temporal coordinates with boundary anchoring using Beta distribution
+                # When boundary_concentration < 1: Beta(α > 1, β > 1) concentrates at boundaries
+                # When boundary_concentration = 1: Beta(1, 1) gives uniform distribution
+                # When boundary_concentration > 1: Beta(α < 1, β < 1) concentrates away from boundaries
                 t_star_normalized = pyro.sample(
                     "t_star_normalized",
-                    dist.Uniform(
-                        torch.zeros(n_cells),
-                        torch.ones(n_cells)
-                    ).mask(include_prior),
+                    dist.Beta(beta_alpha, beta_beta).expand([n_cells]).mask(include_prior),
                 )
 
             # Sample capture efficiency parameters (per cell)
@@ -597,11 +625,18 @@ class PiecewiseActivationPriorModel:
         ).sample()
         params["T_M_star"] = T_M_star
 
-        # Sample normalized temporal coordinates from fixed Uniform(0,1)
-        t_star_normalized = dist.Uniform(
-            torch.zeros(n_cells),
-            torch.ones(n_cells)
+        # Sample boundary concentration parameter
+        boundary_concentration = dist.Gamma(
+            torch.tensor(self.boundary_concentration_alpha),
+            torch.tensor(self.boundary_concentration_beta)
         ).sample()
+        params["boundary_concentration"] = boundary_concentration
+
+        # Beta parameters for boundary concentration
+        beta_alpha = beta_beta = 1.0 / boundary_concentration
+
+        # Sample temporal coordinates with boundary anchoring using Beta distribution
+        t_star_normalized = dist.Beta(beta_alpha, beta_beta).sample((n_cells,))
         params["t_star_normalized"] = t_star_normalized
 
         # Compute t_star deterministically to avoid bounds violations
@@ -702,8 +737,9 @@ class PiecewiseActivationPriorModel:
         # Initialize storage for parameter samples
         parameter_samples = {
             'T_M_star': [],
+            'boundary_concentration': [],  # NEW: Boundary concentration parameter
             't_star': [],
-            't_star_normalized': [],  # NEW: Store normalized temporal coordinates
+            't_star_normalized': [],  # Store normalized temporal coordinates
             'alpha_off': [],  # Fixed at 1.0
             'alpha_on': [],   # Computed from R_on
             'R_on': [],       # New fold-change parameter
