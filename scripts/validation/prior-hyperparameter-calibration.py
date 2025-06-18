@@ -391,6 +391,7 @@ class PriorHyperparameterCalibrator:
 
             # Global time structure parameters
             'T_M_star': {'alpha': 5.0, 'beta': 1.0},    # Gamma(5.0, 1.0), mean = 5 - dimensionless global time scale
+            'boundary_concentration': {'alpha': 2.0, 'beta': 1.0},  # Gamma(2.0, 1.0), boundary concentration for Beta temporal prior
 
             # Technical parameters
             'U_0i': {'loc': 2.3, 'scale': 0.4},          # log(10) (LogNormal) - REDUCED from log(100) for realistic single-cell count scales
@@ -687,6 +688,7 @@ class PriorHyperparameterCalibrator:
             'delta_star': f"  Interpretation: Absolute activation duration from {lower:.2f} to {upper:.2f} (intrinsic duration)",
             'gamma_star': f"  Interpretation: Relative degradation rate from {lower:.2f} to {upper:.2f} (1.0 = balanced)",
             'T_M_star': f"  Interpretation: Maximum timeline from {lower:.1f} to {upper:.1f} time units",
+            'boundary_concentration': f"  Interpretation: Boundary concentration from {lower:.2f} to {upper:.2f} (<1: boundary concentration, =1: uniform, >1: center concentration)",
             'U_0i': f"  Interpretation: Concentration scale from {lower:.0f} to {upper:.0f} counts",
             'lambda_j': f"  Interpretation: Capture efficiency from {lower:.2f} to {upper:.2f} (1.0 = perfect)"
         }
@@ -1339,6 +1341,12 @@ class PriorHyperparameterCalibrator:
             self.current_priors['T_M_star']['beta']
         ).sample((n_samples,))
 
+        # Boundary concentration parameter for Beta temporal prior
+        samples['boundary_concentration'] = torch.distributions.Gamma(
+            self.current_priors['boundary_concentration']['alpha'],
+            self.current_priors['boundary_concentration']['beta']
+        ).sample((n_samples,))
+
         # Piecewise activation parameters
         samples['R_on'] = torch.distributions.LogNormal(
             self.current_priors['R_on']['loc'],
@@ -1495,10 +1503,11 @@ class PriorHyperparameterCalibrator:
             param_samples['delta_star'],
             param_samples['gamma_star'],
             param_samples['T_M_star'],
+            param_samples['boundary_concentration'],
             param_samples['U_0i']
         ], dim=1).numpy()
 
-        param_names = ['R_on', 't_on_star', 'delta_star', 'gamma_star', 'T_M_star', 'U_0i']
+        param_names = ['R_on', 't_on_star', 'delta_star', 'gamma_star', 'T_M_star', 'boundary_concentration', 'U_0i']
 
         # Compute correlation matrix
         correlation_matrix = np.corrcoef(param_matrix.T)
@@ -1583,8 +1592,8 @@ class PriorHyperparameterCalibrator:
         fig, axes = plt.subplots(3, 3, figsize=(18, 15))
         axes = axes.flatten()
 
-        # Parameters to plot (7 parameters for updated grid)
-        params_to_plot = ['R_on', 't_on_star', 'delta_star', 'gamma_star', 'T_M_star', 'U_0i', 'lambda_j']
+        # Parameters to plot (8 parameters for updated grid)
+        params_to_plot = ['R_on', 't_on_star', 'delta_star', 'gamma_star', 'T_M_star', 'boundary_concentration', 'U_0i', 'lambda_j']
 
         for idx, param_name in enumerate(params_to_plot):
             ax = axes[idx]
@@ -1596,6 +1605,7 @@ class PriorHyperparameterCalibrator:
                 'delta_star': 'lognormal',
                 'gamma_star': 'lognormal',
                 'T_M_star': 'gamma',
+                'boundary_concentration': 'gamma',
                 'U_0i': 'lognormal',
                 'lambda_j': 'lognormal'
             }
@@ -1714,7 +1724,7 @@ class PriorHyperparameterCalibrator:
         axes = axes.flatten()
 
         # Parameters to plot
-        params_to_plot = ['R_on', 't_on_star', 'delta_star', 'gamma_star', 'T_M_star', 'U_0i']
+        params_to_plot = ['R_on', 't_on_star', 'delta_star', 'gamma_star', 'T_M_star', 'boundary_concentration']
         pattern_names = list(self.pattern_constraints.keys())
         colors = ['red', 'blue', 'green', 'orange', 'purple']
 
