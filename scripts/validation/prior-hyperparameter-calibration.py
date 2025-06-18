@@ -1272,6 +1272,10 @@ class PriorHyperparameterCalibrator:
         print("Starting comprehensive parameter space analysis...")
         print(f"Using trajectory seed: {trajectory_seed}")
 
+        # Step 0: HPDI Analysis for all priors
+        print("\n0. Prior hyperparameter HPDI analysis...")
+        hpdi_ranges = self.calculate_hpdi_ranges()
+
         # Step 1: Multi-dimensional parameter sampling
         print("\n1. Multi-dimensional parameter sampling...")
         param_samples = self._sample_full_parameter_space(n_samples=50000)
