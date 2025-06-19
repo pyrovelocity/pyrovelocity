@@ -335,8 +335,8 @@ class PiecewiseActivationPriorModel:
         T_M_beta: float = 1.0,      # Rate parameter for T*_M ~ Gamma (mean = 5)
 
         # Boundary concentration hyperparameters
-        boundary_concentration_alpha: float = 2.0,  # Gamma shape parameter
-        boundary_concentration_beta: float = 1.0,   # Gamma rate parameter
+        boundary_concentration_alpha: float = 100.0,  # Gamma shape parameter
+        boundary_concentration_beta: float = 100.0,   # Gamma rate parameter
 
         # Piecewise activation parameter hyperparameters (updated for complete cycles)
         # Mathematical constraint: t*_on + δ* + 3/γ* ≤ T*_M
