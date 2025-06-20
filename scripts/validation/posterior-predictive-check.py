@@ -76,14 +76,14 @@ AVAILABLE_METHODS = {
             kernel="nuts",
             num_chains=1,
         ),
-        "guide_type": None  # MCMC doesn't use guides
+        "guide_type": None
     }
 }
 
 # ============================================================================
 # EDIT THIS LINE to choose which method to run:
 # ============================================================================
-SELECTED_METHOD = "svi_autonormal"  # Change this to test different methods
+SELECTED_METHOD = "svi_autolowrankmultivariatenormal"
 
 # Validate selection
 if SELECTED_METHOD not in AVAILABLE_METHODS:
@@ -274,9 +274,3 @@ print(f"📁 Results saved to: {method_save_path}")
 print(f"🎯 Random seed used: {RANDOM_SEED}")
 print(f"🔬 Inference method: {SELECTED_METHOD}")
 print(f"📊 Guide type: {METHOD_CONFIG['guide_type'] or 'N/A (MCMC)'}")
-
-# Print directory structure
-print(f"\n📂 Output directory structure:")
-print(f"   {REPORTS_SAVE_PATH}/{RANDOM_SEED}/")
-print(f"   ├── sample_data/          # Cached prior predictive plots")
-print(f"   └── {SELECTED_METHOD}/     # {SELECTED_METHOD} results")
