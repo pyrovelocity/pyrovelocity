@@ -17,6 +17,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
+# Import PyroVelocityModel using TYPE_CHECKING to avoid circular import
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pyro
 import pyro.distributions as dist
@@ -32,12 +35,14 @@ from pyrovelocity.models.modular.inference.unified import (
     extract_posterior_samples,
     posterior_predictive,
 )
-from pyrovelocity.models.modular.model import PyroVelocityModel
+
+if TYPE_CHECKING:
+    from pyrovelocity.models.modular.model import PyroVelocityModel
 
 
 @beartype
 def sample_posterior(
-    model: Union[Callable, PyroVelocityModel],
+    model: Union[Callable, "PyroVelocityModel"],
     state: InferenceState,
     num_samples: int = 1000,
     seed: Optional[int] = None,
@@ -60,7 +65,7 @@ def sample_posterior(
 
 @beartype
 def compute_velocity(
-    model: PyroVelocityModel,
+    model: "PyroVelocityModel",
     posterior_samples: Dict[str, Union[torch.Tensor, np.ndarray]],
     adata: Optional[AnnData] = None,
     use_mean: bool = False,
@@ -253,7 +258,7 @@ def compute_uncertainty(
 @beartype
 def analyze_posterior(
     state: InferenceState,
-    model: Union[Callable, PyroVelocityModel],
+    model: Union[Callable, "PyroVelocityModel"],
     adata: Optional[AnnData] = None,
     num_samples: int = 1000,
     compute_velocity_flag: bool = True,
