@@ -532,8 +532,8 @@ class PiecewiseActivationDynamicsModel:
             t_star = context["t_star"]
 
             # Create fixed alpha_off tensor (always 1.0) and compute alpha_on from R_on
-            n_genes = R_on.shape[0] if R_on.dim() > 0 else 1
-            alpha_off = torch.ones(n_genes, device=R_on.device, dtype=R_on.dtype)
+            # Handle both training (R_on: [n_genes]) and posterior sampling (R_on: [num_samples, n_genes])
+            alpha_off = torch.ones_like(R_on)  # Match R_on shape exactly
             alpha_on = R_on  # Since alpha_off = 1.0, alpha_on = R_on
 
             # Compute expected counts using piecewise analytical solutions
@@ -608,21 +608,48 @@ class PiecewiseActivationDynamicsModel:
             Tuple of (u_star, s_star) dimensionless concentrations
         """
         # Ensure proper broadcasting shapes
-        # t_star: [cells] or [cells, genes]
-        # parameters: [genes]
+        # Handle both training and posterior sampling cases:
+        # Training: t_star: [cells], parameters: [genes]
+        # Posterior: t_star: [num_samples, 1, cells], parameters: [num_samples, genes]
 
-        if t_star.dim() == 1:
-            # t_star is [cells], expand to [cells, genes]
-            n_genes = alpha_off.shape[0]
-            t_star = t_star.unsqueeze(-1).expand(-1, n_genes)  # [cells, genes]
+        # Determine if we're in posterior sampling mode (extra sample dimension)
+        if alpha_off.dim() > 1:
+            # Posterior sampling case: parameters have shape [num_samples, genes]
+            num_samples = alpha_off.shape[0]
+            n_genes = alpha_off.shape[-1]
 
-        # Broadcast parameters to match t_star shape
-        # All parameters should be [genes] -> [1, genes] for broadcasting
-        alpha_off = alpha_off.unsqueeze(0).expand_as(t_star)  # [cells, genes]
-        alpha_on = alpha_on.unsqueeze(0).expand_as(t_star)    # [cells, genes]
-        gamma_star = gamma_star.unsqueeze(0).expand_as(t_star)  # [cells, genes]
-        t_on_star = t_on_star.unsqueeze(0).expand_as(t_star)   # [cells, genes]
-        delta_star = delta_star.unsqueeze(0).expand_as(t_star)  # [cells, genes]
+            # Ensure t_star has proper shape for broadcasting
+            if t_star.dim() == 1:
+                # t_star: [cells] -> [1, 1, cells] -> [num_samples, cells, genes]
+                t_star = t_star.unsqueeze(0).unsqueeze(0)  # [1, 1, cells]
+                t_star = t_star.expand(num_samples, -1, -1)  # [num_samples, 1, cells]
+                t_star = t_star.unsqueeze(-1).expand(-1, -1, -1, n_genes)  # [num_samples, 1, cells, genes]
+                t_star = t_star.squeeze(1)  # [num_samples, cells, genes]
+            elif t_star.dim() == 3:
+                # t_star already has shape [num_samples, 1, cells] -> [num_samples, cells, genes]
+                t_star = t_star.squeeze(1)  # [num_samples, cells]
+                t_star = t_star.unsqueeze(-1).expand(-1, -1, n_genes)  # [num_samples, cells, genes]
+
+            # Broadcast parameters to match t_star shape [num_samples, cells, genes]
+            alpha_off = alpha_off.unsqueeze(1).expand_as(t_star)  # [num_samples, cells, genes]
+            alpha_on = alpha_on.unsqueeze(1).expand_as(t_star)    # [num_samples, cells, genes]
+            gamma_star = gamma_star.unsqueeze(1).expand_as(t_star)  # [num_samples, cells, genes]
+            t_on_star = t_on_star.unsqueeze(1).expand_as(t_star)   # [num_samples, cells, genes]
+            delta_star = delta_star.unsqueeze(1).expand_as(t_star)  # [num_samples, cells, genes]
+        else:
+            # Training case: parameters have shape [genes]
+            if t_star.dim() == 1:
+                # t_star is [cells], expand to [cells, genes]
+                n_genes = alpha_off.shape[0]
+                t_star = t_star.unsqueeze(-1).expand(-1, n_genes)  # [cells, genes]
+
+            # Broadcast parameters to match t_star shape
+            # All parameters should be [genes] -> [1, genes] for broadcasting
+            alpha_off = alpha_off.unsqueeze(0).expand_as(t_star)  # [cells, genes]
+            alpha_on = alpha_on.unsqueeze(0).expand_as(t_star)    # [cells, genes]
+            gamma_star = gamma_star.unsqueeze(0).expand_as(t_star)  # [cells, genes]
+            t_on_star = t_on_star.unsqueeze(0).expand_as(t_star)   # [cells, genes]
+            delta_star = delta_star.unsqueeze(0).expand_as(t_star)  # [cells, genes]
 
         # Initialize output tensors
         u_star = torch.zeros_like(t_star)  # [cells, genes]

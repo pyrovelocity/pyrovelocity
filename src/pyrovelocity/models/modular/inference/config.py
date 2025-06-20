@@ -148,8 +148,20 @@ def validate_config(
             raise ValueError(f"Invalid learning rate: {config.learning_rate}")
         if config.optimizer not in ["adam", "sgd", "rmsprop"]:
             raise ValueError(f"Invalid optimizer: {config.optimizer}")
-        if config.guide not in ["auto_normal", "auto_delta", "custom"]:
-            raise ValueError(f"Invalid guide: {config.guide}")
+        # Allow all AutoGuide types and common variations
+        valid_guides = [
+            "auto_normal", "AutoNormal",
+            "auto_diagonal_normal", "AutoDiagonalNormal",
+            "auto_multivariate_normal", "AutoMultivariateNormal",
+            "auto_low_rank_multivariate_normal", "AutoLowRankMultivariateNormal",
+            "auto_delta", "AutoDelta",
+            "auto_guide_list", "AutoGuideList",
+            "auto_iaf_normal", "AutoIAFNormal",
+            "auto_normalizing_flow", "AutoNormalizingFlow",
+            "custom"
+        ]
+        if config.guide not in valid_guides:
+            raise ValueError(f"Invalid guide: {config.guide}. Valid options: {valid_guides}")
         if config.batch_size is not None and config.batch_size <= 0:
             raise ValueError(f"Invalid batch size: {config.batch_size}")
         if config.early_stopping_patience <= 0:

@@ -357,6 +357,7 @@ def create_piecewise_activation_model(
     inference_method: str = "svi",
     guide_type: str = "AutoLowRankMultivariateNormal",
     default_inference_config: Optional[InferenceConfig] = None,
+    **inference_kwargs
 ) -> PyroVelocityModel:
     """
     Create a PyroVelocityModel with piecewise activation components and inference configuration.
@@ -373,6 +374,7 @@ def create_piecewise_activation_model(
         guide_type: Guide type for SVI ("AutoNormal", "AutoDiagonalNormal",
                    "AutoMultivariateNormal", "AutoLowRankMultivariateNormal")
         default_inference_config: Optional default inference configuration to store on model
+        **inference_kwargs: Additional inference configuration options
 
     Returns:
         A PyroVelocityModel instance configured for piecewise activation validation
@@ -384,6 +386,12 @@ def create_piecewise_activation_model(
 
         >>> # SVI with different guide
         >>> model = create_piecewise_activation_model(guide_type="AutoNormal")
+
+        >>> # MCMC with NUTS
+        >>> model = create_piecewise_activation_model(
+        ...     inference_method="mcmc",
+        ...     kernel="nuts", num_warmup=500, num_chains=1
+        ... )
 
         >>> # With default inference config
         >>> from pyrovelocity.models.modular.inference.config import InferenceConfig
@@ -416,15 +424,27 @@ def create_piecewise_activation_model(
     # Create the model
     model = create_model_from_config(config)
 
-    # Store default inference configuration if provided
+    # Store default inference configuration if provided or create from kwargs
     if default_inference_config is not None:
+        config_to_store = default_inference_config
+    elif inference_kwargs:
+        # Create default config from inference_kwargs
+        from pyrovelocity.models.modular.inference.config import InferenceConfig
+        config_to_store = InferenceConfig(
+            method=inference_method,
+            **inference_kwargs
+        )
+    else:
+        config_to_store = None
+
+    if config_to_store is not None:
         from pyrovelocity.models.modular.model import ModelState
         model.state = ModelState(
             dynamics_state=model.state.dynamics_state,
             prior_state=model.state.prior_state,
             likelihood_state=model.state.likelihood_state,
             guide_state=model.state.guide_state,
-            inference_config=default_inference_config,
+            inference_config=config_to_store,
         )
 
     return model

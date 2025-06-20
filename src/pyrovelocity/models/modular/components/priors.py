@@ -519,7 +519,16 @@ class PiecewiseActivationPriorModel:
 
         # Compute t_star deterministically outside the plate to avoid shape issues
         # T_M_star (scalar) * t_star_normalized (vector) -> t_star (vector)
-        t_star = pyro.deterministic("t_star", T_M_star * t_star_normalized)
+        # Handle both training and posterior sampling cases with proper broadcasting
+        if T_M_star.dim() > 0 and t_star_normalized.dim() > 1:
+            # Posterior sampling case: ensure proper broadcasting
+            # T_M_star: [num_samples, 1], t_star_normalized: [num_samples, n_cells]
+            t_star_computed = T_M_star.squeeze(-1) * t_star_normalized
+        else:
+            # Training case: standard multiplication
+            t_star_computed = T_M_star * t_star_normalized
+
+        t_star = pyro.deterministic("t_star", t_star_computed)
 
         params["t_star"] = t_star
         params["t_star_normalized"] = t_star_normalized
@@ -540,9 +549,9 @@ class PiecewiseActivationPriorModel:
             )
             params["R_on"] = R_on
 
-            # Compute alpha_on from fold-change for compatibility (deterministic)
-            alpha_on = pyro.deterministic("alpha_on", R_on * alpha_off)  # Since alpha_off = 1.0, alpha_on = R_on
-            params["alpha_on"] = alpha_on
+            # Compute alpha_on from fold-change for compatibility (no deterministic registration needed)
+            # Since alpha_off = 1.0, alpha_on = R_on, so we just use R_on directly
+            params["alpha_on"] = R_on
 
             # Relative degradation rate
             gamma_star = pyro.sample(
