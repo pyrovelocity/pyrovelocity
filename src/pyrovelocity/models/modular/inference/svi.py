@@ -208,11 +208,11 @@ def extract_posterior_samples(
 
     # Create a predictive object for the model, using the guide samples
     # Use None to return all sites, including deterministic ones
+    # Note: When using posterior_samples, do NOT specify num_samples as it's already determined
     model_predictive = pyro.infer.Predictive(
         model_fn,
         posterior_samples=guide_samples,
         return_sites=None,  # Return all sites, including deterministic
-        num_samples=num_samples
     )
 
     # Run the model predictive to get all sites, including deterministic ones
@@ -238,7 +238,6 @@ def extract_posterior_samples(
             unconditioned_model,
             posterior_samples=guide_samples,
             return_sites=None,  # Return all sites, including deterministic
-            num_samples=num_samples
         )
         model_samples = unconditioned_predictive(*args, **unconditioned_kwargs)
     else:
