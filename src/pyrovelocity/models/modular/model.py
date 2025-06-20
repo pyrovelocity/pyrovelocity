@@ -75,6 +75,8 @@ from pyrovelocity.models.modular.data.anndata import (
     prepare_anndata,
     store_results,
 )
+from pyrovelocity.models.modular.inference.config import InferenceConfig
+from pyrovelocity.models.modular.inference.unified import InferenceState
 from pyrovelocity.models.modular.interfaces import (
     DynamicsModel as DynamicsModelProtocol,
 )
@@ -92,23 +94,28 @@ from pyrovelocity.models.modular.interfaces import (
 @dataclass(frozen=True)
 class ModelState:
     """
-    Immutable state container for the PyroVelocityModel.
+    Immutable state container for the PyroVelocityModel with type-safe inference state.
 
     This dataclass holds the state of all component models and ensures immutability
-    through the frozen=True parameter.
+    through the frozen=True parameter. The inference_state field provides direct
+    type-safe access to inference results.
 
     Attributes:
         dynamics_state: State of the dynamics model component
         prior_state: State of the prior model component
         likelihood_state: State of the likelihood model component (includes data preprocessing)
         guide_state: State of the inference guide component
-        metadata: Optional dictionary for additional metadata
+        inference_state: Type-safe inference state from training
+        inference_config: Type-safe inference configuration used for training
+        metadata: Optional dictionary for additional metadata (deprecated, use specific fields)
     """
 
-    dynamics_state: Dict[str, Any]
-    prior_state: Dict[str, Any]
-    likelihood_state: Dict[str, Any]
-    guide_state: Dict[str, Any]
+    dynamics_state: Dict[str, Any] = field(default_factory=dict)
+    prior_state: Dict[str, Any] = field(default_factory=dict)
+    likelihood_state: Dict[str, Any] = field(default_factory=dict)
+    guide_state: Dict[str, Any] = field(default_factory=dict)
+    inference_state: Optional["InferenceState"] = field(default=None)
+    inference_config: Optional["InferenceConfig"] = field(default=None)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
@@ -832,84 +839,46 @@ class PyroVelocityModel:
     def train(
         self,
         adata: AnnData,
-        max_epochs: int = 1000,
-        batch_size: Optional[int] = None,
-        train_size: float = 0.8,
-        valid_size: Optional[float] = 0.2,
-        early_stopping: bool = True,
-        early_stopping_patience: int = 10,
-        learning_rate: float = 0.01,
-        use_gpu: Union[str, bool, int] = "auto",
-        **kwargs
+        config: InferenceConfig,
+        seed: Optional[int] = None,
     ) -> "PyroVelocityModel":
         """
-        Train the model using the provided AnnData object.
+        Run inference on the model using type-safe configuration.
 
-        This method trains the model using the data in the AnnData object. It performs
-        the following steps:
+        This method trains the model using the data in the AnnData object and the provided
+        inference configuration. It performs the following steps:
         1. Prepares data from the AnnData object
-        2. Sets up the inference configuration
-        3. Runs SVI (Stochastic Variational Inference)
+        2. Validates the inference configuration
+        3. Runs unified inference (SVI or MCMC based on config)
         4. Stores the inference state in the model state
-
-        The method supports mini-batch training, early stopping, and GPU acceleration.
-        After training, the model's state is updated with the trained parameters.
 
         Args:
             adata: AnnData object containing the data
-            max_epochs: Maximum number of epochs to train for
-            batch_size: Batch size for mini-batch training (None for full-batch)
-            train_size: Fraction of data to use for training
-            valid_size: Fraction of data to use for validation
-            early_stopping: Whether to use early stopping
-            early_stopping_patience: Patience for early stopping
-            learning_rate: Learning rate for the optimizer
-            use_gpu: Whether to use GPU for training ("auto", True, False, or GPU index)
-            **kwargs: Additional keyword arguments for training
+            config: Inference configuration specifying method and parameters
+            seed: Random seed for reproducibility
 
         Returns:
             The model instance with updated state (for method chaining)
 
         Examples:
-            >>> # Create a model and train it
-            >>> from pyrovelocity.models.modular.factory import create_legacy_model1
-            >>> import anndata as ad
-            >>> import numpy as np
-            >>> import os
-            >>>
-            >>> # Use pytest tmp_path fixture for temporary directory
-            >>> tmp = getfixture("tmp_path")
-            >>> tmp_dir = str(tmp)
-            >>>
-            >>> # Create synthetic data
-            >>> n_cells, n_genes = 10, 5
-            >>> u_data = np.random.poisson(5, size=(n_cells, n_genes))
-            >>> s_data = np.random.poisson(5, size=(n_cells, n_genes))
-            >>>
-            >>> # Create AnnData object
-            >>> adata = ad.AnnData(X=s_data)
-            >>> adata.layers["spliced"] = s_data
-            >>> adata.layers["unspliced"] = u_data
-            >>> adata.obs_names = [f"cell_{i}" for i in range(n_cells)]
-            >>> adata.var_names = [f"gene_{i}" for i in range(n_genes)]
-            >>>
-            >>> # Prepare AnnData
-            >>> adata = PyroVelocityModel.setup_anndata(adata)
-            >>>
-            >>> # Create and train the model
-            >>> model = create_legacy_model1()
-            >>> model.train(
-            ...     adata=adata,
-            ...     max_epochs=2,  # Use small number for testing
-            ...     batch_size=5,
+            >>> # SVI inference
+            >>> from pyrovelocity.models.modular.inference.config import InferenceConfig
+            >>> config = InferenceConfig(
+            ...     method="svi",
+            ...     num_epochs=1000,
             ...     learning_rate=0.01,
-            ...     use_gpu=False  # Set to True if GPU is available
+            ...     guide="auto_normal"
             ... )
-            >>>
-            >>> # Clean up temporary directory
-            >>> import shutil
-            >>> if os.path.exists(tmp_dir):
-            ...     shutil.rmtree(tmp_dir)
+            >>> model.train(adata, config)
+
+            >>> # MCMC inference
+            >>> config = InferenceConfig(
+            ...     method="mcmc",
+            ...     num_samples=500,
+            ...     kernel="nuts",
+            ...     num_warmup=250
+            ... )
+            >>> model.train(adata, config)
         """
         # Enable Pyro validation
         pyro.enable_validation(True)
@@ -925,19 +894,6 @@ class PyroVelocityModel:
         u_lib_size = data_dict.get("u_lib_size")
         s_lib_size = data_dict.get("s_lib_size")
 
-        # Move to GPU if requested
-        if use_gpu == "auto":
-            use_gpu = torch.cuda.is_available()
-
-        if use_gpu:
-            device = torch.device("cuda" if isinstance(use_gpu, bool) else f"cuda:{use_gpu}")
-            u_obs = u_obs.to(device)
-            s_obs = s_obs.to(device)
-            if u_lib_size is not None:
-                u_lib_size = u_lib_size.to(device)
-            if s_lib_size is not None:
-                s_lib_size = s_lib_size.to(device)
-
         # Create training data dictionary
         train_data = {
             "u_obs": u_obs,
@@ -950,50 +906,39 @@ class PyroVelocityModel:
             train_data["s_log_library"] = s_lib_size
 
         # Import inference utilities
-        from pyrovelocity.models.modular.inference.config import InferenceConfig
+        from pyrovelocity.models.modular.inference.config import validate_config
         from pyrovelocity.models.modular.inference.unified import run_inference
 
-        # Create inference configuration
-        inference_config = InferenceConfig(
-            method="svi",
-            num_epochs=max_epochs,
-            batch_size=batch_size,
-            learning_rate=learning_rate,
-            early_stopping=early_stopping,
-            early_stopping_patience=early_stopping_patience,
-            train_size=train_size,
-            valid_size=valid_size,
-            **kwargs
-        )
+        # Validate configuration
+        config = validate_config(config)
 
-        # Ensure the guide is created before running inference
-        # This is necessary because the guide needs to be created with the model
-        if hasattr(self.guide_model, 'create_guide'):
-            # Create the guide with the model
-            self.guide_model.create_guide(self.forward)
+        # Create guide for SVI (existing logic)
+        guide = None
+        if config.method == "svi":
+            if hasattr(self.guide_model, 'create_guide'):
+                guide = self.guide_model.create_guide(self.forward)
+            else:
+                guide = self.guide_model
 
-        # Run inference
+        # Run unified inference
         inference_state = run_inference(
             model=self.forward,
-            guide=self.guide,
+            guide=guide,
             kwargs=train_data,
-            config=inference_config,
-            seed=kwargs.get("seed", None),
+            config=config,
+            seed=seed,
         )
 
-        # Store inference state in model state
+        # Update model state with type-safe fields
         self.state = ModelState(
             dynamics_state=self.state.dynamics_state,
             prior_state=self.state.prior_state,
             likelihood_state=self.state.likelihood_state,
             guide_state=inference_state.params,
-            metadata={
-                "inference_state": inference_state,
-                "training_config": inference_config,
-            }
+            inference_state=inference_state,
+            inference_config=config,
         )
 
-        # Return the model for method chaining
         return self
 
     @beartype
