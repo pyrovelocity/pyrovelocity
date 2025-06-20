@@ -2359,7 +2359,8 @@ def _process_parameters_for_plotting(
         'AutoGuide',
         '_latent',
         'auto_',
-        'guide_'
+        'guide_',
+        '_unconstrained'  # Filter out unconstrained parameters from AutoGuides
     ]
 
     for key, value in parameters.items():
@@ -3766,7 +3767,8 @@ def plot_training_loss(
     if not hasattr(model, 'state') or model.state is None:
         raise ValueError("Model has no state - has it been trained?")
 
-    inference_state = model.state.metadata.get("inference_state")
+    # Use the new type-safe inference state field instead of metadata
+    inference_state = model.state.inference_state
     if inference_state is None:
         raise ValueError("Model has no inference state - has it been trained?")
 

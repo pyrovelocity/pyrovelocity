@@ -514,8 +514,8 @@ class PyroVelocityModel:
         likelihood_config_str = format_config(likelihood_config)
         guide_config_str = format_config(guide_config)
 
-        # Check if model has been trained
-        trained_status = "Trained" if "inference_state" in self.state.metadata else "Untrained"
+        # Check if model has been trained using the new type-safe inference state field
+        trained_status = "Trained" if self.state.inference_state is not None else "Untrained"
 
         # Build the representation string
         repr_str = [
@@ -532,10 +532,10 @@ class PyroVelocityModel:
             f"                 {guide_desc}",
         ]
 
-        # Add training information if available
-        if "inference_state" in self.state.metadata:
-            inference_state = self.state.metadata["inference_state"]
-            training_config = self.state.metadata.get("training_config", {})
+        # Add training information if available using new type-safe fields
+        if self.state.inference_state is not None:
+            inference_state = self.state.inference_state
+            training_config = self.state.inference_config
 
             # Extract training information
             loss = getattr(inference_state, "loss", None)
@@ -554,7 +554,7 @@ class PyroVelocityModel:
             if hasattr(inference_state, "optimizer"):
                 optimizer = inference_state.optimizer
                 optimizer_name = optimizer.__class__.__name__ if optimizer else "Unknown"
-                learning_rate = training_config.get("learning_rate", "Unknown")
+                learning_rate = getattr(training_config, "learning_rate", "Unknown") if training_config else "Unknown"
 
                 repr_str.extend([
                     f"  • Optimizer:   {optimizer_name}",
