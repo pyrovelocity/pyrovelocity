@@ -517,18 +517,15 @@ class PiecewiseActivationPriorModel:
             )
             params["lambda_j"] = lambda_j
 
-        # Compute t_star deterministically outside the plate to avoid shape issues
-        # T_M_star (scalar) * t_star_normalized (vector) -> t_star (vector)
-        # Handle both training and posterior sampling cases with proper broadcasting
-        if T_M_star.dim() > 0 and t_star_normalized.dim() > 1:
-            # Posterior sampling case: ensure proper broadcasting
-            # T_M_star: [num_samples, 1], t_star_normalized: [num_samples, n_cells]
-            t_star_computed = T_M_star.squeeze(-1) * t_star_normalized
+        # Compute t_star deterministically OUTSIDE the plate context
+        # This prevents shape issues with plate broadcasting
+        # Handle broadcasting: T_M_star (scalar or [num_samples, 1]) * t_star_normalized (per cell)
+        if T_M_star.dim() == 0:
+            # Training case: T_M_star is scalar
+            t_star = pyro.deterministic("t_star", T_M_star * t_star_normalized)
         else:
-            # Training case: standard multiplication
-            t_star_computed = T_M_star * t_star_normalized
-
-        t_star = pyro.deterministic("t_star", t_star_computed)
+            # Posterior sampling case: ensure proper broadcasting
+            t_star = pyro.deterministic("t_star", T_M_star.squeeze(-1) * t_star_normalized)
 
         params["t_star"] = t_star
         params["t_star_normalized"] = t_star_normalized
