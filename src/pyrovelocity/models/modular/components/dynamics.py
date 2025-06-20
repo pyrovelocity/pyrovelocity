@@ -299,11 +299,13 @@ class LegacyDynamicsModel:
             ut = ut.reshape(num_samples, num_cells, num_genes)
             st = st.reshape(num_samples, num_cells, num_genes)
 
-            # In the legacy model, ut and st are not registered as deterministic nodes here
-            # They are registered in the get_likelihood method, which is called within a nested plate context
-            # We'll skip creating deterministic nodes here and let the likelihood model handle it
+            # Register ut and st as deterministic sites for proper Pyro integration
+            # This enables automatic inclusion in posterior samples via Predictive
+            import pyro
+            ut = pyro.deterministic("ut", ut, event_dim=0)
+            st = pyro.deterministic("st", st, event_dim=0)
 
-            # Instead, we'll just store the values in the context
+            # Store computed values in context for component communication
             u = ut
             s = st
 
