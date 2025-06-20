@@ -9,7 +9,7 @@ This module has been simplified to include only the essential components needed 
 validation against the legacy implementation.
 """
 
-from typing import Any, Dict, Union, cast
+from typing import Any, Dict, Optional, Union, cast
 
 from beartype import beartype
 from omegaconf import DictConfig, OmegaConf
@@ -19,6 +19,7 @@ from pyrovelocity.models.modular.config import (
     ComponentType,
     ModelConfig,
 )
+from pyrovelocity.models.modular.inference.config import InferenceConfig
 from pyrovelocity.models.modular.interfaces import (
     DynamicsModel,
     InferenceGuide,
@@ -352,25 +353,42 @@ def create_legacy_model2() -> PyroVelocityModel:
     return create_model_from_config(config)
 
 
-def create_piecewise_activation_model() -> PyroVelocityModel:
+def create_piecewise_activation_model(
+    inference_method: str = "svi",
+    guide_type: str = "AutoLowRankMultivariateNormal",
+    default_inference_config: Optional[InferenceConfig] = None,
+) -> PyroVelocityModel:
     """
-    Create a PyroVelocityModel with piecewise activation components.
+    Create a PyroVelocityModel with piecewise activation components and inference configuration.
 
     This function creates a PyroVelocityModel specifically configured for
     piecewise activation parameter recovery validation. It uses:
     - PiecewiseActivationDynamicsModel for dimensionless analytical dynamics
     - PiecewiseActivationPriorModel for hierarchical priors
     - PoissonLikelihoodModel for count data likelihood (includes data preprocessing)
-    - AutoGuideFactory for variational inference
+    - Configurable inference guide for SVI or MCMC
+
+    Args:
+        inference_method: Default inference method ("svi" or "mcmc")
+        guide_type: Guide type for SVI ("AutoNormal", "AutoDiagonalNormal",
+                   "AutoMultivariateNormal", "AutoLowRankMultivariateNormal")
+        default_inference_config: Optional default inference configuration to store on model
 
     Returns:
-        A PyroVelocityModel instance configured for piecewise activation validation.
+        A PyroVelocityModel instance configured for piecewise activation validation
+        with optional default inference configuration.
 
     Examples:
+        >>> # SVI with AutoLowRankMultivariateNormal guide
         >>> model = create_piecewise_activation_model()
-        >>> # Use model for parameter recovery validation
-        >>> # model.train(adata, max_epochs=100)
-        >>> # posterior_samples = model.generate_posterior_samples(adata)
+
+        >>> # SVI with different guide
+        >>> model = create_piecewise_activation_model(guide_type="AutoNormal")
+
+        >>> # With default inference config
+        >>> from pyrovelocity.models.modular.inference.config import InferenceConfig
+        >>> config = InferenceConfig(method="svi", num_epochs=1000, learning_rate=0.01)
+        >>> model = create_piecewise_activation_model(default_inference_config=config)
     """
     # Create configuration for piecewise activation model
     config = ModelConfig(
@@ -389,14 +407,27 @@ def create_piecewise_activation_model() -> PyroVelocityModel:
         inference_guide=ComponentConfig(
             name="auto",
             params={
-                "guide_type": "AutoLowRankMultivariateNormal",
+                "guide_type": guide_type,
                 "init_scale": 0.1,
             },
         ),
     )
 
-    # Create and return the model
-    return create_model_from_config(config)
+    # Create the model
+    model = create_model_from_config(config)
+
+    # Store default inference configuration if provided
+    if default_inference_config is not None:
+        from pyrovelocity.models.modular.model import ModelState
+        model.state = ModelState(
+            dynamics_state=model.state.dynamics_state,
+            prior_state=model.state.prior_state,
+            likelihood_state=model.state.likelihood_state,
+            guide_state=model.state.guide_state,
+            inference_config=default_inference_config,
+        )
+
+    return model
 
 
 __all__ = [
