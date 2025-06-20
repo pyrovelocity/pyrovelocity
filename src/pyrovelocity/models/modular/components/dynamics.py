@@ -548,18 +548,10 @@ class PiecewiseActivationDynamicsModel:
             # Create latent variables ut and st using pyro.deterministic
             import pyro
 
-            # Create latent variables with proper shape handling
-            if u_expected.dim() == 2 and u_expected.shape[0] > 1:
-                # Add an extra dimension to match legacy shape (num_cells, 1, n_genes)
-                u_expected_reshaped = u_expected.unsqueeze(1)
-                s_expected_reshaped = s_expected.unsqueeze(1)
-            else:
-                u_expected_reshaped = u_expected
-                s_expected_reshaped = s_expected
-
-            # Create latent variables
-            ut = pyro.deterministic("ut", u_expected_reshaped)
-            st = pyro.deterministic("st", s_expected_reshaped)
+            # Create latent variables directly without reshaping
+            # The likelihood model expects 2D tensors [cells, genes]
+            ut = pyro.deterministic("ut", u_expected)
+            st = pyro.deterministic("st", s_expected)
 
             # Apply ReLU and add small constant for numerical stability
             one = torch.ones_like(ut) * 1e-6
@@ -585,7 +577,7 @@ class PiecewiseActivationDynamicsModel:
         gamma_star: ParamTensor,
         t_on_star: ParamTensor,
         delta_star: ParamTensor,
-    ) -> Tuple[BatchTensor, BatchTensor]:
+    ) -> Tuple[LatentCountTensor, LatentCountTensor]:
         """
         Compute the piecewise analytical solution for dimensionless RNA dynamics.
 
@@ -617,43 +609,92 @@ class PiecewiseActivationDynamicsModel:
             # Posterior sampling case: parameters have shape [num_samples, genes]
             num_samples = alpha_off.shape[0]
             n_genes = alpha_off.shape[-1]
-
-            # Ensure t_star has proper shape for broadcasting
+            
+            # Determine number of cells from t_star
             if t_star.dim() == 1:
-                # t_star: [cells] -> [1, 1, cells] -> [num_samples, cells, genes]
-                t_star = t_star.unsqueeze(0).unsqueeze(0)  # [1, 1, cells]
-                t_star = t_star.expand(num_samples, -1, -1)  # [num_samples, 1, cells]
-                t_star = t_star.unsqueeze(-1).expand(-1, -1, -1, n_genes)  # [num_samples, 1, cells, genes]
-                t_star = t_star.squeeze(1)  # [num_samples, cells, genes]
+                n_cells = t_star.shape[0]
+            elif t_star.dim() == 2:
+                n_cells = t_star.shape[1]  # [num_samples, cells]
             elif t_star.dim() == 3:
-                # t_star already has shape [num_samples, 1, cells] -> [num_samples, cells, genes]
+                n_cells = t_star.shape[-1]  # [num_samples, 1, cells]
+            elif t_star.dim() == 4:
+                n_cells = t_star.shape[2]   # [num_samples, 1, cells, 1]
+            else:
+                raise ValueError(f"Unexpected t_star shape: {t_star.shape}")
+
+            # Ensure t_star has proper shape for broadcasting [num_samples, cells, genes]
+            if t_star.dim() == 1:
+                # t_star: [cells] -> [num_samples, cells, genes]
+                t_star = t_star.unsqueeze(0).unsqueeze(-1)  # [1, cells, 1]
+                t_star = t_star.expand(num_samples, -1, n_genes)  # [num_samples, cells, genes]
+            elif t_star.dim() == 2:
+                # t_star: [num_samples, cells] -> [num_samples, cells, genes]
+                t_star = t_star.unsqueeze(-1).expand(-1, -1, n_genes)  # [num_samples, cells, genes]
+            elif t_star.dim() == 3:
+                # t_star: [num_samples, 1, cells] -> [num_samples, cells, genes]
                 t_star = t_star.squeeze(1)  # [num_samples, cells]
+                t_star = t_star.unsqueeze(-1).expand(-1, -1, n_genes)  # [num_samples, cells, genes]
+            elif t_star.dim() == 4:
+                # t_star: [num_samples, 1, cells, 1] -> [num_samples, cells, genes]
+                t_star = t_star.squeeze(1).squeeze(-1)  # [num_samples, cells]
                 t_star = t_star.unsqueeze(-1).expand(-1, -1, n_genes)  # [num_samples, cells, genes]
 
             # Broadcast parameters to match t_star shape [num_samples, cells, genes]
-            alpha_off = alpha_off.unsqueeze(1).expand_as(t_star)  # [num_samples, cells, genes]
-            alpha_on = alpha_on.unsqueeze(1).expand_as(t_star)    # [num_samples, cells, genes]
-            gamma_star = gamma_star.unsqueeze(1).expand_as(t_star)  # [num_samples, cells, genes]
-            t_on_star = t_on_star.unsqueeze(1).expand_as(t_star)   # [num_samples, cells, genes]
-            delta_star = delta_star.unsqueeze(1).expand_as(t_star)  # [num_samples, cells, genes]
+            alpha_off = alpha_off.unsqueeze(1).expand(num_samples, n_cells, n_genes)
+            alpha_on = alpha_on.unsqueeze(1).expand(num_samples, n_cells, n_genes)
+            gamma_star = gamma_star.unsqueeze(1).expand(num_samples, n_cells, n_genes)
+            t_on_star = t_on_star.unsqueeze(1).expand(num_samples, n_cells, n_genes)
+            delta_star = delta_star.unsqueeze(1).expand(num_samples, n_cells, n_genes)
         else:
-            # Training case: parameters have shape [genes]
+            # Training case: parameters have shape [genes], t_star has shape [cells]
+            n_genes = alpha_off.shape[0]
+
+            # Determine number of cells from t_star regardless of its dimension
             if t_star.dim() == 1:
-                # t_star is [cells], expand to [cells, genes]
-                n_genes = alpha_off.shape[0]
-                t_star = t_star.unsqueeze(-1).expand(-1, n_genes)  # [cells, genes]
+                n_cells = t_star.shape[0]
+                # Expand t_star to [cells, genes] for consistent broadcasting
+                t_star = t_star.unsqueeze(-1).expand(n_cells, n_genes)  # [cells, genes]
+            elif t_star.dim() == 2:
+                n_cells = t_star.shape[0]  # [cells, genes] or [cells, 1]
+                # Ensure t_star has shape [cells, genes]
+                if t_star.shape[1] != n_genes:
+                    t_star = t_star.expand(n_cells, n_genes)  # [cells, genes]
+            elif t_star.dim() == 3:
+                # Handle SVI posterior sampling case where t_star has shape [1, 1, cells]
+                # This can happen when parameters are still 1D but t_star gets extra dimensions
+                if t_star.shape[0] == 1 and t_star.shape[1] == 1:
+                    n_cells = t_star.shape[2]
+                    # Reshape to [cells] then expand to [cells, genes]
+                    t_star = t_star.squeeze(0).squeeze(0)  # [cells]
+                    t_star = t_star.unsqueeze(-1).expand(n_cells, n_genes)  # [cells, genes]
+                else:
+                    raise ValueError(f"Unexpected 3D t_star shape in training case: {t_star.shape}")
+            else:
+                raise ValueError(f"Unexpected t_star shape in training case: {t_star.shape}")
 
-            # Broadcast parameters to match t_star shape
-            # All parameters should be [genes] -> [1, genes] for broadcasting
-            alpha_off = alpha_off.unsqueeze(0).expand_as(t_star)  # [cells, genes]
-            alpha_on = alpha_on.unsqueeze(0).expand_as(t_star)    # [cells, genes]
-            gamma_star = gamma_star.unsqueeze(0).expand_as(t_star)  # [cells, genes]
-            t_on_star = t_on_star.unsqueeze(0).expand_as(t_star)   # [cells, genes]
-            delta_star = delta_star.unsqueeze(0).expand_as(t_star)  # [cells, genes]
+            # Broadcast parameters for proper tensor operations
+            # t_star: [cells, genes], parameters: [genes] -> result: [cells, genes]
+            alpha_off = alpha_off.unsqueeze(0).expand(n_cells, n_genes)  # [cells, genes]
+            alpha_on = alpha_on.unsqueeze(0).expand(n_cells, n_genes)    # [cells, genes]
+            gamma_star = gamma_star.unsqueeze(0).expand(n_cells, n_genes)  # [cells, genes]
+            t_on_star = t_on_star.unsqueeze(0).expand(n_cells, n_genes)   # [cells, genes]
+            delta_star = delta_star.unsqueeze(0).expand(n_cells, n_genes)  # [cells, genes]
 
-        # Initialize output tensors
-        u_star = torch.zeros_like(t_star)  # [cells, genes]
-        s_star = torch.zeros_like(t_star)  # [cells, genes]
+        # Initialize output tensors with proper shape
+        if alpha_off.dim() > 1:
+            # Posterior sampling case: [num_samples, cells, genes]
+            # t_star should have shape [num_samples, cells, genes] at this point
+            u_star = torch.zeros_like(t_star)
+            s_star = torch.zeros_like(t_star)
+        else:
+            # Training case: [cells, genes]
+            # t_star should have shape [cells, 1] at this point
+            # alpha_off should have shape [1, genes] at this point
+            # Create output tensors with shape [cells, genes]
+            n_cells = t_star.shape[0]
+            n_genes = alpha_off.shape[1]
+            u_star = torch.zeros(n_cells, n_genes, dtype=t_star.dtype, device=t_star.device)
+            s_star = torch.zeros(n_cells, n_genes, dtype=t_star.dtype, device=t_star.device)
 
         # Phase 1: Off state (t* < t*_on)
         # System is at steady state with α*_off = 1.0 (fixed reference)

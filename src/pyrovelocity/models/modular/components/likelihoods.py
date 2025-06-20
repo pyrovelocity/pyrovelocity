@@ -128,11 +128,28 @@ class PiecewiseActivationPoissonLikelihoodModel:
             u_obs_int = u_obs.round().long()
             s_obs_int = s_obs.round().long()
 
-            # Get dimensions - for piecewise activation model, we expect [N, G] tensors
-            if u_rate.dim() == 2:  # [N, G] - standard case
+            # Handle different tensor dimensions for training vs posterior sampling
+            if u_rate.dim() == 2:  # [N, G] - standard training case
                 n_cells, n_genes = u_rate.shape
+            elif u_rate.dim() == 4:  # [1, 1, N, G] - SVI posterior sampling case
+                # Extract the actual dimensions and reshape
+                n_cells, n_genes = u_rate.shape[-2], u_rate.shape[-1]
+                u_rate = u_rate.squeeze(0).squeeze(0)  # [N, G]
+                s_rate = s_rate.squeeze(0).squeeze(0)  # [N, G]
+                u_obs_int = u_obs_int.squeeze(0).squeeze(0) if u_obs_int.dim() > 2 else u_obs_int
+                s_obs_int = s_obs_int.squeeze(0).squeeze(0) if s_obs_int.dim() > 2 else s_obs_int
+            elif u_rate.dim() == 3:  # [1, N, G] or [B, N, G] - other posterior sampling cases
+                if u_rate.shape[0] == 1:
+                    # [1, N, G] case - squeeze the batch dimension
+                    n_cells, n_genes = u_rate.shape[1], u_rate.shape[2]
+                    u_rate = u_rate.squeeze(0)  # [N, G]
+                    s_rate = s_rate.squeeze(0)  # [N, G]
+                    u_obs_int = u_obs_int.squeeze(0) if u_obs_int.dim() > 2 else u_obs_int
+                    s_obs_int = s_obs_int.squeeze(0) if s_obs_int.dim() > 2 else s_obs_int
+                else:
+                    raise ValueError(f"PiecewiseActivationPoissonLikelihoodModel cannot handle batch dimension > 1, got {u_rate.shape}")
             else:
-                raise ValueError(f"PiecewiseActivationPoissonLikelihoodModel expects 2D tensors [N, G], got {u_rate.shape}")
+                raise ValueError(f"PiecewiseActivationPoissonLikelihoodModel expects 2D, 3D, or 4D tensors, got {u_rate.shape}")
 
             # Create Poisson distributions
             u_dist = pyro.distributions.Poisson(rate=u_rate)
