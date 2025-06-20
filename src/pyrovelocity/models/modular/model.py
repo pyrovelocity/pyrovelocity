@@ -1016,108 +1016,79 @@ class PyroVelocityModel:
             >>> if os.path.exists(tmp_dir):
             ...     shutil.rmtree(tmp_dir)
         """
-        # Import inference utilities
-        from pyrovelocity.models.modular.inference.posterior import (
-            sample_posterior,
+        # Check if model has been trained
+        if self.state.inference_state is None:
+            raise ValueError("Model must be trained before generating posterior samples")
+
+        # 1. Inference method-specific: Extract samples via unified interface
+        from pyrovelocity.models.modular.inference.unified import (
+            extract_posterior_samples,
         )
 
-        # Get inference state from model state
-        inference_state = self.state.metadata.get("inference_state")
-        if inference_state is None:
-            raise ValueError("Model has not been trained yet")
-
-        # Generate posterior samples
-        posterior_samples = sample_posterior(
-            model=self,
-            state=inference_state,
-            num_samples=num_samples,
-            seed=kwargs.get("seed", None),
-        )
-
-        # Now, we need to run the model with the posterior samples to get deterministic sites
-        # This is critical for getting ut and st which are deterministic sites
-        import pyro
-
-        # Create a predictive object for the model, using the guide samples
-        # Return all sites, including deterministic ones
-        model_predictive = pyro.infer.Predictive(
-            self,
-            posterior_samples=posterior_samples,
-            return_sites=None,  # Return all sites, including deterministic
+        posterior_samples = extract_posterior_samples(
+            self.state.inference_state,
             num_samples=num_samples
         )
 
-        # Run the model predictive to get all sites, including deterministic ones
-        # We need to pass the same arguments as during training
-        # For the modular model, we can pass u_obs and s_obs
-        if adata is not None:
-            # Extract u_obs and s_obs from adata
-            import scipy.sparse
-            u_obs = torch.tensor(
-                adata.layers["unspliced"].toarray()
-                if isinstance(adata.layers["unspliced"], scipy.sparse.spmatrix)
-                else adata.layers["unspliced"]
-            )
-            s_obs = torch.tensor(
-                adata.layers["spliced"].toarray()
-                if isinstance(adata.layers["spliced"], scipy.sparse.spmatrix)
-                else adata.layers["spliced"]
-            )
+        # 2. Extract observations for Predictive
+        observations = self._extract_observations(adata)
 
+        # 3. Use Pyro's Predictive to get all sites including deterministic ones
+        import pyro
 
-            # Run the model predictive with u_obs and s_obs
-            # Don't use plate context managers here - they're already in the model
-            model_samples = model_predictive(u_obs=u_obs, s_obs=s_obs)
+        predictive = pyro.infer.Predictive(
+            self.forward,
+            posterior_samples=posterior_samples,
+            return_sites=None,  # Return all sites including deterministic
+        )
 
-            # Combine guide and model samples
-            # Guide samples take precedence if there's a conflict
-            posterior_samples = {**model_samples, **posterior_samples}
+        # Run predictive to get deterministic sites (ut, st) automatically
+        model_samples = predictive(**observations)
 
-            # If ut and st are not in the posterior samples, we need to compute them
-            # This is critical for the legacy model compatibility
-            if "ut" not in posterior_samples or "st" not in posterior_samples:
-                # Check if we have the necessary parameters to compute ut and st
-                if all(k in posterior_samples for k in ["alpha", "beta", "gamma", "cell_time"]):
-                    # Extract parameters
-                    alpha = posterior_samples["alpha"]
-                    beta = posterior_samples["beta"]
-                    gamma = posterior_samples["gamma"]
-                    cell_time = posterior_samples["cell_time"]
+        # 4. Combine posterior samples with deterministic sites
+        # Deterministic sites from model take precedence
+        posterior_samples = {**posterior_samples, **model_samples}
 
-                    # Compute steady state values
-                    u_inf = alpha / beta
-                    s_inf = alpha / gamma
-
-                    # Compute ut and st based on the transcription model
-                    # For cells before switching time
-                    t0 = posterior_samples.get("t0", torch.zeros_like(alpha))
-                    dt_switching = posterior_samples.get("dt_switching", torch.zeros_like(alpha))
-                    switching = t0 + dt_switching
-
-                    # Compute ut and st
-                    ut = u_inf * (1 - torch.exp(-beta * cell_time))
-                    st = s_inf * (1 - torch.exp(-gamma * cell_time)) - (
-                        alpha / (gamma - beta)
-                    ) * (torch.exp(-beta * cell_time) - torch.exp(-gamma * cell_time))
-
-                    # Add to posterior samples
-                    posterior_samples["ut"] = ut
-                    posterior_samples["st"] = st
-                    posterior_samples["u_inf"] = u_inf
-                    posterior_samples["s_inf"] = s_inf
-                    posterior_samples["switching"] = switching
-
-        # Return tensors or numpy arrays based on return_tensors parameter
+        # 5. Return in requested format
         if return_tensors:
-            # Return torch tensors directly (no conversion)
             return posterior_samples
         else:
-            # Convert PyTorch tensors to NumPy arrays (legacy behavior)
-            posterior_samples_np = {
+            # Convert to numpy arrays for legacy compatibility
+            return {
                 k: v.detach().cpu().numpy() if isinstance(v, torch.Tensor) else v
                 for k, v in posterior_samples.items()
             }
-            return posterior_samples_np
+
+    def _extract_observations(self, adata: Optional[AnnData]) -> Dict[str, torch.Tensor]:
+        """
+        Extract observations from AnnData for Predictive.
+
+        Args:
+            adata: AnnData object containing observations
+
+        Returns:
+            Dictionary with u_obs and s_obs tensors
+        """
+        if adata is None:
+            raise ValueError("AnnData object is required for generating posterior samples")
+
+        import scipy.sparse
+
+        # Extract unspliced and spliced observations
+        u_obs = adata.layers["unspliced"]
+        s_obs = adata.layers["spliced"]
+
+        # Convert sparse matrices to dense if needed
+        if isinstance(u_obs, scipy.sparse.spmatrix):
+            u_obs = u_obs.toarray()
+        if isinstance(s_obs, scipy.sparse.spmatrix):
+            s_obs = s_obs.toarray()
+
+        # Convert to tensors
+        u_obs = torch.tensor(u_obs, dtype=torch.float32)
+        s_obs = torch.tensor(s_obs, dtype=torch.float32)
+
+        return {"u_obs": u_obs, "s_obs": s_obs}
 
     @beartype
     def store_results_in_anndata(
