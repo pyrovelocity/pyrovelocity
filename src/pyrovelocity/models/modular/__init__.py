@@ -11,13 +11,6 @@ validation against the legacy implementation.
 # Import component registries and register components
 # Import model class
 
-# Import comparison and selection
-from pyrovelocity.models.modular.comparison import (
-    BayesianModelComparison,
-    compute_loo,
-    compute_waic,
-)
-
 # Import component implementations
 from pyrovelocity.models.modular.components import (
     AutoGuideFactory,
@@ -50,11 +43,6 @@ from pyrovelocity.models.modular.registry import (
     ObservationModelRegistry,
     PriorModelRegistry,
 )
-from pyrovelocity.models.modular.selection import (
-    ModelEnsemble,
-    select_model,
-)
-
 
 # Ensure components are registered in registries
 def _ensure_registrations():
@@ -98,10 +86,4 @@ __all__ = [
     "LegacyAutoGuideFactory",
     # Factory functions
     "create_model_from_config",
-    # Comparison and selection
-    "BayesianModelComparison",
-    "compute_waic",
-    "compute_loo",
-    "select_model",
-    "ModelEnsemble",
 ]

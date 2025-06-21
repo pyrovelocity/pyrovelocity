@@ -29,14 +29,6 @@ from pyrovelocity.models.experimental import (
     solve_transcription_splicing_model_analytical,
 )
 
-# Import the model comparison classes and functions
-from pyrovelocity.models.modular.comparison import (
-    BayesianModelComparison,
-    ComparisonResult,
-    create_comparison_table,
-    select_best_model,
-)
-
 # Base classes have been removed in favor of Protocol interfaces
 from pyrovelocity.models.modular.components.dynamics import (
     LegacyDynamicsModel,
@@ -80,15 +72,6 @@ from pyrovelocity.models.modular.registry import (
     PriorModelRegistry,
 )
 
-# Import the model selection classes and functions
-from pyrovelocity.models.modular.selection import (
-    CrossValidator,
-    ModelEnsemble,
-    ModelSelection,
-    SelectionCriterion,
-    SelectionResult,
-)
-
 __all__ = [
     # Interfaces
     "DynamicsModel",
@@ -126,17 +109,6 @@ __all__ = [
     "create_legacy_model2",
     "create_model_from_config",
     "create_piecewise_activation_model",
-    # Model comparison
-    "BayesianModelComparison",
-    "ComparisonResult",
-    "create_comparison_table",
-    "select_best_model",
-    # Model selection
-    "ModelSelection",
-    "ModelEnsemble",
-    "CrossValidator",
-    "SelectionCriterion",
-    "SelectionResult",
     # Experimental implementations
     "deterministic_transcription_splicing_probabilistic_model",
     "generate_test_data_for_deterministic_model_inference",
