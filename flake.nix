@@ -10,7 +10,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     
-    # uv2nix inputs following python-nix-template pattern
     pyproject-nix = {
       url = "github:pyproject-nix/pyproject.nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -26,8 +25,6 @@
       inputs.uv2nix.follows = "uv2nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    
-    # poetry2nix removed - migration to uv2nix complete
     
     flocken = {
       url = "github:mirkolenz/flocken/v2";
