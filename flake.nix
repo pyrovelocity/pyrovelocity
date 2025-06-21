@@ -9,6 +9,25 @@
       url = "github:hercules-ci/gitignore.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    
+    # uv2nix inputs following python-nix-template pattern
+    pyproject-nix = {
+      url = "github:pyproject-nix/pyproject.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    uv2nix = {
+      url = "github:pyproject-nix/uv2nix";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    pyproject-build-systems = {
+      url = "github:pyproject-nix/build-system-pkgs";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+      inputs.uv2nix.follows = "uv2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    
+    # Keep poetry2nix for compatibility during migration
     poetry2nix = {
       url = github:nix-community/poetry2nix;
       inputs = {
@@ -17,6 +36,7 @@
         systems.follows = "systems";
       };
     };
+    
     flocken = {
       url = "github:mirkolenz/flocken/v2";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -42,11 +62,13 @@
   nixConfig = {
     extra-trusted-public-keys = [
       "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+      "pyproject-nix.cachix.org-1:UNzugsOlQIu2iOz0VyZNBQm2JSrL/kwxeCcFGw+jMe0="
       "poetry2nix.cachix.org-1:eXpeBJl0EQjO+vs9/1cUq19BH1LLKQT9HScbJDeeHaA="
       "pyrovelocity.cachix.org-1:+aX2YY45ZywieTsD2CnXLedN8RfKuRl6vL7+rLTCgnc="
     ];
     extra-substituters = [
       "https://nix-community.cachix.org"
+      "https://pyproject-nix.cachix.org"
       "https://poetry2nix.cachix.org"
       "https://pyrovelocity.cachix.org"
     ];
@@ -60,6 +82,9 @@
   }:
     flake-parts.lib.mkFlake {inherit inputs;} {
       systems = import inputs.systems;
+      
+      # Import all modules from nix/modules automatically following python-nix-template pattern
+      imports = with builtins; map (fn: ./nix/modules/${fn}) (attrNames (readDir ./nix/modules));
 
       perSystem = {
         self',
@@ -70,127 +95,38 @@
         config,
         ...
       }: let
-        poetry2nixOverrides = import ./nix/poetry {
-          inherit
-            (pkgs)
-            poetry2nix
-            lib
-            stdenv
-            writeText
-            autoPatchelfHook
-            cudaPackages_12_1
-            tbb_2021_11
-            ;
-        };
-
-        appBuildInputs = with pkgs; [
-        ];
-        mkPoetryAttrs = {
-          projectDir = ./.;
-          overrides = poetry2nixOverrides;
-          python = pkgs.python311;
-          preferWheels = true;
-          checkGroups = ["test" "workflows"];
-          extras = [];
-        };
-
-        poetryEnv = pkgs.poetry2nix.mkPoetryEnv (
-          mkPoetryAttrs
-          // {
-            extraPackages = ps:
-              with pkgs; [
-                python311Packages.pip
-              ];
-          }
-        );
-
+        # Configuration
         gitHubOrg = "pinellolab";
         packageName = "pyrovelocity";
         version = builtins.getEnv "VERSION";
         isVersionNonEmpty = builtins.isString version && builtins.stringLength version > 0;
-
-        mkPoetryEnvWithSource = packageName: src: groups:
-          pkgs.poetry2nix.mkPoetryEnv (
-            mkPoetryAttrs
-            // {
-              groups = groups;
-              extraPackages = ps:
-                with pkgs; [
-                  python311Packages.pip
-                ];
-              editablePackageSources = {
-                ${packageName} = src;
-              };
-            }
-          );
-
-        defaultPackages = import ./nix/pkgs {
-          inherit
-            system
-            pkgs
-            ;
-        };
-        sysPackages = defaultPackages.sysPackages;
-        extraSysPackages = defaultPackages.extraSysPackages;
-        coreDevPackages = defaultPackages.coreDevPackages;
-        devPackages = defaultPackages.devPackages;
-
-        mkDevShell = env:
-          pkgs.mkShell {
-            name = "${packageName}-${env.python.version}";
-            nativeBuildInputs = with pkgs;
-              [
-                env
-              ]
-              ++ devPackages;
-            shellHook = ''
-              export QUARTO_PYTHON=${env}/bin/python
-              export LD_LIBRARY_PATH=${env}/lib:/usr/local/nvidia/lib64
-            '';
-          };
-
-        containerImages = import ./nix/containers {
-          inherit
-            pkgs
-            mkPoetryEnvWithSource
-            gitHubOrg
-            packageName
-            sysPackages
-            devPackages
-            extraSysPackages
-            ;
-        };
-
-        buildMultiUserNixImage = import ("${inputs.nixpod.outPath}" + "/containers/nix.nix");
-
         gcpProjectId = builtins.getEnv "GCP_PROJECT_ID";
 
-        # aarch64-linux may be disabled for more rapid image builds during
-        # development setting NIX_IMAGE_SYSTEMS="x86_64-linux".
-        # Note the usage of `preferWheels` as well.
-        # NIX_IMAGE_SYSTEMS="x86_64-linux aarch64-linux"
-        # will expand similar to the following:
-        # imageFiles = with self.packages; [
-        #   x86_64-linux.devcontainerImage
-        #   aarch64-linux.devcontainerImage
-        # ];
+        # System configuration for container builds
         includedSystems = let
           envVar = builtins.getEnv "NIX_IMAGE_SYSTEMS";
         in
           if envVar == ""
           then ["x86_64-linux" "aarch64-linux"]
           else builtins.filter (sys: sys != "") (builtins.split " " envVar);
+
+        # Legacy packages for containers (will be migrated later)
+        defaultPackages = import ./nix/pkgs {
+          inherit system pkgs;
+        };
+        sysPackages = defaultPackages.sysPackages;
+        extraSysPackages = defaultPackages.extraSysPackages;
+        coreDevPackages = defaultPackages.coreDevPackages;
+        devPackages = defaultPackages.devPackages;
+
+        # Legacy container configuration (to be migrated in Phase 3)
+        buildMultiUserNixImage = import ("${inputs.nixpod.outPath}" + "/containers/nix.nix");
       in {
         formatter = pkgs.alejandra;
 
-        devShells = rec {
-          pyrovelocity310 = mkDevShell pkgs.pyrovelocityDevEnv310;
-          pyrovelocity311 = mkDevShell pkgs.pyrovelocityDevEnv311;
-          pyrovelocity312 = mkDevShell pkgs.pyrovelocityDevEnv312;
-
-          default = pyrovelocity311;
-        };
-
+        # Note: devShells and packages are provided by modules/packages.nix
+        
+        # Configure nixpkgs with overlays - keeping minimal for uv2nix migration
         _module.args.pkgs = import inputs.nixpkgs {
           inherit system;
           config = {
@@ -198,186 +134,9 @@
           };
           overlays = [
             inputs.gitignore.overlay
+            # Keep poetry2nix overlay for compatibility during migration
             inputs.poetry2nix.overlays.default
-            (import ./nix/pyrovelocity/overlay.nix {
-              inherit poetry2nixOverrides;
-              inherit (pkgs) stdenv;
-            })
           ];
-        };
-
-        packages =
-          {
-            inherit (pkgs) pyrovelocity310 pyrovelocity311 pyrovelocity312;
-
-            default = pkgs.pyrovelocity311;
-
-            releaseEnv = pkgs.buildEnv {
-              name = "release-env";
-              paths = with pkgs; [poetry python311];
-            };
-          }
-          // lib.optionalAttrs pkgs.stdenv.isLinux {
-            containerImage = containerImages.containerImage;
-            devcontainerImage = containerImages.devcontainerImage;
-            codeImage = import ./nix/containers/code.nix {
-              inherit pkgs devPackages buildMultiUserNixImage;
-              sudoImage = inputs'.nixpod.packages.sudoImage;
-              homeActivationPackage = inputs'.nixpod.legacyPackages.homeConfigurations.jovyan.activationPackage;
-              pythonPackageEnv = pkgs.pyrovelocityDevEnv311;
-            };
-            jupyterImage = import ./nix/containers/jupyter.nix {
-              inherit pkgs devPackages buildMultiUserNixImage;
-              sudoImage = inputs'.nixpod.packages.sudoImage;
-              homeActivationPackage = inputs'.nixpod.legacyPackages.homeConfigurations.jovyan.activationPackage;
-              pythonPackageEnv = pkgs.pyrovelocityDevEnv311;
-            };
-          };
-
-        legacyPackages = lib.optionalAttrs pkgs.stdenv.isLinux {
-          pyrovelocityManifest = inputs'.flocken.legacyPackages.mkDockerManifest {
-            inherit version;
-            github = {
-              enable = true;
-              enableRegistry = isVersionNonEmpty;
-              token = "$GH_TOKEN";
-            };
-            autoTags = {
-              branch = false;
-            };
-            registries = {
-              # "ghcr.io" = {
-              #   repo = lib.mkForce "${gitHubOrg}/${packageName}";
-              # };
-              # "cr.cluster.pyrovelocity.net" = {
-              #   enable = true;
-              #   repo = "${packageName}/${packageName}";
-              #   username = "admin";
-              #   password = "$ARTIFACT_REGISTRY_PASSWORD";
-              # };
-              "us-central1-docker.pkg.dev" = {
-                enable = true;
-                repo = "${gcpProjectId}/${packageName}/${packageName}";
-                username = "_json_key_base64";
-                password = "$ENCODED_GAR_SA_CREDS";
-              };
-            };
-            imageFiles = builtins.map (sys: self.packages.${sys}.containerImage) includedSystems;
-            tags = [
-              (builtins.getEnv "GIT_SHA_SHORT")
-              (builtins.getEnv "GIT_SHA")
-              (builtins.getEnv "GIT_REF")
-              "dev"
-            ];
-          };
-
-          pyrovelocitydevManifest = inputs'.flocken.legacyPackages.mkDockerManifest {
-            inherit version;
-            github = {
-              enable = false;
-              enableRegistry = false;
-              token = "$GH_TOKEN";
-            };
-            autoTags = {
-              branch = false;
-            };
-            registries = {
-              # "ghcr.io" = {
-              #   repo = lib.mkForce "${gitHubOrg}/${packageName}dev";
-              # };
-              # "cr.cluster.pyrovelocity.net" = {
-              #   enable = true;
-              #   repo = "${packageName}/${packageName}dev";
-              #   username = "admin";
-              #   password = "$ARTIFACT_REGISTRY_PASSWORD";
-              # };
-              "us-central1-docker.pkg.dev" = {
-                enable = true;
-                repo = "${gcpProjectId}/${packageName}/${packageName}dev";
-                username = "_json_key_base64";
-                password = "$ENCODED_GAR_SA_CREDS";
-              };
-            };
-            imageFiles = builtins.map (sys: self.packages.${sys}.devcontainerImage) includedSystems;
-            tags = [
-              (builtins.getEnv "GIT_SHA_SHORT")
-              (builtins.getEnv "GIT_SHA")
-              (builtins.getEnv "GIT_REF")
-              "dev"
-            ];
-          };
-
-          pyrovelocitycodeManifest = inputs'.flocken.legacyPackages.mkDockerManifest {
-            inherit version;
-            github = {
-              enable = false;
-              enableRegistry = false;
-              token = "$GH_TOKEN";
-            };
-            autoTags = {
-              branch = false;
-            };
-            registries = {
-              # "ghcr.io" = {
-              #   repo = lib.mkForce "${gitHubOrg}/${packageName}code";
-              # };
-              # "cr.cluster.pyrovelocity.net" = {
-              #   enable = true;
-              #   repo = "${packageName}/${packageName}code";
-              #   username = "admin";
-              #   password = "$ARTIFACT_REGISTRY_PASSWORD";
-              # };
-              "us-central1-docker.pkg.dev" = {
-                enable = true;
-                repo = "${gcpProjectId}/${packageName}/${packageName}code";
-                username = "_json_key_base64";
-                password = "$ENCODED_GAR_SA_CREDS";
-              };
-            };
-            imageFiles = builtins.map (sys: self.packages.${sys}.codeImage) includedSystems;
-            tags = [
-              (builtins.getEnv "GIT_SHA_SHORT")
-              (builtins.getEnv "GIT_SHA")
-              (builtins.getEnv "GIT_REF")
-              "dev"
-            ];
-          };
-
-          pyrovelocityjupyterManifest = inputs'.flocken.legacyPackages.mkDockerManifest {
-            inherit version;
-            github = {
-              enable = false;
-              enableRegistry = false;
-              token = "$GH_TOKEN";
-            };
-            autoTags = {
-              branch = false;
-            };
-            registries = {
-              # "ghcr.io" = {
-              #   repo = lib.mkForce "${gitHubOrg}/${packageName}jupyter";
-              # };
-              # "cr.cluster.pyrovelocity.net" = {
-              #   enable = true;
-              #   repo = "${packageName}/${packageName}jupyter";
-              #   username = "admin";
-              #   password = "$ARTIFACT_REGISTRY_PASSWORD";
-              # };
-              "us-central1-docker.pkg.dev" = {
-                enable = true;
-                repo = "${gcpProjectId}/${packageName}/${packageName}jupyter";
-                username = "_json_key_base64";
-                password = "$ENCODED_GAR_SA_CREDS";
-              };
-            };
-            imageFiles = builtins.map (sys: self.packages.${sys}.jupyterImage) includedSystems;
-            tags = [
-              (builtins.getEnv "GIT_SHA_SHORT")
-              (builtins.getEnv "GIT_SHA")
-              (builtins.getEnv "GIT_REF")
-              "dev"
-            ];
-          };
         };
       };
     };
