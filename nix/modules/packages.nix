@@ -36,9 +36,6 @@
           ps.black
           ps.ruff
           ps.mypy
-          ps.pyright
-          ps.pre-commit
-          ps.pre-commit-hooks
           ps.ipdb
           ps.ipython
           ps.jupyter
@@ -63,9 +60,9 @@
           ps.black
           ps.ruff
           ps.mypy
-          ps.pyright
-          ps.pre-commit
-          ps.pre-commit-hooks
+          # ps.pyright  # pyright is a node package, not a python package
+          # ps.pre-commit  # pre-commit is a system package
+          # ps.pre-commit-hooks  # part of pre-commit
           ps.ipdb
           ps.ipython
           ps.jupyter
@@ -103,6 +100,8 @@
         expat
         mpdecimal
         libxcrypt
+        pyright  # TypeScript-based type checker for Python
+        pre-commit  # Pre-commit hooks framework
       ];
 
       # Extra system packages for CUDA support
