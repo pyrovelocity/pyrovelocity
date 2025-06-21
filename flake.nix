@@ -27,15 +27,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     
-    # Keep poetry2nix for compatibility during migration
-    poetry2nix = {
-      url = github:nix-community/poetry2nix;
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        flake-utils.follows = "flake-utils";
-        systems.follows = "systems";
-      };
-    };
+    # poetry2nix removed - migration to uv2nix complete
     
     flocken = {
       url = "github:mirkolenz/flocken/v2";
@@ -63,13 +55,11 @@
     extra-trusted-public-keys = [
       "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
       "pyproject-nix.cachix.org-1:UNzugsOlQIu2iOz0VyZNBQm2JSrL/kwxeCcFGw+jMe0="
-      "poetry2nix.cachix.org-1:eXpeBJl0EQjO+vs9/1cUq19BH1LLKQT9HScbJDeeHaA="
       "pyrovelocity.cachix.org-1:+aX2YY45ZywieTsD2CnXLedN8RfKuRl6vL7+rLTCgnc="
     ];
     extra-substituters = [
       "https://nix-community.cachix.org"
       "https://pyproject-nix.cachix.org"
-      "https://poetry2nix.cachix.org"
       "https://pyrovelocity.cachix.org"
     ];
     download-buffer-size = 524288000; # 500 MiB (1024 * 1024 * 500)
@@ -110,17 +100,7 @@
           then ["x86_64-linux" "aarch64-linux"]
           else builtins.filter (sys: sys != "") (builtins.split " " envVar);
 
-        # Legacy packages for containers (will be migrated later)
-        defaultPackages = import ./nix/pkgs {
-          inherit system pkgs;
-        };
-        sysPackages = defaultPackages.sysPackages;
-        extraSysPackages = defaultPackages.extraSysPackages;
-        coreDevPackages = defaultPackages.coreDevPackages;
-        devPackages = defaultPackages.devPackages;
-
-        # Legacy container configuration (to be migrated in Phase 3)
-        buildMultiUserNixImage = import ("${inputs.nixpod.outPath}" + "/containers/nix.nix");
+        # All functionality moved to nix/modules/ - no legacy imports needed
       in {
         formatter = pkgs.alejandra;
 
@@ -134,8 +114,7 @@
           };
           overlays = [
             inputs.gitignore.overlay
-            # Keep poetry2nix overlay for compatibility during migration
-            inputs.poetry2nix.overlays.default
+            # poetry2nix overlay removed - migration complete
           ];
         };
       };
