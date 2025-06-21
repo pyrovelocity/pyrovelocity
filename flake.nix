@@ -114,7 +114,6 @@
           };
           overlays = [
             inputs.gitignore.overlay
-            # poetry2nix overlay removed - migration complete
           ];
         };
       };
