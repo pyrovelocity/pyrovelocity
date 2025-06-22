@@ -46,6 +46,8 @@
       inputs.home-manager.follows = "home-manager";
       inputs.systems.follows = "systems";
     };
+    git-hooks.url = "github:cachix/git-hooks.nix";
+    git-hooks.flake = false;
   };
 
   nixConfig = {
@@ -82,14 +84,13 @@
         config,
         ...
       }: let
-        # Configuration
         gitHubOrg = "pinellolab";
         packageName = "pyrovelocity";
         version = builtins.getEnv "VERSION";
         isVersionNonEmpty = builtins.isString version && builtins.stringLength version > 0;
         gcpProjectId = builtins.getEnv "GCP_PROJECT_ID";
 
-        # System configuration for container builds
+        # system configuration for container builds
         includedSystems = let
           envVar = builtins.getEnv "NIX_IMAGE_SYSTEMS";
         in
@@ -97,22 +98,9 @@
           then ["x86_64-linux" "aarch64-linux"]
           else builtins.filter (sys: sys != "") (builtins.split " " envVar);
 
-        # All functionality moved to nix/modules/ - no legacy imports needed
+        # see nix/modules/
       in {
         formatter = pkgs.alejandra;
-
-        # Note: devShells and packages are provided by modules/packages.nix
-        
-        # Configure nixpkgs with overlays - keeping minimal for uv2nix migration
-        _module.args.pkgs = import inputs.nixpkgs {
-          inherit system;
-          config = {
-            allowUnfree = true;
-          };
-          overlays = [
-            inputs.gitignore.overlay
-          ];
-        };
       };
     };
 }
