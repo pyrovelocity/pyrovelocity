@@ -16,7 +16,6 @@
     let
       # Define supported Python versions
       pythonVersions = {
-        py310 = pkgs.python310;
         py311 = pkgs.python311;
         py312 = pkgs.python312;
       };
