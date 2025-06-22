@@ -1,8 +1,8 @@
+{ inputs, ... }:
 {
-  inputs,
-  ...
-}:
-{
+  imports = [
+    (inputs.git-hooks + /flake-module.nix)
+  ];
   perSystem =
     {
       config,
@@ -12,15 +12,13 @@
       ...
     }:
     {
-      # Provide a simple pre-commit devShell for compatibility
-      # This creates an empty devShell that other modules can reference
-      pre-commit.devShell = pkgs.mkShell {
-        name = "pre-commit-shell";
-        packages = with pkgs; [
-          pre-commit
-          ruff
-          pyright
-        ];
+      pre-commit.settings = {
+        hooks = {
+          nixfmt-rfc-style.enable = true;
+          ruff.enable = true;
+          ruff-format.enable = true;
+          taplo.enable = true;
+        };
       };
     };
 }
