@@ -49,7 +49,7 @@ help-targets: ## Print commands for all targets matching a given pattern. eval "
 #-------------------------
 
 test: ## Run tests. See pyproject.toml for configuration.
-	poetry run pytest
+	uv run pytest
 
 test-bazel: ## Run tests with Bazel.
 test-bazel:
@@ -62,41 +62,41 @@ test-bazel-nodocs: ## Run tests with Bazel excluding doctests.
 	bazel test //src/... -- -//src/pyrovelocity:xdoctest
 
 test-cov-xml: ## Run tests with coverage
-	poetry run pytest --cov-report=xml
+	uv run pytest --cov-report=xml
 
 precommit-run: ## Run pre-commit hooks
 	pre-commit run -a
 
 precommit-install:
-	poetry run pre-commit install -t pre-commit
-	poetry run pre-commit install -t post-commit
-	poetry run pre-commit install -t post-checkout
+	uv run pre-commit install -t pre-commit
+	uv run pre-commit install -t post-commit
+	uv run pre-commit install -t post-checkout
 
 precommit-uninstall:
-	poetry run pre-commit uninstall -t pre-commit
-	poetry run pre-commit uninstall -t post-commit
-	poetry run pre-commit uninstall -t post-checkout
+	uv run pre-commit uninstall -t pre-commit
+	uv run pre-commit uninstall -t post-commit
+	uv run pre-commit uninstall -t post-checkout
 
 lint: ## Run linter
-	poetry run ruff format .
-	poetry run ruff --fix .
+	uv run ruff format .
+	uv run ruff --fix .
 
 lint-check: ## Run linter in check mode
-	poetry run ruff format --check .
-	poetry run ruff .
+	uv run ruff format --check .
+	uv run ruff .
 
 typecheck: ## Run typechecker
-	poetry run pyright
+	uv run pyright
 	
 docs-clean: ## Clean documentation
 	rm -rf site
 
 docs-build: ## Build documentation
-	poetry run sphinx-build docs site
+	uv run sphinx-build docs site
 
 docs-serve: ## Serve documentation
 docs-serve:
-	poetry run sphinx-autobuild docs site --open-browser
+	uv run sphinx-autobuild docs site --open-browser
 
 nbs-build: ## Build notebooks
 	quartodoc build --verbose --config nbs/_quarto.yml
@@ -109,14 +109,13 @@ nbs-render: ## Render notebooks
 nbs-serve: ## Serve notebooks
 	quarto preview nbs --no-browser
 
-lock-poetry: ## Lock poetry dependencies.
-	poetry lock --no-update
+lock-uv: ## Lock UV dependencies.
+	uv lock
 
-poetry-venv-local: ## Set poetry to use local virtualenvs. See `poetry.toml`.
-	poetry config --list
-	poetry config --local --list
-	poetry config --local virtualenvs.in-project true
-	poetry config --local --list
+uv-venv-local: ## Check UV virtual environment configuration.
+	@echo "UV uses .venv by default - no additional configuration needed"
+	@echo "Current UV project info:"
+	uv info
 
 get-source-hash: ## Get hash for branch source archive.
 	curl -sL https://github.com/$(GH_REPO)/archive/refs/heads/$(GIT_REF).tar.gz | openssl dgst -sha256
@@ -126,20 +125,11 @@ PIP_REQUIREMENTS_NAME ?= requirements-main
 
 lock-pip: ## Export requirements.txt for pip.
 lock-pip:
-	poetry export \
-	--format=requirements.txt \
-	--with=test \
-	--with=workflows \
-	--output=$(PIP_REQUIREMENTS_NAME).txt \
-	--without-hashes
-	poetry export \
-	--format=requirements.txt \
-	--with=test \
-	--with=workflows \
-	--output=$(PIP_REQUIREMENTS_NAME)-hashed.txt
+	uv export --format requirements-txt --output $(PIP_REQUIREMENTS_NAME).txt --no-hashes
+	uv export --format requirements-txt --output $(PIP_REQUIREMENTS_NAME)-hashed.txt
 
 lock-pip-cpu: ## Export requirements-cpu.txt for pip.
-lock-pip-cpu: lock-poetry
+lock-pip-cpu: lock-uv
 	make lock-pip PIP_REQUIREMENTS_NAME=requirements-cpu
 
 lock-conda: ## Export environment yaml and lock files for conda. (see pyproject.toml).
@@ -154,11 +144,11 @@ lock-bazel: ## Export requirements-bazel.txt for bazel.
 	make cache-requirements-bazel
 
 # make lock-bazel
-lock: ## Lock poetry, pip, and conda lock files.
-lock: lock-poetry 
+lock: ## Lock UV, pip, and conda lock files.
+lock: lock-uv 
 	make lock-pip 
 	make lock-conda
-	@echo "updated poetry, pip, bazel, and conda lock files"
+	@echo "updated uv, pip, bazel, and conda lock files"
 
 meta-bazel: ## Print bazel meta information.
 meta-bazel:
@@ -199,7 +189,7 @@ cache-requirements-bazel: ## Cache bazel python requirements as OS specific requ
 #---------------------
 
 run-help: ## Print hydra help for execute script.
-	poetry run pyrovelocity --help
+	uv run pyrovelocity --help
 
 # Capture additional arguments to pass to hydra-zen cli
 # supports passing hydra overrides as ARGS, e.g.:
@@ -222,7 +212,7 @@ run-subset: ## Run with a specific dataset subset. Use DATASET_SUBSET="pancreas 
 	done; \
 	registry="$${registry%,}}"; \
 	echo "Registry configuration: $$registry"; \
-	poetry run pyrovelocity -c job "entity_config.inputs._args_.0.dataset_registry=$$registry" $(HYDRA_OVERRIDES)
+	uv run pyrovelocity -c job "entity_config.inputs._args_.0.dataset_registry=$$registry" $(HYDRA_OVERRIDES)
 
 # Any of the run* targets can be run with a specific dataset subset by setting 
 .PHONY: run-instructions
@@ -249,22 +239,22 @@ run-instructions: ## Print a copy-pastable dataset registry template for manual 
 
 .PHONY: run
 run: ## Run registered workflow in remote dev mode. (default)
-	poetry run pyrovelocity $(HYDRA_OVERRIDES)
+	uv run pyrovelocity $(HYDRA_OVERRIDES)
 
 run-dev: ## Run registered workflow in remote dev mode. (ci default)
-	poetry run pyrovelocity execution_context=remote_dev $(HYDRA_OVERRIDES)
+	uv run pyrovelocity execution_context=remote_dev $(HYDRA_OVERRIDES)
 
 run-prod: ## Run registered workflow in remote prod mode. (ci default)
-	poetry run pyrovelocity execution_context=remote_prod $(HYDRA_OVERRIDES)
+	uv run pyrovelocity execution_context=remote_prod $(HYDRA_OVERRIDES)
 
 run-local-cluster: ## Run registered workflow in local cluster dev mode.
-	poetry run pyrovelocity execution_context=local_cluster_dev $(HYDRA_OVERRIDES)
+	uv run pyrovelocity execution_context=local_cluster_dev $(HYDRA_OVERRIDES)
 
 run-local: ## Run registered workflow in local shell mode. (only with all python tasks)
-	poetry run pyrovelocity execution_context=local_shell $(HYDRA_OVERRIDES)
+	uv run pyrovelocity execution_context=local_shell $(HYDRA_OVERRIDES)
 
 run-async: ## Run registered workflow (async).
-	poetry run pyrovelocity execution_context.wait=False
+	uv run pyrovelocity execution_context.wait=False
 
 run-check-image: ## Check workflow image exists.
 	crane ls $(WORKFLOW_IMAGE) | grep "$(GIT_REF)\|$(GIT_SHA)\|$(GIT_SHA_SHORT)"
