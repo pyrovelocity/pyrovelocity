@@ -41,9 +41,29 @@
 
           # Build input overrides for packages requiring specific build dependencies
           buildInputsOverrides = {
+            antlr4-python3-runtime = prev.antlr4-python3-runtime.overrideAttrs (old: {
+              buildInputs = (old.buildInputs or [ ]) ++ [ final.setuptools ];
+            });
+            asciitree = prev.asciitree.overrideAttrs (old: {
+              buildInputs = (old.buildInputs or [ ]) ++ [ final.setuptools ];
+            });            
             cloudpickle = prev.cloudpickle.overrideAttrs (old: {
               buildInputs = (old.buildInputs or [ ]) ++ [ final.flit-core ];
             });
+            docrep = prev.docrep.overrideAttrs (old: {
+              buildInputs = (old.buildInputs or [ ]) ++ [ final.setuptools ];
+            });            
+            duckdb = prev.duckdb.overrideAttrs (old: {
+              nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [
+                (final.resolveBuildSystem {
+                  pybind11 = [ ];
+                })
+              ];
+              buildInputs = (old.buildInputs or [ ]) ++ [ final.setuptools ];
+            });            
+            google-crc32c = prev.google-crc32c.overrideAttrs (old: {
+              buildInputs = (old.buildInputs or [ ]) ++ [ final.setuptools ];
+            });            
             feather-format = prev.feather-format.overrideAttrs (old: {
               buildInputs = (old.buildInputs or [ ]) ++ [ final.setuptools ];
             });
@@ -56,6 +76,9 @@
             hydra-zen = prev.hydra-zen.overrideAttrs (old: {
               buildInputs = (old.buildInputs or [ ]) ++ [ final.setuptools ];
             });
+            loompy = prev.loompy.overrideAttrs (old: {
+              buildInputs = (old.buildInputs or [ ]) ++ [ final.setuptools ];
+            });            
             marshmallow-jsonschema = prev.marshmallow-jsonschema.overrideAttrs (old: {
               buildInputs = (old.buildInputs or [ ]) ++ [ final.setuptools ];
             });
@@ -69,7 +92,66 @@
               buildInputs = (old.buildInputs or [ ]) ++ [ pkgs.tbb_2021_11 ];
             });
             pqdata = prev.pqdata.overrideAttrs (old: {
-              buildInputs = (old.buildInputs or [ ]) ++ [ final.hatchling final.hatch-vcs ];
+              buildInputs = (old.buildInputs or [ ]) ++ [ 
+                final.hatchling 
+                final.hatch-vcs 
+                final.pathspec 
+                final.pluggy 
+                final.setuptools-scm 
+                final.setuptools 
+                final.trove-classifiers
+              ];
+            });
+            progressbar33 = prev.progressbar33.overrideAttrs (old: {
+              buildInputs = (old.buildInputs or [ ]) ++ [ final.setuptools ];
+            });            
+            pyperclip = prev.pyperclip.overrideAttrs (old: {
+              buildInputs = (old.buildInputs or [ ]) ++ [ final.setuptools ];
+            });            
+            ruamel-yaml-clib = prev.ruamel-yaml-clib.overrideAttrs (old: {
+              buildInputs = (old.buildInputs or [ ]) ++ [ final.setuptools ];
+            });
+            scalene = prev.scalene.overrideAttrs (old: {
+              buildInputs = (old.buildInputs or [ ]) ++ [ final.setuptools ];
+            });
+            scikit-learn = prev.scikit-learn.overrideAttrs (old: {
+              nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [
+                (final.resolveBuildSystem {
+                  cython = [ ];
+                  meson = [ ];
+                  meson-python = [ ];
+                  ninja = [ ];
+                  numpy = [ ];
+                  scipy = [ ];
+                })
+              ];
+            });
+            scipy = prev.scipy.overrideAttrs (old: {
+              buildInputs = (old.buildInputs or [ ]) ++ [
+                pkgs.openblas
+                pkgs.pkg-config
+                pkgs.suitesparse
+              ];
+              dontUseCmakeConfigure = true;
+              nativeBuildInputs =
+                (old.nativeBuildInputs or [ ])
+                ++ [
+                  pkgs.cmake
+                  pkgs.gfortran
+                  pkgs.meson
+                  pkgs.pkg-config
+                ]
+                ++ [
+                  (final.resolveBuildSystem {
+                    cython = [ ];
+                    meson-python = [ ];
+                    ninja = [ ];
+                    numpy = [ ];
+                    pybind11 = [ ];
+                    pythran = [ ];
+                    wheel = [ ];
+                  })
+                ];
             });
             session-info = prev.session-info.overrideAttrs (old: {
               buildInputs = (old.buildInputs or [ ]) ++ [ final.setuptools ];
@@ -78,6 +160,9 @@
               buildInputs = (old.buildInputs or [ ]) ++ [ final.setuptools ];
             });
             typechecks = prev.typechecks.overrideAttrs (old: {
+              buildInputs = (old.buildInputs or [ ]) ++ [ final.setuptools ];
+            });
+            untokenize = prev.untokenize.overrideAttrs (old: {
               buildInputs = (old.buildInputs or [ ]) ++ [ final.setuptools ];
             });
             xdoctest = prev.xdoctest.overrideAttrs (old: {
@@ -89,7 +174,7 @@
           conditionalOverrides =
             if pkgs.stdenv.isDarwin then
               {
-                grpcio = prev.grpcio.override { preferWheel = true; };
+                # grpcio = prev.grpcio.override { preferWheel = true; };
               }
             else if pkgs.stdenv.hostPlatform.system == "x86_64-linux" then
               {
@@ -136,17 +221,17 @@
 
           # Wheel preference overrides
           wheelOverrides = {
-            dm-tree = prev.dm-tree.override { preferWheel = true; };
-            duckdb = prev.duckdb.override { preferWheel = true; };
-            h5py = prev.h5py.override { preferWheel = true; };
-            hydra-core = prev.hydra-core.override { preferWheel = true; };
-            hydra-joblib-launcher = prev.hydra-joblib-launcher.override { preferWheel = true; };
-            mkdocs-material = prev.mkdocs-material.override { preferWheel = false; };
-            pyarrow = prev.pyarrow.override { preferWheel = true; };
-            scikit-learn = prev.scikit-learn.override { preferWheel = true; };
-            scipy = prev.scipy.override { preferWheel = true; };
-            tensorstore = prev.tensorstore.override { preferWheel = true; };
-            yarl = prev.yarl.override { preferWheel = true; };
+            # dm-tree = prev.dm-tree.override { preferWheel = true; };
+            # duckdb = prev.duckdb.override { preferWheel = true; };
+            # h5py = prev.h5py.override { preferWheel = true; };
+            # hydra-core = prev.hydra-core.override { preferWheel = true; };
+            # hydra-joblib-launcher = prev.hydra-joblib-launcher.override { preferWheel = true; };
+            # mkdocs-material = prev.mkdocs-material.override { preferWheel = false; };
+            # pyarrow = prev.pyarrow.override { preferWheel = true; };
+            # scikit-learn = prev.scikit-learn.override { preferWheel = true; };
+            # scipy = prev.scipy.override { preferWheel = true; };
+            # tensorstore = prev.tensorstore.override { preferWheel = true; };
+            # yarl = prev.yarl.override { preferWheel = true; };
           };
 
           # Special NVIDIA packages requiring complex overrides
@@ -211,7 +296,7 @@
           buildInputsOverrides
           nvidiaCudaPostFixupOnlyPackages
           conditionalOverrides
-          wheelOverrides
+          # wheelOverrides
           specialNvidiaOverrides
           packageSpecificOverrides
         ];
