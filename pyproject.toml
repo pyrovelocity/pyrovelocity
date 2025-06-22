@@ -60,6 +60,7 @@ dependencies = [
     "pydantic>=2.8.0",
     "pypdf>5.3.0",
     "pyro-ppl>=1.9.1",
+    "pythran>=0.16.1",
     "lightning>=2.0.0",
     "pytorch-lightning>=2.0.0",
     "pyyaml>=6.0.1",
@@ -99,8 +100,8 @@ Changelog = "https://github.com/pinellolab/pyrovelocity/releases"
 pyrovelocity = "pyrovelocity.workflows.cli:main"
 pyrovelocity-notebooks = "pyrovelocity.workflows.notebooks:cli"
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "black[jupyter]>=23.3.0",
     "mypy>=1.5.1",
     "pre-commit>=2.16.0",
