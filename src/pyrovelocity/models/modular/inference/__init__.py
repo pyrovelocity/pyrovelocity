@@ -33,14 +33,6 @@ from pyrovelocity.models.modular.inference.unified import (
     create_inference_state,
 )
 
-from pyrovelocity.models.modular.inference.posterior import (
-    sample_posterior,
-    compute_velocity,
-    compute_uncertainty,
-    analyze_posterior,
-    create_inference_data,
-    format_anndata_output,
-)
 
 __all__ = [
     # Config
@@ -63,11 +55,4 @@ __all__ = [
     "extract_posterior_samples",
     "posterior_predictive",
     "create_inference_state",
-    # Posterior
-    "sample_posterior",
-    "compute_velocity",
-    "compute_uncertainty",
-    "analyze_posterior",
-    "create_inference_data",
-    "format_anndata_output",
 ]
