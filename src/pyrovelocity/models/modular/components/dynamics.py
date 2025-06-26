@@ -11,7 +11,7 @@ validation against the legacy implementation:
 - LegacyDynamicsModel: Legacy RNA velocity dynamics model that exactly matches the legacy implementation
 """
 
-from typing import Any, ClassVar, Dict, Optional, Tuple, Union
+from typing import Any, ClassVar, Dict, List, Optional, Tuple, Union
 
 import torch
 from beartype import beartype
@@ -27,7 +27,13 @@ from pyrovelocity.models.modular.interfaces import (
     VelocityTensor,
 )
 from pyrovelocity.models.modular.registry import DynamicsModelRegistry
-from pyrovelocity.models.modular.utils.context_utils import validate_context
+
+
+def validate_context(component_name: str, context: Dict[str, Any], required_keys: List[str] = None, tensor_keys: List[str] = None) -> bool:
+    """Validate that context contains required keys."""
+    if required_keys:
+        return all(key in context for key in required_keys)
+    return True
 
 
 @DynamicsModelRegistry.register("legacy")

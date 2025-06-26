@@ -11,7 +11,7 @@ validation against the legacy implementation:
 - LegacyLikelihoodModel: Legacy likelihood model for observed counts that exactly matches the legacy implementation
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import pyro
 import torch
@@ -20,7 +20,13 @@ from beartype import beartype
 
 from pyrovelocity.models.modular.interfaces import LikelihoodModel
 from pyrovelocity.models.modular.registry import LikelihoodModelRegistry
-from pyrovelocity.models.modular.utils.context_utils import validate_context
+
+
+def validate_context(component_name: str, context: Dict[str, Any], required_keys: List[str] = None, tensor_keys: List[str] = None) -> bool:
+    """Validate that context contains required keys."""
+    if required_keys:
+        return all(key in context for key in required_keys)
+    return True
 
 
 class PiecewiseActivationPoissonLikelihoodModel:
