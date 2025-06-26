@@ -13,9 +13,4 @@ These utilities are designed to be used by Protocol-First component implementati
 that directly implement the Protocol interfaces without inheriting from base classes.
 """
 
-from pyrovelocity.models.modular.utils.context_utils import create_error, validate_context
-
-__all__ = [
-    "create_error",
-    "validate_context",
-]
+__all__ = []
