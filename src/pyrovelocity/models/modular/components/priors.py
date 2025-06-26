@@ -24,7 +24,11 @@ from pyro.nn import PyroModule
 
 from pyrovelocity.models.modular.interfaces import PriorModel
 from pyrovelocity.models.modular.registry import PriorModelRegistry
-from pyrovelocity.models.modular.utils.pyro_utils import register_buffer
+
+
+def register_buffer(obj: object, name: str, tensor: torch.Tensor) -> None:
+    """Register a buffer in a PyTorch/Pyro module."""
+    setattr(obj, name, tensor)
 
 
 class PyroModuleMixin:

@@ -14,10 +14,8 @@ that directly implement the Protocol interfaces without inheriting from base cla
 """
 
 from pyrovelocity.models.modular.utils.context_utils import create_error, validate_context
-from pyrovelocity.models.modular.utils.pyro_utils import register_buffer
 
 __all__ = [
     "create_error",
-    "validate_context", 
-    "register_buffer",
+    "validate_context",
 ]
