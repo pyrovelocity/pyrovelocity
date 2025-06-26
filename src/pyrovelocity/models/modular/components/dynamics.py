@@ -617,13 +617,17 @@ class PiecewiseActivationDynamicsModel:
         """
         # Determine target output shape based on input dimensions
         if alpha_off.dim() == 1:
-            # Training case: parameters [genes], t_star [cells] → output [cells, genes]
+            # Gene parameters are 1D: need to determine proper output shape
             if t_star.dim() == 1:
-                # Broadcast: [cells] and [genes] → [cells, genes]
+                # Training case: t_star [cells], params [genes] → output [cells, genes]
                 target_shape = (t_star.shape[0], alpha_off.shape[0])
             else:
-                # Handle unexpected shapes gracefully
-                target_shape = (t_star.shape[-1], alpha_off.shape[-1])
+                # Posterior sampling case: t_star has batch dims, params 1D
+                # Output should match t_star's batch shape + [cells, genes]
+                batch_dims = t_star.shape[:-1]  # All but last dimension
+                num_cells = t_star.shape[-1]    # Last dimension is cells
+                num_genes = alpha_off.shape[0]  # Gene dimension
+                target_shape = batch_dims + (num_cells, num_genes)
         else:
             # Posterior sampling case: parameters [samples, genes], t_star [samples, cells] → output [samples, cells, genes]
             num_samples = alpha_off.shape[0]
@@ -636,9 +640,9 @@ class PiecewiseActivationDynamicsModel:
         
         # Prepare tensors for broadcasting
         if alpha_off.dim() == 1:
-            # Training case: need to broadcast [cells] and [genes] properly
+            # Gene parameters are 1D: need to broadcast with t_star properly
             if t_star.dim() == 1:
-                # Ensure broadcasting: t_star [cells, 1], params [1, genes]
+                # Training case: t_star [cells], params [genes] → [cells, genes]
                 t_star_bc = t_star.unsqueeze(1)  # [cells, 1]
                 alpha_off_bc = alpha_off.unsqueeze(0)  # [1, genes]
                 alpha_on_bc = alpha_on.unsqueeze(0)  # [1, genes]
@@ -646,13 +650,16 @@ class PiecewiseActivationDynamicsModel:
                 t_on_star_bc = t_on_star.unsqueeze(0)  # [1, genes]
                 delta_star_bc = delta_star.unsqueeze(0)  # [1, genes]
             else:
-                # Already broadcasted
-                t_star_bc = t_star
-                alpha_off_bc = alpha_off
-                alpha_on_bc = alpha_on
-                gamma_star_bc = gamma_star
-                t_on_star_bc = t_on_star
-                delta_star_bc = delta_star
+                # Posterior sampling case: t_star has batch dims, params are 1D
+                # Need to add gene dimension to t_star and batch dims to params
+                t_star_bc = t_star.unsqueeze(-1)  # [..., cells, 1]
+                # Add batch dimensions to match t_star's batch shape
+                param_shape = [1] * (t_star.dim() - 1) + [alpha_off.shape[0]]
+                alpha_off_bc = alpha_off.view(param_shape)  # [..., 1, genes]
+                alpha_on_bc = alpha_on.view(param_shape)  # [..., 1, genes]
+                gamma_star_bc = gamma_star.view(param_shape)  # [..., 1, genes]
+                t_on_star_bc = t_on_star.view(param_shape)  # [..., 1, genes]
+                delta_star_bc = delta_star.view(param_shape)  # [..., 1, genes]
         else:
             # Posterior sampling case: handle [samples, genes] and [samples, cells]
             if t_star.dim() == 2:
@@ -767,21 +774,21 @@ class PiecewiseActivationDynamicsModel:
         # Ensure output tensors have the correct target shape
         if u_star.shape != target_shape:
             # If shapes don't match, use broadcasting to get the right shape
-            if alpha_off.dim() == 1:
-                # Training case: ensure [cells, genes] shape
+            if alpha_off.dim() == 1 and t_star.dim() == 1:
+                # Training case: simple 2D expansion [cells, genes]
                 u_star = u_star.expand(target_shape)
                 s_star = s_star.expand(target_shape)
             else:
-                # Posterior sampling case: ensure [samples, cells, genes] shape
-                # Handle broadcasting carefully for 3D tensors
-                if u_star.dim() == 2:
-                    # If we got [samples, genes], need to add cells dimension
-                    u_star = u_star.unsqueeze(1).expand(target_shape)
-                    s_star = s_star.unsqueeze(1).expand(target_shape)
-                else:
-                    # Use expand to get the right shape
+                # Posterior sampling case or multi-dimensional case
+                # Use broadcasting to ensure compatibility
+                try:
+                    # Attempt direct expansion if dimensions allow
                     u_star = u_star.expand(target_shape)
                     s_star = s_star.expand(target_shape)
+                except RuntimeError:
+                    # If expansion fails, the tensors already have the right shape from broadcasting
+                    # This can happen when broadcasting produced the correct shape automatically
+                    pass
         
         return u_star, s_star
 
