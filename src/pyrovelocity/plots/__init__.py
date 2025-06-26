@@ -30,14 +30,6 @@ from pyrovelocity.plots._uncertainty import (
     plot_state_uncertainty,
 )
 from pyrovelocity.plots._vector_fields import plot_vector_field_summary
-from pyrovelocity.plots.model_comparison import (
-    plot_diagnostic_metrics,
-    plot_model_comparison,
-    plot_model_comparison_grid,
-    plot_pointwise_comparison,
-    plot_posterior_predictive_check,
-    plot_waic_loo_comparison,
-)
 from pyrovelocity.plots.predictive_checks import (
     plot_posterior_predictive_checks,
     plot_prior_predictive_checks,
