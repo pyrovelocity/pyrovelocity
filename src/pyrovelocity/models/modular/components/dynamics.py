@@ -541,8 +541,9 @@ class PiecewiseActivationDynamicsModel:
             s_expected = torch.relu(s_expected) + one
             
             # Create latent variables with proper event_dim
-            ut = pyro.deterministic("ut", u_expected, event_dim=1)
-            st = pyro.deterministic("st", s_expected, event_dim=1)
+            # Both cells and genes dimensions should be event dimensions
+            ut = pyro.deterministic("ut", u_expected, event_dim=2)
+            st = pyro.deterministic("st", s_expected, event_dim=2)
 
             # Update context with results
             context["u_expected"] = u_expected
