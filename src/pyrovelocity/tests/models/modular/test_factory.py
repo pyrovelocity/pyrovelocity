@@ -20,8 +20,8 @@ from pyrovelocity.models.modular.config import (
 )
 from pyrovelocity.models.modular.factory import (
     ComponentFactory,
-    create_legacy_model1,
     create_model_from_config,
+    create_piecewise_activation_model,
 )
 from pyrovelocity.models.modular.interfaces import (
     BatchTensor,
@@ -432,16 +432,16 @@ class TestModelCreation:
 class TestPredefinedConfigurations:
     """Tests for the predefined configurations."""
 
-    def test_create_legacy_model1(self):
-        """Test creating a legacy model."""
+    def test_create_piecewise_activation_model(self):
+        """Test creating a piecewise activation model."""
         # Ensure standard components are registered
         from pyrovelocity.models.modular.registry import (
             register_standard_components,
         )
         register_standard_components()
 
-        # Create a legacy model (this uses the real registry, not mock components)
-        model = create_legacy_model1()
+        # Create a piecewise activation model
+        model = create_piecewise_activation_model()
 
         # Check that the model is a PyroVelocityModel
         assert isinstance(model, PyroVelocityModel)
