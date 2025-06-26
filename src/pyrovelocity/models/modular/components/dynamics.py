@@ -517,7 +517,7 @@ class PiecewiseActivationDynamicsModel:
             ],
         )
 
-        if isinstance(validation_result, dict):
+        if validation_result:
             # Extract required values from context
             u_obs = context["u_obs"]
             s_obs = context["s_obs"]
@@ -560,7 +560,7 @@ class PiecewiseActivationDynamicsModel:
             return context
         else:
             # If validation failed, raise an error
-            raise ValueError(f"Error in optimized piecewise dynamics model forward pass: {validation_result.error}")
+            raise ValueError(f"Error in optimized piecewise dynamics model forward pass: validation failed")
 
     def _get_cell_time(
         self, 

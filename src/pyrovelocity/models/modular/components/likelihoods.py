@@ -82,7 +82,7 @@ class PiecewiseActivationPoissonLikelihoodModel:
             tensor_keys=["u_obs", "s_obs", "ut", "st"],
         )
 
-        if isinstance(validation_result, dict):
+        if validation_result:
             # Extract required values from context
             u_obs = context["u_obs"]
             s_obs = context["s_obs"]
@@ -181,7 +181,7 @@ class PiecewiseActivationPoissonLikelihoodModel:
             return context
         else:
             # If validation failed, raise an error
-            raise ValueError(f"Error in piecewise activation likelihood model forward pass: {validation_result.error}")
+            raise ValueError(f"Error in piecewise activation likelihood model forward pass: validation failed")
 
     def __call__(
         self,
@@ -399,7 +399,7 @@ class LegacyLikelihoodModel:
             tensor_keys=["u_obs", "s_obs", "u_expected", "s_expected"],
         )
 
-        if isinstance(validation_result, dict):
+        if validation_result:
             # Extract required values from context
             u_obs = context["u_obs"]
             s_obs = context["s_obs"]
@@ -482,7 +482,7 @@ class LegacyLikelihoodModel:
             return context
         else:
             # If validation failed, raise an error
-            raise ValueError(f"Error in likelihood model forward pass: {validation_result.error}")
+            raise ValueError(f"Error in likelihood model forward pass: validation failed")
 
     @beartype
     def _preprocess_observations(self, context: Dict[str, Any]) -> Dict[str, Any]:
