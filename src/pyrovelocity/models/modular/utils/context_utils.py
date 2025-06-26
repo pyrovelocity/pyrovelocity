@@ -15,7 +15,18 @@ from typing import Any, Dict, List, Optional, Union
 import torch
 from expression import Result
 
-from pyrovelocity.models.modular.utils.core_utils import create_error
+
+def create_error(
+    component_name: str,
+    operation: str,
+    message: str,
+    details: Optional[Dict[str, Any]] = None,
+) -> Result:
+    """Create a Result.Error with component context."""
+    error_msg = f"{component_name}.{operation}: {message}"
+    if details:
+        error_msg += f" (details: {details})"
+    return Result.Error(error_msg)
 
 
 def validate_context(
