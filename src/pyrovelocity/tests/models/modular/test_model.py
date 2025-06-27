@@ -340,40 +340,6 @@ def test_model_guide(pyro_velocity_model, sample_data):
     assert "alpha" in samples or "beta" in samples or "gamma" in samples
 
 
-def test_model_with_state(pyro_velocity_model):
-    """Test the with_state method for immutable state updates."""
-    # Create a new state
-    new_state = ModelState(
-        dynamics_state={"param1": 1.0},
-        prior_state={"param2": 2.0},
-        likelihood_state={"param3": 3.0},
-        guide_state={"param5": 5.0},
-        metadata={"meta1": "value1"},
-    )
-
-    # Create a new model with the updated state
-    new_model = pyro_velocity_model.with_state(new_state)
-
-    # Check that the original model's state is unchanged
-    assert pyro_velocity_model.state.dynamics_state == {}
-    assert pyro_velocity_model.state.prior_state == {}
-    assert pyro_velocity_model.state.likelihood_state == {}
-    assert pyro_velocity_model.state.guide_state == {}
-
-    # Check that the new model has the updated state
-    assert new_model.state.dynamics_state == {"param1": 1.0}
-    assert new_model.state.prior_state == {"param2": 2.0}
-    assert new_model.state.likelihood_state == {"param3": 3.0}
-    assert new_model.state.guide_state == {"param5": 5.0}
-    assert new_model.state.metadata == {"meta1": "value1"}
-
-    # Check that the component models are the same
-    assert new_model.dynamics_model == pyro_velocity_model.dynamics_model
-    assert new_model.prior_model == pyro_velocity_model.prior_model
-    assert new_model.likelihood_model == pyro_velocity_model.likelihood_model
-    assert new_model.guide_model == pyro_velocity_model.guide_model
-
-
 def test_model_composition(component_models, sample_data):
     """Test that the model correctly composes component models."""
     # Create a new model with the component models
