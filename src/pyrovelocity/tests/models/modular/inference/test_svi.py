@@ -10,7 +10,6 @@ import torch
 # Import only the guides we're keeping
 from pyrovelocity.models.modular.components.guides import (
     AutoGuideFactory,
-    LegacyAutoGuideFactory,
 )
 from pyrovelocity.models.modular.inference.config import create_inference_config
 from pyrovelocity.models.modular.inference.svi import (
@@ -205,51 +204,5 @@ class TestSVI:
 
         # Verify values are as expected
         assert torch.allclose(samples["alpha"], torch.ones(10))
-        assert torch.allclose(samples["beta"], torch.ones(10) * 2.0)
-        assert torch.allclose(samples["gamma"], torch.ones(10) * 3.0)
-
-    def test_legacy_auto_guide_factory(self):
-        """Test using LegacyAutoGuideFactory."""
-        # Reset pyro parameter store
-        pyro.clear_param_store()
-
-        # Create a simple PyTorch model
-        def model():
-            alpha = pyro.sample("alpha", dist.LogNormal(0.0, 1.0))
-            beta = pyro.sample("beta", dist.LogNormal(0.0, 1.0))
-            gamma = pyro.sample("gamma", dist.LogNormal(0.0, 1.0))
-            return {"alpha": alpha, "beta": beta, "gamma": gamma}
-
-        # Create a LegacyAutoGuideFactory
-        guide_factory = LegacyAutoGuideFactory(
-            init_scale=0.1, add_offset=True, name="legacy_auto_guide"
-        )
-
-        # Create the guide first
-        guide = guide_factory.create_guide(model)
-
-        # Create a custom sample_posterior method for testing
-        def custom_sample_posterior(num_samples=100, **kwargs):
-            return {
-                "alpha": torch.ones(num_samples) * 1.0,
-                "beta": torch.ones(num_samples) * 2.0,
-                "gamma": torch.ones(num_samples) * 3.0,
-            }
-
-        # Monkey patch the sample_posterior method for testing
-        guide_factory.sample_posterior = custom_sample_posterior
-
-        # Now we can test the sample_posterior method
-        samples = guide_factory.sample_posterior(num_samples=10)
-
-        # Check samples
-        assert isinstance(samples, dict)
-        assert "alpha" in samples
-        assert "beta" in samples
-        assert "gamma" in samples
-        assert samples["alpha"].shape[0] == 10
-
-        # Verify values are as expected
-        assert torch.allclose(samples["alpha"], torch.ones(10) * 1.0)
         assert torch.allclose(samples["beta"], torch.ones(10) * 2.0)
         assert torch.allclose(samples["gamma"], torch.ones(10) * 3.0)
