@@ -5,10 +5,9 @@ Feature: PyroVelocity Model
 
   Background:
     Given I have input data with unspliced and spliced counts
-    And I have a StandardDynamicsModel
-    And I have a LogNormalPriorModel
-    And I have a PoissonLikelihoodModel
-    And I have a StandardObservationModel
+    And I have a PiecewiseActivationDynamicsModel
+    And I have a PiecewiseActivationPriorModel
+    And I have a PiecewiseActivationPoissonLikelihoodModel
     And I have an AutoGuideFactory
     And I have a trained PyroVelocity model
     And I have a trained PyroVelocity model with posterior samples
