@@ -20,11 +20,11 @@ for the forward method, enabling railway-oriented programming patterns.
 Examples:
     >>> import torch
     >>> import pyro
-    >>> from pyrovelocity.models.modular.factory import create_legacy_model1
+    >>> from pyrovelocity.models.modular.factory import create_piecewise_activation_model
     >>> from pyrovelocity.models.modular.model import PyroVelocityModel
     >>>
     >>> # Create a standard model with default components
-    >>> model = create_legacy_model1()
+    >>> model = create_piecewise_activation_model()
     >>>
     >>> # Generate synthetic data
     >>> u_obs = torch.randn(10, 5)  # 10 cells, 5 genes
@@ -62,10 +62,8 @@ from jaxtyping import Float
 
 from pyrovelocity.models.modular.components.guides import (
     AutoGuideFactory,
-    LegacyAutoGuideFactory,
 )
 from pyrovelocity.models.modular.components.likelihoods import (
-    LegacyLikelihoodModel,
     PiecewiseActivationPoissonLikelihoodModel,
 )
 from pyrovelocity.models.modular.data.anndata import (
