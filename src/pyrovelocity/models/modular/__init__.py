@@ -14,10 +14,6 @@ validation against the legacy implementation.
 # Import component implementations
 from pyrovelocity.models.modular.components import (
     AutoGuideFactory,
-    LegacyAutoGuideFactory,
-    LegacyDynamicsModel,
-    LegacyLikelihoodModel,
-    LogNormalPriorModel,
     PiecewiseActivationDynamicsModel,
     PiecewiseActivationPoissonLikelihoodModel,
     PiecewiseActivationPriorModel,
@@ -76,14 +72,10 @@ __all__ = [
     "ObservationModelRegistry",
     "InferenceGuideRegistry",
     # Component implementations
-    "LegacyDynamicsModel",
-    "LogNormalPriorModel",
-    "LegacyLikelihoodModel",
     "PiecewiseActivationDynamicsModel",
     "PiecewiseActivationPoissonLikelihoodModel",
     "PiecewiseActivationPriorModel",
     "AutoGuideFactory",
-    "LegacyAutoGuideFactory",
     # Factory functions
     "create_model_from_config",
 ]
