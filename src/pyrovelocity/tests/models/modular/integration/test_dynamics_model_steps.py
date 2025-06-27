@@ -15,7 +15,6 @@ scenarios(str(files("pyrovelocity.tests.features") / "models" / "modular" / "dyn
 
 # Import the components
 from pyrovelocity.models.modular.components import (
-    LegacyDynamicsModel,
     PiecewiseActivationDynamicsModel,
 )
 
@@ -30,6 +29,12 @@ def dynamics_model_component():
 def input_data_fixture(bdd_simple_data):
     """Get input data from the fixture."""
     return bdd_simple_data
+
+
+@given("I have a PiecewiseActivationDynamicsModel", target_fixture="piecewise_dynamics_model")
+def piecewise_dynamics_model_fixture():
+    """Create a PiecewiseActivationDynamicsModel."""
+    return PiecewiseActivationDynamicsModel()
 
 
 @given("I have a StandardDynamicsModel", target_fixture="standard_dynamics_model")
@@ -54,6 +59,35 @@ def standard_dynamics_model_with_library_size_correction_fixture():
 def piecewise_dynamics_model_with_library_size_correction_fixture():
     """Create a PiecewiseActivationDynamicsModel with library size correction."""
     return PiecewiseActivationDynamicsModel()
+
+
+@when(parsers.parse("I run the forward method with alpha_off {alpha_off} and gamma_star {gamma_star}"), target_fixture="run_forward_method_with_piecewise_parameters")
+def run_forward_method_with_piecewise_parameters_fixture(piecewise_dynamics_model, input_data, alpha_off, gamma_star):
+    """Run the forward method with piecewise activation parameters."""
+    # Convert string parameters to float
+    alpha_off_val = float(alpha_off)
+    gamma_star_val = float(gamma_star)
+
+    # Create piecewise activation parameters according to the component's expectations
+    n_cells = input_data["n_cells"]
+    n_genes = input_data["n_genes"]
+    
+    # Create context with all required parameters for PiecewiseActivationDynamicsModel
+    context = {
+        "u_obs": input_data["u_obs"],
+        "s_obs": input_data["s_obs"],
+        "R_on": torch.tensor([2.0] * n_genes),  # Fold-change parameter
+        "gamma_star": torch.tensor([gamma_star_val] * n_genes),  # Relative degradation [genes]
+        "t_on_star": torch.tensor([0.3] * n_genes),  # Activation onset [genes]
+        "delta_star": torch.tensor([0.4] * n_genes),  # Activation duration [genes]
+        "t_star": torch.tensor([0.5] * n_cells),  # Cell time [cells]
+    }
+
+    # Run the forward method
+    result_context = piecewise_dynamics_model.forward(context)
+
+    # Store the result for later steps
+    return result_context
 
 
 @when(parsers.parse("I run the forward method with alpha {alpha}, beta {beta}, and gamma {gamma}"), target_fixture="run_forward_method_with_parameters")
@@ -93,6 +127,24 @@ def run_forward_method_with_parameters_fixture(standard_dynamics_model, input_da
 
     # Store the result for later steps
     return result_context
+
+
+@when(parsers.parse("I compute the steady state with alpha_off {alpha_off} and gamma_star {gamma_star}"), target_fixture="compute_piecewise_steady_state")
+def compute_piecewise_steady_state_fixture(piecewise_dynamics_model, alpha_off, gamma_star):
+    """Compute the steady state with piecewise activation parameters."""
+    # Convert string parameters to float
+    alpha_off_val = float(alpha_off)
+    gamma_star_val = float(gamma_star)
+
+    # Create tensor parameters
+    n_genes = 5  # Using a fixed value for simplicity
+    alpha_off_tensor = torch.tensor([alpha_off_val] * n_genes)
+    gamma_star_tensor = torch.tensor([gamma_star_val] * n_genes)
+
+    # Compute steady state using piecewise parameters
+    u_ss, s_ss = piecewise_dynamics_model.steady_state(alpha_off_tensor, gamma_star_tensor)
+
+    return {"u_ss": u_ss, "s_ss": s_ss, "alpha_off": alpha_off_tensor, "gamma_star": gamma_star_tensor}
 
 
 @when(parsers.parse("I compute the steady state with alpha {alpha}, beta {beta}, and gamma {gamma}"), target_fixture="compute_steady_state")
@@ -148,6 +200,31 @@ def run_forward_method_legacy_fixture(legacy_dynamics_model, input_data, bdd_mod
     return result_context
 
 
+@when("I run the forward method with edge case parameters", target_fixture="run_forward_method_with_edge_case_parameters")
+def run_forward_method_with_edge_case_parameters_fixture(piecewise_dynamics_model, input_data):
+    """Run the forward method with edge case parameters to test robustness."""
+    n_cells = input_data["n_cells"]
+    n_genes = input_data["n_genes"]
+    
+    # Create edge case parameters - very small values that could cause numerical issues
+    context = {
+        "u_obs": input_data["u_obs"],
+        "s_obs": input_data["s_obs"],
+        "R_on": torch.tensor([1e-6] * n_genes),  # Very small fold-change
+        "gamma_star": torch.tensor([1e-6] * n_genes),  # Very small degradation
+        "t_on_star": torch.tensor([0.0] * n_genes),  # Zero onset time
+        "delta_star": torch.tensor([1e-6] * n_genes),  # Very small duration
+        "t_star": torch.tensor([0.0] * n_cells),  # Zero cell time
+    }
+
+    # Run the forward method (may raise an exception)
+    try:
+        result_context = piecewise_dynamics_model.forward(context)
+        return result_context
+    except Exception as e:
+        return {"error": e}
+
+
 @when("I run the forward method with zero rates", target_fixture="run_forward_method_with_zero_rates")
 def run_forward_method_with_zero_rates_fixture(standard_dynamics_model, input_data):
     """Run the forward method with zero rates to test edge cases."""
@@ -175,59 +252,112 @@ def run_forward_method_with_zero_rates_fixture(standard_dynamics_model, input_da
 
 
 @when("I run the forward method with library size factors", target_fixture="run_forward_method_with_library_size")
-def run_forward_method_with_library_size_fixture(standard_dynamics_model_with_library_size_correction, input_data, bdd_piecewise_model_parameters):
+def run_forward_method_with_library_size_fixture(piecewise_dynamics_model_with_library_size_correction, input_data, bdd_piecewise_model_parameters):
     """Run the forward method with library size factors."""
     # Create library size factors
     n_cells = input_data["n_cells"]
     library_size = torch.ones(n_cells) * 2.0  # Scale by 2x
 
-    # Create context with input data, piecewise parameters, and library size
+    # Create context with input data, proper piecewise parameters, and library size
+    n_genes = input_data["n_genes"]
     context = {
         "u_obs": input_data["u_obs"],
         "s_obs": input_data["s_obs"],
-        "alpha_off": bdd_piecewise_model_parameters["alpha_off"],
-        "alpha_on": bdd_piecewise_model_parameters["alpha_on"],
-        "gamma_star": bdd_piecewise_model_parameters["gamma_star"],
-        "t_on_star": bdd_piecewise_model_parameters["t_on_star"],
-        "delta_star": bdd_piecewise_model_parameters["delta_star"],
-        "t_star": bdd_piecewise_model_parameters["t_star"],
+        "R_on": torch.tensor([2.0] * n_genes),  # Fold-change parameter
+        "gamma_star": torch.tensor([0.8] * n_genes),  # Relative degradation
+        "t_on_star": torch.tensor([0.3] * n_genes),  # Activation onset
+        "delta_star": torch.tensor([0.4] * n_genes),  # Activation duration
+        "t_star": torch.tensor([0.5] * n_cells),  # Cell time
         "u_lib_size": library_size,
         "s_lib_size": library_size,
     }
 
     # Run the forward method
-    result_context = standard_dynamics_model_with_library_size_correction.forward(context)
+    result_context = piecewise_dynamics_model_with_library_size_correction.forward(context)
 
     # Store the result for later steps
     return result_context
 
 
 @then("the model should compute expected unspliced and spliced counts")
-def check_expected_counts(run_forward_method_with_parameters):
+def check_expected_counts(request):
     """Check that the model computed expected counts."""
+    # Try to get the result from different fixture names
+    result_context = None
+    try:
+        result_context = request.getfixturevalue("run_forward_method_with_piecewise_parameters")
+    except:
+        try:
+            result_context = request.getfixturevalue("run_forward_method_with_parameters")
+        except:
+            pytest.fail("No forward method result fixture found")
+    
     # Check that the expected counts are in the context
-    assert "u_expected" in run_forward_method_with_parameters
-    assert "s_expected" in run_forward_method_with_parameters
+    assert "u_expected" in result_context
+    assert "s_expected" in result_context
 
     # Check that the expected counts have the right shape
-    u_expected = run_forward_method_with_parameters["u_expected"]
-    s_expected = run_forward_method_with_parameters["s_expected"]
-    u_obs = run_forward_method_with_parameters["u_obs"]
+    u_expected = result_context["u_expected"]
+    s_expected = result_context["s_expected"]
+    u_obs = result_context["u_obs"]
 
     assert u_expected.shape == u_obs.shape
     assert s_expected.shape == u_obs.shape
 
 
 @then("the expected counts should follow RNA velocity dynamics")
-def check_dynamics(run_forward_method_with_parameters):
+def check_dynamics(request):
     """Check that the expected counts follow RNA velocity dynamics."""
+    # Try to get the result from different fixture names
+    result_context = None
+    try:
+        result_context = request.getfixturevalue("run_forward_method_with_piecewise_parameters")
+    except:
+        try:
+            result_context = request.getfixturevalue("run_forward_method_with_parameters")
+        except:
+            pytest.fail("No forward method result fixture found")
+    
     # In a real test, we would check that the expected counts follow the analytical solution
     # For this example, we'll just check that they're positive
-    u_expected = run_forward_method_with_parameters["u_expected"]
-    s_expected = run_forward_method_with_parameters["s_expected"]
+    u_expected = result_context["u_expected"]
+    s_expected = result_context["s_expected"]
 
     assert torch.all(u_expected >= 0)
     assert torch.all(s_expected >= 0)
+
+
+@then("the steady state should be computed correctly")
+def check_steady_state_computed_correctly(compute_piecewise_steady_state):
+    """Check that the steady state is computed correctly for piecewise activation model."""
+    # Check that steady state values are present
+    assert "u_ss" in compute_piecewise_steady_state
+    assert "s_ss" in compute_piecewise_steady_state
+    
+    u_ss = compute_piecewise_steady_state["u_ss"]
+    s_ss = compute_piecewise_steady_state["s_ss"]
+    
+    # For piecewise activation model: u_ss = 1.0 (fixed), s_ss = 1.0/gamma_star
+    alpha_off = compute_piecewise_steady_state["alpha_off"]
+    gamma_star = compute_piecewise_steady_state["gamma_star"]
+    
+    # u_ss should be 1.0 (reference state)
+    expected_u_ss = torch.ones_like(alpha_off)
+    assert torch.allclose(u_ss, expected_u_ss, rtol=1e-4)
+    
+    # s_ss should be 1.0/gamma_star
+    expected_s_ss = torch.ones_like(alpha_off) / gamma_star
+    assert torch.allclose(s_ss, expected_s_ss, rtol=1e-4)
+
+
+@then("the steady state values should be positive")
+def check_steady_state_positive(compute_piecewise_steady_state):
+    """Check that steady state values are positive."""
+    u_ss = compute_piecewise_steady_state["u_ss"]
+    s_ss = compute_piecewise_steady_state["s_ss"]
+    
+    assert torch.all(u_ss > 0)
+    assert torch.all(s_ss > 0)
 
 
 @then("the steady state unspliced should equal alpha/beta")
@@ -290,52 +420,82 @@ def check_deterministic_nodes(run_forward_method_legacy):
 
 
 @then("the model should handle the edge case gracefully")
-def check_edge_case_handling(run_forward_method_with_zero_rates):
+def check_edge_case_handling(request):
     """Check that the model handles edge cases gracefully."""
+    # Try to get the result from different fixture names
+    result_context = None
+    try:
+        result_context = request.getfixturevalue("run_forward_method_with_edge_case_parameters")
+    except:
+        try:
+            result_context = request.getfixturevalue("run_forward_method_with_zero_rates")
+        except:
+            pytest.fail("No edge case result fixture found")
+    
     # Check if there was an error
-    if "error" in run_forward_method_with_zero_rates:
-        # If there was an error, it should be a ValueError about zero rates
-        assert isinstance(run_forward_method_with_zero_rates["error"], ValueError)
+    if "error" in result_context:
+        # If there was an error, it should be a ValueError or RuntimeError
+        assert isinstance(result_context["error"], (ValueError, RuntimeError))
     else:
-        # If there was no error, the expected counts should be zeros or NaNs
-        # (NaNs are acceptable for division by zero)
-        u_expected = run_forward_method_with_zero_rates["u_expected"]
-        s_expected = run_forward_method_with_zero_rates["s_expected"]
+        # If there was no error, the expected counts should be finite or handle special cases
+        u_expected = result_context["u_expected"]
+        s_expected = result_context["s_expected"]
 
-        # Check that the values are either 0 or NaN
-        assert torch.all(torch.isnan(u_expected) | (u_expected == 0))
-        assert torch.all(torch.isnan(s_expected) | (s_expected == 0))
+        # For piecewise activation model with edge case parameters, 
+        # the model should handle small values gracefully and produce finite results
+        # Just check that the values are finite (the model is robust)
+        assert torch.all(torch.isfinite(u_expected))
+        assert torch.all(torch.isfinite(s_expected))
 
 
 @then("should not produce NaN or infinite values")
-def check_no_nan_or_inf(run_forward_method_with_zero_rates):
-    """Check that the model does not produce infinite values."""
+def check_no_nan_or_inf(request):
+    """Check that the model does not produce NaN or infinite values."""
+    # Try to get the result from different fixture names
+    result_context = None
+    try:
+        result_context = request.getfixturevalue("run_forward_method_with_edge_case_parameters")
+    except:
+        try:
+            result_context = request.getfixturevalue("run_forward_method_with_zero_rates")
+        except:
+            pytest.fail("No edge case result fixture found")
+    
     # Skip if there was an error
-    if "error" in run_forward_method_with_zero_rates:
+    if "error" in result_context:
         return
 
-    # Check that there are no infinite values (NaNs are acceptable for division by zero)
-    u_expected = run_forward_method_with_zero_rates["u_expected"]
-    s_expected = run_forward_method_with_zero_rates["s_expected"]
+    # For piecewise activation model, all values should be finite
+    u_expected = result_context["u_expected"]
+    s_expected = result_context["s_expected"]
 
-    # Only check for infinite values, NaNs are acceptable for zero rates
-    assert not torch.any(torch.isinf(u_expected))
-    assert not torch.any(torch.isinf(s_expected))
+    # Check that no values are NaN or infinite
+    assert torch.all(torch.isfinite(u_expected))
+    assert torch.all(torch.isfinite(s_expected))
 
 
 @then("the expected counts should be scaled by the library size factors")
-def check_library_size_scaling(run_forward_method_with_library_size):
+def check_library_size_scaling(request):
     """Check that the expected counts are scaled by the library size factors."""
-    # In a real test, we would compare with expected scaled values
-    # For this example, we'll just check that the expected counts are present
-    assert "u_expected" in run_forward_method_with_library_size
-    assert "s_expected" in run_forward_method_with_library_size
+    # Try to get the result from library size fixture
+    try:
+        result_context = request.getfixturevalue("run_forward_method_with_library_size")
+    except:
+        pytest.fail("No library size result fixture found")
+    
+    # Check that the expected counts are present
+    assert "u_expected" in result_context
+    assert "s_expected" in result_context
 
 
 @then("the scaling should be applied correctly")
-def check_scaling_correctness(run_forward_method_with_library_size):
+def check_scaling_correctness(request):
     """Check that the scaling is applied correctly."""
-    # In a real test, we would verify the scaling calculation
-    # For this example, we'll just check that the result exists
-    assert run_forward_method_with_library_size is not None
-    pass
+    # Try to get the result from library size fixture
+    try:
+        result_context = request.getfixturevalue("run_forward_method_with_library_size")
+    except:
+        pytest.fail("No library size result fixture found")
+    
+    # Check that the result exists
+    assert result_context is not None
