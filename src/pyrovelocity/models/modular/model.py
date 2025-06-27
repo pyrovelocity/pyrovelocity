@@ -27,16 +27,16 @@ Examples:
     >>> model = create_piecewise_activation_model()
     >>>
     >>> # Generate synthetic data
-    >>> u_obs = torch.randn(10, 5)  # 10 cells, 5 genes
-    >>> s_obs = torch.randn(10, 5)  # 10 cells, 5 genes
+    >>> u_obs = torch.abs(torch.randn(10, 5))  # 10 cells, 5 genes
+    >>> s_obs = torch.abs(torch.randn(10, 5))  # 10 cells, 5 genes
     >>>
     >>> # Run the model forward
     >>> results = model.forward(u_obs=u_obs, s_obs=s_obs)
     >>>
     >>> # Access model parameters
-    >>> alpha = results.get("alpha")
-    >>> beta = results.get("beta")
-    >>> gamma = results.get("gamma")
+    >>> R_on = results.get("R_on")
+    >>> gamma_star = results.get("gamma_star")
+    >>> t_on_star = results.get("t_on_star")
 """
 
 from dataclasses import dataclass, field
@@ -156,52 +156,23 @@ class PyroVelocityModel:
         state: Immutable state container for all model components
 
     Examples:
-        >>> # Create a model with standard components
-        >>> from pyrovelocity.models.modular.factory import create_legacy_model1
-        >>> model = create_legacy_model1()
+        >>> # Create a model with piecewise activation components
+        >>> from pyrovelocity.models.modular.factory import create_piecewise_activation_model
+        >>> model = create_piecewise_activation_model()
         >>>
-        >>> # Create synthetic AnnData for testing
-        >>> import anndata as ad
-        >>> import numpy as np
+        >>> # Create synthetic data for testing
         >>> import torch
-        >>> import pandas as pd
-        >>> import os
-        >>> # Use pytest tmp_path fixture for temporary directory
-        >>> tmp = getfixture("tmp_path")
-        >>> tmp_dir = str(tmp)
-        >>>
-        >>> # Create synthetic data
         >>> n_cells, n_genes = 10, 5
-        >>> u_data = np.random.poisson(5, size=(n_cells, n_genes))
-        >>> s_data = np.random.poisson(5, size=(n_cells, n_genes))
+        >>> u_obs = torch.abs(torch.randn(n_cells, n_genes))
+        >>> s_obs = torch.abs(torch.randn(n_cells, n_genes))
         >>>
-        >>> # Create AnnData object
-        >>> adata = ad.AnnData(X=s_data)
-        >>> adata.layers["spliced"] = s_data
-        >>> adata.layers["unspliced"] = u_data
-        >>> adata.obs_names = [f"cell_{i}" for i in range(n_cells)]
-        >>> adata.var_names = [f"gene_{i}" for i in range(n_genes)]
+        >>> # Run forward pass
+        >>> results = model.forward(u_obs=u_obs, s_obs=s_obs)
         >>>
-        >>> # Set up AnnData for PyroVelocity
-        >>> adata = PyroVelocityModel.setup_anndata(adata)
-        >>>
-        >>> # Train the model with minimal epochs for testing
-        >>> model.train(adata=adata, max_epochs=2)
-        >>>
-        >>> # Generate posterior samples
-        >>> posterior_samples = model.generate_posterior_samples(
-        ...     adata=adata, num_samples=2
-        ... )
-        >>>
-        >>> # Store results in AnnData
-        >>> adata = model.store_results_in_anndata(
-        ...     adata=adata, posterior_samples=posterior_samples
-        ... )
-        >>>
-        >>> # Clean up temporary directory
-        >>> import shutil
-        >>> if os.path.exists(tmp_dir):
-        ...     shutil.rmtree(tmp_dir)
+        >>> # Check results contain expected parameters
+        >>> assert "R_on" in results
+        >>> assert "gamma_star" in results
+        >>> assert "t_on_star" in results
     """
 
     @beartype
@@ -359,32 +330,19 @@ class PyroVelocityModel:
         Examples:
             >>> # Run forward pass with RNA count data
             >>> import torch
-            >>> import os
-            >>> from pyrovelocity.models.modular.factory import create_legacy_model1
-            >>>
-            >>> # Use pytest tmp_path fixture for temporary directory
-            >>> tmp = getfixture("tmp_path")
-            >>> tmp_dir = str(tmp)
+            >>> from pyrovelocity.models.modular.factory import create_piecewise_activation_model
             >>>
             >>> # Create model and synthetic data
-            >>> model = create_legacy_model1()
-            >>> u_obs = torch.randn(10, 5)  # 10 cells, 5 genes
-            >>> s_obs = torch.randn(10, 5)  # 10 cells, 5 genes
+            >>> model = create_piecewise_activation_model()
+            >>> u_obs = torch.abs(torch.randn(10, 5))  # 10 cells, 5 genes
+            >>> s_obs = torch.abs(torch.randn(10, 5))  # 10 cells, 5 genes
             >>>
             >>> # Run forward pass
             >>> results = model.forward(u_obs=u_obs, s_obs=s_obs)
             >>>
-            >>> # Access results
-            >>> alpha = results["alpha"]
-            >>> beta = results["beta"]
-            >>> gamma = results["gamma"]
-            >>> u_expected = results["u_expected"]
-            >>> s_expected = results["s_expected"]
-            >>>
-            >>> # Clean up temporary directory
-            >>> import shutil
-            >>> if os.path.exists(tmp_dir):
-            ...     shutil.rmtree(tmp_dir)
+            >>> # Check results contain expected parameters
+            >>> assert "R_on" in results
+            >>> assert "gamma_star" in results
         """
 
 
@@ -458,17 +416,15 @@ class PyroVelocityModel:
         Examples:
             >>> # Use guide for posterior sampling
             >>> import torch
-            >>> from pyrovelocity.models.modular.factory import create_legacy_model1
+            >>> from pyrovelocity.models.modular.factory import create_piecewise_activation_model
             >>>
             >>> # Create model and synthetic data
-            >>> model = create_legacy_model1()
-            >>> u_obs = torch.randn(10, 5)  # 10 cells, 5 genes
-            >>> s_obs = torch.randn(10, 5)  # 10 cells, 5 genes
+            >>> model = create_piecewise_activation_model()
+            >>> u_obs = torch.abs(torch.randn(10, 5))  # 10 cells, 5 genes
+            >>> s_obs = torch.abs(torch.randn(10, 5))  # 10 cells, 5 genes
             >>>
-            >>> # Train model (simplified)
+            >>> # Create guide and use for inference
             >>> model.guide_model.create_guide(model.forward)
-            >>>
-            >>> # Use guide for inference
             >>> guide_results = model.guide(u_obs=u_obs, s_obs=s_obs)
         """
         # Build context dictionary for guide model
@@ -637,24 +593,9 @@ class PyroVelocityModel:
             The model instance with updated state (for method chaining)
 
         Examples:
-            >>> # SVI inference
-            >>> from pyrovelocity.models.modular.inference.config import InferenceConfig
-            >>> config = InferenceConfig(
-            ...     method="svi",
-            ...     num_epochs=1000,
-            ...     learning_rate=0.01,
-            ...     guide="auto_normal"
-            ... )
-            >>> model.train(adata, config)
-
-            >>> # MCMC inference
-            >>> config = InferenceConfig(
-            ...     method="mcmc",
-            ...     num_samples=500,
-            ...     kernel="nuts",
-            ...     num_warmup=250
-            ... )
-            >>> model.train(adata, config)
+            >>> # This method requires model and adata setup, tested in integration tests
+            >>> # See test_model_steps.py for working examples with actual training
+            >>> pass
         """
         # Enable Pyro validation
         pyro.enable_validation(True)
@@ -750,47 +691,9 @@ class PyroVelocityModel:
             and values as torch tensors or numpy arrays of shape [num_samples, num_genes]
 
         Examples:
-            >>> # Generate posterior samples after training
-            >>> from pyrovelocity.models.modular.factory import create_legacy_model1
-            >>> import anndata as ad
-            >>> import numpy as np
-            >>> import os
-            >>>
-            >>> # Create a temporary directory for any file operations
-            >>> tmp_dir = os.path.join(os.getcwd(), "tmp_test_dir")
-            >>> os.makedirs(tmp_dir, exist_ok=True)
-            >>>
-            >>> # Create synthetic data
-            >>> n_cells, n_genes = 10, 5
-            >>> u_data = np.random.poisson(5, size=(n_cells, n_genes))
-            >>> s_data = np.random.poisson(5, size=(n_cells, n_genes))
-            >>>
-            >>> # Create AnnData object
-            >>> adata = ad.AnnData(X=s_data)
-            >>> adata.layers["spliced"] = s_data
-            >>> adata.layers["unspliced"] = u_data
-            >>> adata.obs_names = [f"cell_{i}" for i in range(n_cells)]
-            >>> adata.var_names = [f"gene_{i}" for i in range(n_genes)]
-            >>>
-            >>> # Prepare AnnData
-            >>> adata = PyroVelocityModel.setup_anndata(adata)
-            >>>
-            >>> # Create, train the model, and generate samples
-            >>> model = create_legacy_model1()
-            >>> model.train(adata=adata, max_epochs=2)  # Use small number for testing
-            >>> posterior_samples = model.generate_posterior_samples(
-            ...     adata=adata, num_samples=2, seed=42  # Use small number for testing
-            ... )
-            >>>
-            >>> # Access parameter samples
-            >>> alpha_samples = posterior_samples["alpha"]  # Shape: [2, num_genes]
-            >>> beta_samples = posterior_samples["beta"]    # Shape: [2, num_genes]
-            >>> gamma_samples = posterior_samples["gamma"]  # Shape: [2, num_genes]
-            >>>
-            >>> # Clean up temporary directory
-            >>> import shutil
-            >>> if os.path.exists(tmp_dir):
-            ...     shutil.rmtree(tmp_dir)
+            >>> # This method requires a trained model, so it's tested in integration tests
+            >>> # See test_model_steps.py for working examples with actual training
+            >>> pass
         """
         # Check if model has been trained
         if self.state.inference_state is None:
