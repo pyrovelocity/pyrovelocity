@@ -31,26 +31,21 @@ from pyrovelocity.models.experimental import (
 
 # Base classes have been removed in favor of Protocol interfaces
 from pyrovelocity.models.modular.components.dynamics import (
-    LegacyDynamicsModel,
     PiecewiseActivationDynamicsModel,
 )
 from pyrovelocity.models.modular.components.guides import (
     AutoGuideFactory,
-    LegacyAutoGuideFactory,
 )
 from pyrovelocity.models.modular.components.likelihoods import (
-    LegacyLikelihoodModel,
     PiecewiseActivationPoissonLikelihoodModel,
 )
 from pyrovelocity.models.modular.components.priors import (
-    LogNormalPriorModel,
+    PiecewiseActivationPriorModel,
 )
 
 # Import the factory module for model creation and configuration
 from pyrovelocity.models.modular.factory import (
     ComponentFactory,
-    create_legacy_model1,
-    create_legacy_model2,
     create_model_from_config,
     create_piecewise_activation_model,
 )
@@ -87,16 +82,13 @@ __all__ = [
     "InferenceGuideRegistry",
     # Dynamics models
     "PiecewiseActivationDynamicsModel",
-    "LegacyDynamicsModel",
     # Prior models
-    "LogNormalPriorModel",
+    "PiecewiseActivationPriorModel",
     # Likelihood models
     "PiecewiseActivationPoissonLikelihoodModel",
-    "LegacyLikelihoodModel",
 
     # Inference guides
     "AutoGuideFactory",
-    "LegacyAutoGuideFactory",
     # Legacy model
     "PyroVelocity",
     # New model
@@ -105,8 +97,6 @@ __all__ = [
 
     # Factory module
     "ComponentFactory",
-    "create_legacy_model1",
-    "create_legacy_model2",
     "create_model_from_config",
     "create_piecewise_activation_model",
     # Experimental implementations
