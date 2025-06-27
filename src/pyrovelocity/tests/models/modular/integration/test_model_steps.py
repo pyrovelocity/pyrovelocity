@@ -18,44 +18,60 @@ scenarios(str(files("pyrovelocity.tests.features") / "models" / "modular" / "mod
 # Import the components
 from pyrovelocity.models.modular.components import (
     AutoGuideFactory,
-    LegacyAutoGuideFactory,
-    LegacyDynamicsModel,
-    LegacyLikelihoodModel,
-    LogNormalPriorModel,
     PiecewiseActivationDynamicsModel,
     PiecewiseActivationPoissonLikelihoodModel,
+    PiecewiseActivationPriorModel,
 )
 from pyrovelocity.models.modular.model import PyroVelocityModel
 
 
 @given("I have a StandardDynamicsModel", target_fixture="dynamics_model")
-def standard_dynamics_model_fixture(bdd_standard_dynamics_model):
-    """Get a StandardDynamicsModel from the fixture."""
-    return bdd_standard_dynamics_model
+def standard_dynamics_model_fixture():
+    """Get a StandardDynamicsModel - using PiecewiseActivationDynamicsModel."""
+    return PiecewiseActivationDynamicsModel()
+
+
+@given("I have a PiecewiseActivationDynamicsModel", target_fixture="dynamics_model")
+def piecewise_activation_dynamics_model_fixture():
+    """Get a PiecewiseActivationDynamicsModel."""
+    return PiecewiseActivationDynamicsModel()
 
 
 @given("I have a LogNormalPriorModel", target_fixture="prior_model")
-def lognormal_prior_model_fixture(bdd_lognormal_prior_model):
-    """Get a LogNormalPriorModel from the fixture."""
-    return bdd_lognormal_prior_model
+def lognormal_prior_model_fixture():
+    """Get a LogNormalPriorModel - using PiecewiseActivationPriorModel."""
+    return PiecewiseActivationPriorModel()
+
+
+@given("I have a PiecewiseActivationPriorModel", target_fixture="prior_model")
+def piecewise_activation_prior_model_fixture():
+    """Get a PiecewiseActivationPriorModel."""
+    return PiecewiseActivationPriorModel()
 
 
 @given("I have a PoissonLikelihoodModel", target_fixture="likelihood_model")
-def poisson_likelihood_model_fixture(bdd_poisson_likelihood_model):
-    """Get a PoissonLikelihoodModel from the fixture."""
-    return bdd_poisson_likelihood_model
+def poisson_likelihood_model_fixture():
+    """Get a PoissonLikelihoodModel - using PiecewiseActivationPoissonLikelihoodModel."""
+    return PiecewiseActivationPoissonLikelihoodModel()
 
 
-@given("I have a StandardObservationModel", target_fixture="observation_model")
-def standard_observation_model_fixture(bdd_standard_observation_model):
-    """Get a StandardObservationModel from the fixture."""
-    return bdd_standard_observation_model
+@given("I have a PiecewiseActivationPoissonLikelihoodModel", target_fixture="likelihood_model")
+def piecewise_activation_poisson_likelihood_model_fixture():
+    """Get a PiecewiseActivationPoissonLikelihoodModel."""
+    return PiecewiseActivationPoissonLikelihoodModel()
+
+
+# StandardObservationModel no longer exists - removing this fixture
+# @given("I have a StandardObservationModel", target_fixture="observation_model")
+# def standard_observation_model_fixture(bdd_standard_observation_model):
+#     """Get a StandardObservationModel from the fixture."""
+#     return bdd_standard_observation_model
 
 
 @given("I have an AutoGuideFactory", target_fixture="guide_model")
-def auto_guide_factory_fixture(bdd_auto_guide_factory):
-    """Get an AutoGuideFactory from the fixture."""
-    return bdd_auto_guide_factory
+def auto_guide_factory_fixture():
+    """Get an AutoGuideFactory."""
+    return AutoGuideFactory()
 
 
 @given("I have input data with unspliced and spliced counts", target_fixture="input_data")
@@ -65,13 +81,12 @@ def input_data_fixture(bdd_simple_data):
 
 
 @pytest.fixture
-def model_components(dynamics_model, prior_model, likelihood_model, observation_model, guide_model):
+def model_components(dynamics_model, prior_model, likelihood_model, guide_model):
     """Combine all component fixtures into a single fixture."""
     return {
         "dynamics_model": dynamics_model,
         "prior_model": prior_model,
         "likelihood_model": likelihood_model,
-        "observation_model": observation_model,
         "guide_model": guide_model,
     }
 
@@ -90,15 +105,15 @@ def create_model_fixture(model_components):
 
 
 @given("I have created a PyroVelocity model", target_fixture="created_model")
-def created_model_fixture(bdd_pyro_velocity_model):
+def created_model_fixture(bdd_piecewise_pyro_velocity_model):
     """Get a PyroVelocity model from the fixture."""
-    return bdd_pyro_velocity_model
+    return bdd_piecewise_pyro_velocity_model
 
 
 @given("I have a trained PyroVelocity model", target_fixture="trained_model")
-def trained_model_fixture(bdd_pyro_velocity_model, input_data):
+def trained_model_fixture(bdd_piecewise_pyro_velocity_model, input_data):
     """Create a trained PyroVelocity model."""
-    model = bdd_pyro_velocity_model
+    model = bdd_piecewise_pyro_velocity_model
 
     # Create a simple optimizer
     optimizer = pyro.optim.Adam({"lr": 0.01})
@@ -136,9 +151,8 @@ def trained_model_with_samples_fixture(trained_model):
     # For this test, we'll create a simple posterior samples dictionary
     num_samples = 10
     posterior_samples = {
-        "alpha": torch.randn(num_samples, 5),  # [num_samples, n_genes]
-        "beta": torch.randn(num_samples, 5),
-        "gamma": torch.randn(num_samples, 5),
+        "alpha_off": torch.randn(num_samples, 5),  # [num_samples, n_genes]
+        "gamma_star": torch.randn(num_samples, 5),
     }
 
     # Store the samples in the model
@@ -154,7 +168,7 @@ def trained_model_with_velocity_fixture(trained_model_with_samples):
 
     # Compute velocity (simplified for this example)
     model.velocity_results = {
-        "velocity": torch.randn_like(model.posterior_samples["alpha"]),
+        "velocity": torch.randn_like(model.posterior_samples["alpha_off"]),
     }
 
     return model
@@ -232,9 +246,8 @@ def generate_posterior_samples_fixture(trained_model):
     # In the actual PyroVelocityModel, the guide.get_posterior method is used
     # For this test, we'll create a simple posterior samples dictionary
     posterior_samples = {
-        "alpha": torch.randn(num_samples, 5),  # [num_samples, n_genes]
-        "beta": torch.randn(num_samples, 5),
-        "gamma": torch.randn(num_samples, 5),
+        "alpha_off": torch.randn(num_samples, 5),  # [num_samples, n_genes]
+        "gamma_star": torch.randn(num_samples, 5),
     }
 
     # Store the samples in the model
@@ -249,7 +262,7 @@ def compute_velocity_fixture(trained_model_with_samples):
     model = trained_model_with_samples
 
     # Compute velocity (simplified for this example)
-    velocity = torch.randn_like(model.posterior_samples["alpha"])
+    velocity = torch.randn_like(model.posterior_samples["alpha_off"])
 
     # Store the velocity in the model
     model.velocity_results = {"velocity": velocity}
@@ -267,9 +280,8 @@ def store_results_fixture(trained_model_with_velocity, anndata_object):
     adata.uns["pyrovelocity"] = {
         "model_type": "modular",
         "parameters": {
-            "alpha": model.posterior_samples["alpha"].mean(0).numpy(),
-            "beta": model.posterior_samples["beta"].mean(0).numpy(),
-            "gamma": model.posterior_samples["gamma"].mean(0).numpy(),
+            "alpha_off": model.posterior_samples["alpha_off"].mean(0).numpy(),
+            "gamma_star": model.posterior_samples["gamma_star"].mean(0).numpy(),
         },
     }
 
@@ -325,9 +337,8 @@ def check_data_processing(run_forward_method):
     result = run_forward_method["result"]
 
     # Check that the result includes outputs from all components
-    assert "alpha" in result  # From prior_model
-    assert "beta" in result  # From prior_model
-    assert "gamma" in result  # From prior_model
+    assert "alpha_off" in result  # From prior_model
+    assert "gamma_star" in result  # From prior_model
     assert "u_expected" in result  # From dynamics_model
     assert "s_expected" in result  # From dynamics_model
     assert "u_dist" in result  # From likelihood_model
@@ -412,9 +423,8 @@ def check_sample_structure(generate_posterior_samples):
     samples = generate_posterior_samples["samples"]
 
     # Check that the samples include all parameters
-    assert "alpha" in samples
-    assert "beta" in samples
-    assert "gamma" in samples
+    assert "alpha_off" in samples
+    assert "gamma_star" in samples
 
 
 @then("the samples should include all model parameters")
@@ -423,9 +433,8 @@ def check_sample_parameters(generate_posterior_samples):
     samples = generate_posterior_samples["samples"]
 
     # Check that the samples include all parameters
-    assert "alpha" in samples
-    assert "beta" in samples
-    assert "gamma" in samples
+    assert "alpha_off" in samples
+    assert "gamma_star" in samples
 
 
 @then("the samples should reflect the posterior distribution")
@@ -480,9 +489,8 @@ def check_adata_parameters(store_results):
     # Check that the AnnData object has model parameters
     assert "pyrovelocity" in adata.uns
     assert "parameters" in adata.uns["pyrovelocity"]
-    assert "alpha" in adata.uns["pyrovelocity"]["parameters"]
-    assert "beta" in adata.uns["pyrovelocity"]["parameters"]
-    assert "gamma" in adata.uns["pyrovelocity"]["parameters"]
+    assert "alpha_off" in adata.uns["pyrovelocity"]["parameters"]
+    assert "gamma_star" in adata.uns["pyrovelocity"]["parameters"]
 
 
 @then("the AnnData object should be ready for downstream analysis")
