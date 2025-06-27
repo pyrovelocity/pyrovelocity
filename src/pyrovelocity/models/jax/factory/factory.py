@@ -325,20 +325,20 @@ def create_model(config: Union[Dict, ModelConfig]) -> Callable:
     return model
 
 
-def standard_model_config() -> ModelConfig:
+def piecewise_activation_model_config() -> ModelConfig:
     """
-    Create a configuration for a standard PyroVelocity model.
+    Create a configuration for a piecewise activation PyroVelocity model.
 
-    This function returns a configuration for a PyroVelocity model with standard
-    components: standard dynamics function, lognormal prior function, poisson
-    likelihood function, standard observation function, and auto guide factory
-    function.
+    This function returns a configuration for a PyroVelocity model with piecewise
+    activation components: piecewise activation dynamics function, lognormal prior 
+    function, poisson likelihood function, standard observation function, and auto 
+    guide factory function.
 
     Returns:
-        A ModelConfig object with standard component configurations.
+        A ModelConfig object with piecewise activation component configurations.
     """
     return ModelConfig(
-        dynamics_function=DynamicsFunctionConfig(name="standard"),
+        dynamics_function=DynamicsFunctionConfig(name="piecewise_activation"),
         prior_function=PriorFunctionConfig(name="lognormal"),
         likelihood_function=LikelihoodFunctionConfig(name="poisson"),
         observation_function=ObservationFunctionConfig(name="standard"),
@@ -346,15 +346,16 @@ def standard_model_config() -> ModelConfig:
     )
 
 
-def create_standard_model() -> Callable:
+def create_piecewise_activation_model() -> Callable:
     """
-    Create a standard PyroVelocity model.
+    Create a piecewise activation PyroVelocity model.
 
-    This function creates a PyroVelocity model with standard components:
-    standard dynamics function, lognormal prior function, poisson likelihood
-    function, standard observation function, and auto guide factory function.
+    This function creates a PyroVelocity model with piecewise activation components:
+    piecewise activation dynamics function, lognormal prior function, poisson 
+    likelihood function, standard observation function, and auto guide factory 
+    function.
 
     Returns:
-        A model function with standard components.
+        A model function with piecewise activation components.
     """
-    return create_model(standard_model_config())
+    return create_model(piecewise_activation_model_config())
