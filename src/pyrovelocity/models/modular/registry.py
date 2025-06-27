@@ -224,53 +224,33 @@ inference_guide_registry = InferenceGuideRegistry()
 # Force explicit registration of component implementations
 def register_standard_components():
     """
-    Explicitly register standard component implementations in their respective registries.
+    Register only piecewise activation component implementations with their respective registries.
 
-    This function should be called in test setup to ensure standard components
-    are registered and available for tests that use create_standard_model().
+    This function imports and registers only the piecewise activation component implementations
+    needed for validation workflows, ensuring they are available for factory methods and other
+    parts of the system.
 
-    This function has been simplified to include only the essential components needed for
-    validation against the legacy implementation.
+    All legacy components have been removed as part of the code cleanup process.
     """
-    # Import component implementations
-    from pyrovelocity.models.modular.components.dynamics import (
-        LegacyDynamicsModel,
-        PiecewiseActivationDynamicsModel,
-    )
-    from pyrovelocity.models.modular.components.guides import (
-        AutoGuideFactory,
-        LegacyAutoGuideFactory,
-    )
-    from pyrovelocity.models.modular.components.likelihoods import (
-        LegacyLikelihoodModel,
-        PiecewiseActivationPoissonLikelihoodModel,
-    )
-    from pyrovelocity.models.modular.components.priors import (
-        LogNormalPriorModel,
-        PiecewiseActivationPriorModel,
-    )
+    # Import only remaining component implementations
+    from pyrovelocity.models.modular.components.dynamics import PiecewiseActivationDynamicsModel
+    from pyrovelocity.models.modular.components.guides import AutoGuideFactory
+    from pyrovelocity.models.modular.components.likelihoods import PiecewiseActivationPoissonLikelihoodModel
+    from pyrovelocity.models.modular.components.priors import PiecewiseActivationPriorModel
 
     # The import itself should trigger the registrations through decorators
     # But we can also explicitly register them if needed
-    if "legacy" not in DynamicsModelRegistry._registry:
-        DynamicsModelRegistry._registry["legacy"] = LegacyDynamicsModel
     if "piecewise_activation" not in DynamicsModelRegistry._registry:
         DynamicsModelRegistry._registry["piecewise_activation"] = PiecewiseActivationDynamicsModel
 
-    if "lognormal" not in PriorModelRegistry._registry:
-        PriorModelRegistry._registry["lognormal"] = LogNormalPriorModel
     if "piecewise_activation" not in PriorModelRegistry._registry:
         PriorModelRegistry._registry["piecewise_activation"] = PiecewiseActivationPriorModel
 
-    if "legacy" not in LikelihoodModelRegistry._registry:
-        LikelihoodModelRegistry._registry["legacy"] = LegacyLikelihoodModel
     if "piecewise_activation_poisson" not in LikelihoodModelRegistry._registry:
         LikelihoodModelRegistry._registry["piecewise_activation_poisson"] = PiecewiseActivationPoissonLikelihoodModel
 
     if "auto" not in InferenceGuideRegistry._registry:
         InferenceGuideRegistry._registry["auto"] = AutoGuideFactory
-    if "legacy_auto" not in InferenceGuideRegistry._registry:
-        InferenceGuideRegistry._registry["legacy_auto"] = LegacyAutoGuideFactory
 
 
 # Export all registry classes and instances
