@@ -6,7 +6,6 @@ import torch
 from jaxtyping import Array
 
 from pyrovelocity.models.modular.components.dynamics import (
-    LegacyDynamicsModel,
     PiecewiseActivationDynamicsModel,
 )
 from pyrovelocity.models.modular.registry import DynamicsModelRegistry
@@ -21,7 +20,6 @@ def register_dynamics_models():
     # Clear registry and register test components
     DynamicsModelRegistry.clear()
     DynamicsModelRegistry._registry["piecewise_activation"] = PiecewiseActivationDynamicsModel
-    DynamicsModelRegistry._registry["legacy"] = LegacyDynamicsModel
 
     yield
 
@@ -37,12 +35,6 @@ def test_piecewise_activation_dynamics_model_registration():
     assert "piecewise_activation" in DynamicsModelRegistry.list_available()
 
 
-def test_legacy_dynamics_model_registration():
-    """Test that LegacyDynamicsModel is properly registered."""
-    model_class = DynamicsModelRegistry.get("legacy")
-    assert model_class == LegacyDynamicsModel
-    assert model_class.name == "legacy"
-    assert "legacy" in DynamicsModelRegistry.list_available()
 
 
 class TestPiecewiseActivationDynamicsModel:
@@ -155,116 +147,3 @@ class TestPiecewiseActivationDynamicsModel:
 
         assert torch.allclose(dudt_ss, torch.zeros_like(dudt_ss), atol=1e-6)
         assert torch.allclose(dsdt_ss, torch.zeros_like(dsdt_ss), atol=1e-6)
-
-
-class TestLegacyDynamicsModel:
-    """Tests for LegacyDynamicsModel."""
-
-    @pytest.fixture
-    def model(self):
-        """Create a LegacyDynamicsModel instance."""
-        return LegacyDynamicsModel()
-
-    @pytest.fixture
-    def simple_params(self):
-        """Create simple parameters for testing."""
-        return {
-            "u0": torch.tensor([1.0, 2.0]),
-            "s0": torch.tensor([0.5, 1.0]),
-            "alpha": torch.tensor([2.0, 3.0]),
-            "beta": torch.tensor([1.0, 1.5]),
-            "gamma": torch.tensor([0.5, 0.8]),
-            "scaling": torch.tensor([1.0, 1.0]),
-            "t_max": 10.0,
-            "n_steps": 100,
-        }
-
-    def test_steady_state(self, model, simple_params):
-        """Test steady state calculation."""
-        u_ss, s_ss = model.steady_state(
-            simple_params["alpha"],
-            simple_params["beta"],
-            simple_params["gamma"],
-        )
-
-        # Expected steady states based on analytical solution
-        expected_u_ss = simple_params["alpha"] / simple_params["beta"]
-        expected_s_ss = simple_params["alpha"] / simple_params["gamma"]
-
-        assert torch.allclose(u_ss, expected_u_ss)
-        assert torch.allclose(s_ss, expected_s_ss)
-
-    def test_forward(self, model):
-        """Test forward method."""
-        # Create a simple context
-        batch_size = 3
-        num_genes = 4
-        u_obs = torch.rand(batch_size, num_genes)
-        s_obs = torch.rand(batch_size, num_genes)
-        alpha = torch.ones(num_genes)
-        beta = torch.ones(num_genes)
-        gamma = torch.ones(num_genes)
-
-        context = {
-            "u_obs": u_obs,
-            "s_obs": s_obs,
-            "alpha": alpha,
-            "beta": beta,
-            "gamma": gamma,
-        }
-
-        # Call forward method
-        result = model.forward(context)
-
-        # Check that the result contains expected keys
-        assert "ut" in result
-        assert "st" in result
-        assert "u_inf" in result
-        assert "s_inf" in result
-        assert "switching" in result
-
-        # Check shapes
-        assert result["ut"].shape[-2:] == (batch_size, num_genes)
-        assert result["st"].shape[-2:] == (batch_size, num_genes)
-
-
-def test_model_comparison():
-    """Compare piecewise activation and legacy models steady states."""
-    # Legacy model parameters
-    alpha = torch.tensor([2.0])
-    beta = torch.tensor([1.0])
-    gamma = torch.tensor([0.5])
-
-    # Piecewise model parameters (for OFF phase comparison)
-    alpha_off = alpha  # Use same transcription rate for comparison
-    gamma_star = gamma  # Use same degradation rate for comparison
-
-    # Create models
-    piecewise_model = PiecewiseActivationDynamicsModel()
-    legacy_model = LegacyDynamicsModel()
-
-    # Calculate steady states using appropriate parameters for each model
-    u_ss_piecewise, s_ss_piecewise = piecewise_model.steady_state(
-        alpha_off, gamma_star
-    )
-    u_ss_legacy, s_ss_legacy = legacy_model.steady_state(
-        alpha, beta, gamma
-    )
-
-    # For the OFF phase of piecewise model: u* = α*_off, s* = α*_off/γ*
-    # For the legacy model: u = α/β, s = α/γ
-    # These are only comparable when β = 1 (dimensionless case)
-    expected_u_legacy = alpha / beta  # Should equal alpha when beta=1
-    expected_s_legacy = alpha / gamma
-    expected_u_piecewise = alpha_off
-    expected_s_piecewise = alpha_off / gamma_star
-
-    # Verify each model's steady state calculation
-    assert torch.allclose(u_ss_legacy, expected_u_legacy)
-    assert torch.allclose(s_ss_legacy, expected_s_legacy)
-    assert torch.allclose(u_ss_piecewise, expected_u_piecewise)
-    assert torch.allclose(s_ss_piecewise, expected_s_piecewise)
-
-    # When beta=1, the models should give the same results
-    assert torch.allclose(u_ss_legacy, u_ss_piecewise)
-    assert torch.allclose(s_ss_legacy, s_ss_piecewise)
