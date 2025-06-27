@@ -14,12 +14,11 @@ Feature: Inference Guide
     And the guide should be compatible with the model
     And the guide should have the correct parameter structure
 
-  Scenario: Legacy auto guide factory matches legacy implementation
-    Given I have a LegacyAutoGuideFactory
+  Scenario: AutoGuide factory with blocking parameters
+    Given I have an AutoGuideFactory with parameter blocking
     When I create a guide for the model
-    Then the guide should match the legacy implementation guide
-    And the guide should use AutoGuideList with the correct components
-    And the guide should block parameters correctly
+    Then the guide should block parameters correctly
+    And the guide should handle parameter constraints properly
 
   Scenario: Guide with parameter initialization
     Given I have an AutoGuideFactory with init_scale=0.1
