@@ -5,19 +5,16 @@ import pytest
 import torch
 
 from pyrovelocity.models.modular.components.dynamics import (
-    LegacyDynamicsModel,
     PiecewiseActivationDynamicsModel,
 )
 from pyrovelocity.models.modular.components.guides import (
     AutoGuideFactory,
-    LegacyAutoGuideFactory,
 )
 from pyrovelocity.models.modular.components.likelihoods import (
-    LegacyLikelihoodModel,
     PiecewiseActivationPoissonLikelihoodModel,
 )
 from pyrovelocity.models.modular.components.priors import (
-    LogNormalPriorModel,
+    PiecewiseActivationPriorModel,
 )
 from pyrovelocity.models.modular.model import PyroVelocityModel
 
@@ -128,14 +125,7 @@ def test_components_with_model(simple_data):
     # Test compatible model combinations only
     # Each tuple contains (dynamics, prior, likelihood, guide) that are compatible
     compatible_combinations = [
-        # Legacy combination
-        (
-            LegacyDynamicsModel(),
-            LogNormalPriorModel(),
-            LegacyLikelihoodModel(),
-            AutoGuideFactory(guide_type="AutoNormal"),
-        ),
-        # Piecewise combination (already tested above)
+        # Piecewise combination
         (
             PiecewiseActivationDynamicsModel(),
             PiecewiseActivationPriorModel(),
