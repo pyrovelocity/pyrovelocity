@@ -28,8 +28,8 @@ from pyrovelocity.models.jax.factory.factory import (
     create_observation_function,
     create_guide_factory_function,
     create_model,
-    standard_model_config,
-    create_standard_model,
+    piecewise_activation_model_config,
+    create_piecewise_activation_model,
 )
 
 __all__ = [
@@ -48,6 +48,6 @@ __all__ = [
     "create_guide_factory_function",
     "create_model",
     # Predefined configurations
-    "standard_model_config",
-    "create_standard_model",
+    "piecewise_activation_model_config",
+    "create_piecewise_activation_model",
 ]
