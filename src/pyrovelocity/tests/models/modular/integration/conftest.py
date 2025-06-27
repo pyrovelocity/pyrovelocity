@@ -13,10 +13,6 @@ from anndata import AnnData
 
 from pyrovelocity.models.modular.components import (
     AutoGuideFactory,
-    LegacyAutoGuideFactory,
-    LegacyDynamicsModel,
-    LegacyLikelihoodModel,
-    LogNormalPriorModel,
     PiecewiseActivationDynamicsModel,
     PiecewiseActivationPoissonLikelihoodModel,
     PiecewiseActivationPriorModel,
@@ -92,16 +88,8 @@ def bdd_standard_dynamics_model():
     return PiecewiseActivationDynamicsModel()
 
 
-@pytest.fixture
-def bdd_legacy_dynamics_model():
-    """Create a LegacyDynamicsModel for BDD testing."""
-    return LegacyDynamicsModel()
 
 
-@pytest.fixture
-def bdd_lognormal_prior_model():
-    """Create a LogNormalPriorModel for BDD testing."""
-    return LogNormalPriorModel()
 
 
 @pytest.fixture
@@ -110,16 +98,8 @@ def bdd_poisson_likelihood_model():
     return PiecewiseActivationPoissonLikelihoodModel()
 
 
-@pytest.fixture
-def bdd_legacy_likelihood_model():
-    """Create a LegacyLikelihoodModel for BDD testing."""
-    return LegacyLikelihoodModel()
 
 
-@pytest.fixture
-def bdd_standard_observation_model():
-    """Create a LegacyLikelihoodModel for BDD testing (observation functionality moved to likelihood)."""
-    return LegacyLikelihoodModel()
 
 
 @pytest.fixture
@@ -128,10 +108,6 @@ def bdd_auto_guide_factory():
     return AutoGuideFactory(guide_type="AutoNormal")
 
 
-@pytest.fixture
-def bdd_legacy_auto_guide_factory():
-    """Create a LegacyAutoGuideFactory for BDD testing."""
-    return LegacyAutoGuideFactory()
 
 
 @pytest.fixture
@@ -156,20 +132,6 @@ def bdd_piecewise_pyro_velocity_model(
     )
 
 
-@pytest.fixture
-def bdd_pyro_velocity_model(
-    bdd_legacy_dynamics_model,
-    bdd_lognormal_prior_model,
-    bdd_legacy_likelihood_model,
-    bdd_legacy_auto_guide_factory,
-):
-    """Create a PyroVelocityModel for BDD testing using compatible components."""
-    return PyroVelocityModel(
-        dynamics_model=bdd_legacy_dynamics_model,
-        prior_model=bdd_lognormal_prior_model,
-        likelihood_model=bdd_legacy_likelihood_model,
-        guide_model=bdd_legacy_auto_guide_factory,
-    )
 
 
 @pytest.fixture
