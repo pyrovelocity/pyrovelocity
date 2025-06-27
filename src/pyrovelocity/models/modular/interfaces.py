@@ -124,13 +124,26 @@ class ComponentParameterMetadata:
         description: Description of the component and its role
 
     Examples:
+        >>> # Create ParameterMetadata first
+        >>> alpha_off_meta = ParameterMetadata(
+        ...     name="alpha_off",
+        ...     display_name=r"$\alpha_{off}$",
+        ...     short_label="Off Rate",
+        ...     description="Off-state transcription rate"
+        ... )
+        >>> alpha_on_meta = ParameterMetadata(
+        ...     name="alpha_on", 
+        ...     display_name=r"$\alpha_{on}$",
+        ...     short_label="On Rate",
+        ...     description="On-state transcription rate"
+        ... )
+        >>> # Create ComponentParameterMetadata
         >>> prior_metadata = ComponentParameterMetadata(
         ...     component_name="piecewise_activation_prior",
         ...     component_type="prior",
         ...     parameters={
         ...         "alpha_off": alpha_off_meta,
         ...         "alpha_on": alpha_on_meta,
-        ...         # ... other parameters
         ...     },
         ...     description="Prior distributions for piecewise activation model parameters"
         ... )
