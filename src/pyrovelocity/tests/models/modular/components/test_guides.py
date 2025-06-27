@@ -8,7 +8,6 @@ from pyro.infer.autoguide import init_to_median
 
 from pyrovelocity.models.modular.components.guides import (
     AutoGuideFactory,
-    LegacyAutoGuideFactory,
 )
 from pyrovelocity.models.modular.registry import inference_guide_registry
 
@@ -103,52 +102,12 @@ def test_auto_guide_factory_get_posterior_without_create():
         guide_factory.get_posterior()
 
 
-def test_legacy_auto_guide_factory_init():
-    """Test initialization of LegacyAutoGuideFactory."""
-    guide_factory = LegacyAutoGuideFactory()
-    assert guide_factory.init_scale == 0.1
-    assert guide_factory.add_offset == False
-
-    guide_factory = LegacyAutoGuideFactory(
-        init_scale=0.5,
-        add_offset=True,
-    )
-    assert guide_factory.init_scale == 0.5
-    assert guide_factory.add_offset == True
 
 
-def test_legacy_auto_guide_factory_create_guide(simple_model):
-    """Test create_guide method of LegacyAutoGuideFactory."""
-    guide_factory = LegacyAutoGuideFactory()
-
-    # Create guide
-    guide = guide_factory.create_guide(simple_model)
-
-    # Check that the guide is created
-    assert guide is not None
-    assert guide_factory._guide is not None
-
-    # Check that we can get the guide
-    retrieved_guide = guide_factory.get_guide()
-    assert retrieved_guide is guide
 
 
-def test_legacy_auto_guide_factory_get_guide_without_create():
-    """Test get_guide without creating guide first."""
-    guide_factory = LegacyAutoGuideFactory()
-
-    # Getting guide without creating it should raise RuntimeError
-    with pytest.raises(RuntimeError):
-        guide_factory.get_guide()
 
 
-def test_legacy_auto_guide_factory_get_posterior_without_create():
-    """Test get_posterior without creating guide first."""
-    guide_factory = LegacyAutoGuideFactory()
-
-    # Getting posterior without creating guide should raise RuntimeError
-    with pytest.raises(RuntimeError):
-        guide_factory.get_posterior()
 
 
 def test_inference_guide_registry():
@@ -156,25 +115,18 @@ def test_inference_guide_registry():
     # Clear the registry first to avoid test interference
     inference_guide_registry.clear()
 
-    # Register the guides manually
+    # Register the auto guide manually
     inference_guide_registry._registry["auto"] = AutoGuideFactory
-    inference_guide_registry._registry["legacy_auto"] = LegacyAutoGuideFactory
 
-    # Check that the guides are registered
+    # Check that the guide is registered
     available_guides = inference_guide_registry.available_models()
     assert "auto" in available_guides
-    assert "legacy_auto" in available_guides
+    assert len(available_guides) == 1  # Only auto guide
 
-    # Check that we can retrieve the guide classes
+    # Check that we can retrieve the guide class
     auto_cls = inference_guide_registry.get("auto")
-    legacy_auto_cls = inference_guide_registry.get("legacy_auto")
-
     assert auto_cls is AutoGuideFactory
-    assert legacy_auto_cls is LegacyAutoGuideFactory
 
     # Check that we can create instances
     auto_guide = inference_guide_registry.create("auto")
-    legacy_auto_guide = inference_guide_registry.create("legacy_auto")
-
     assert isinstance(auto_guide, AutoGuideFactory)
-    assert isinstance(legacy_auto_guide, LegacyAutoGuideFactory)
