@@ -8,20 +8,20 @@ import torch
 
 from pyrovelocity.models.modular.components import (
     AutoGuideFactory,
-    LegacyDynamicsModel,
-    LegacyLikelihoodModel,
-    LogNormalPriorModel,
+    PiecewiseActivationDynamicsModel,
+    PiecewiseActivationPoissonLikelihoodModel,
+    PiecewiseActivationPriorModel,
 )
 from pyrovelocity.models.modular.factory import (
-    create_legacy_model1,
+    create_piecewise_activation_model,
 )
 from pyrovelocity.models.modular.model import PyroVelocityModel
 
 
 def test_model_repr_untrained():
     """Test the string representation of an untrained PyroVelocityModel."""
-    # Create a model with legacy components
-    model = create_legacy_model1()
+    # Create a model with piecewise activation components
+    model = create_piecewise_activation_model()
 
     # Get the string representation
     repr_str = repr(model)
@@ -41,9 +41,9 @@ def test_model_repr_untrained():
 def test_model_repr_custom_components():
     """Test the string representation of a model with custom components."""
     # Create a model with custom components
-    dynamics_model = LegacyDynamicsModel(shared_time=True, t_scale_on=False)
-    prior_model = LogNormalPriorModel()
-    likelihood_model = LegacyLikelihoodModel()
+    dynamics_model = PiecewiseActivationDynamicsModel()
+    prior_model = PiecewiseActivationPriorModel()
+    likelihood_model = PiecewiseActivationPoissonLikelihoodModel()
     guide_model = AutoGuideFactory()
 
     # Add names and descriptions to components
@@ -73,13 +73,13 @@ def test_model_repr_custom_components():
 def test_model_repr_with_config():
     """Test the string representation of a model with component configurations."""
     # Create a model with custom components that have config attributes
-    dynamics_model = LegacyDynamicsModel(shared_time=True, t_scale_on=False)
-    dynamics_model.config = {"shared_time": True, "t_scale_on": False}
+    dynamics_model = PiecewiseActivationDynamicsModel()
+    dynamics_model.config = {"alpha_off": 0.1, "alpha_on": 2.0}
 
-    prior_model = LogNormalPriorModel()
-    prior_model.config = {"alpha_prior": "LogNormal", "beta_prior": "LogNormal"}
+    prior_model = PiecewiseActivationPriorModel()
+    prior_model.config = {"alpha_off_prior": "LogNormal", "alpha_on_prior": "LogNormal"}
 
-    likelihood_model = LegacyLikelihoodModel()
+    likelihood_model = PiecewiseActivationPoissonLikelihoodModel()
     guide_model = AutoGuideFactory()
 
     # Create model
@@ -94,10 +94,10 @@ def test_model_repr_with_config():
     repr_str = repr(model)
 
     # Check that the representation contains configuration information
-    assert "shared_time=True" in repr_str
-    assert "t_scale_on=False" in repr_str
-    assert "alpha_prior=LogNormal" in repr_str
-    assert "beta_prior=LogNormal" in repr_str
+    assert "alpha_off=0.1" in repr_str
+    assert "alpha_on=2.0" in repr_str
+    assert "alpha_off_prior=LogNormal" in repr_str
+    assert "alpha_on_prior=LogNormal" in repr_str
 
 
 if __name__ == "__main__":
