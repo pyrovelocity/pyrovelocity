@@ -1,7 +1,7 @@
 """
-Standard dynamics functions for PyroVelocity JAX/NumPyro implementation.
+Piecewise activation dynamics functions for PyroVelocity JAX/NumPyro implementation.
 
-This module registers standard dynamics functions for the JAX implementation of PyroVelocity.
+This module registers piecewise activation dynamics functions for the JAX implementation of PyroVelocity.
 """
 
 from typing import Any, Callable, Dict, Optional, Tuple
@@ -14,100 +14,116 @@ from pyrovelocity.models.jax.registry import register_dynamics
 
 
 @jax.jit
-def standard_dynamics_function(
-    tau: Float[Array, "batch_size n_cells n_genes"],
-    u0: Float[Array, "batch_size n_cells n_genes"],
-    s0: Float[Array, "batch_size n_cells n_genes"],
+def piecewise_activation_dynamics_function(
+    t_star: Float[Array, "batch_size n_cells n_genes"],
+    u0_star: Float[Array, "batch_size n_cells n_genes"],
+    s0_star: Float[Array, "batch_size n_cells n_genes"],
     params: Dict[str, Float[Array, "..."]],
 ) -> Tuple[
     Float[Array, "batch_size n_cells n_genes"],
     Float[Array, "batch_size n_cells n_genes"],
 ]:
     """
-    Standard RNA velocity dynamics function.
+    Piecewise activation RNA velocity dynamics function.
 
-    This function implements the standard RNA velocity model:
+    This function implements the piecewise activation RNA velocity model:
 
-    du/dt = alpha - beta * u
-    ds/dt = beta * u - gamma * s
+    du*/dt* = α*(t*) - u*
+    ds*/dt* = u* - γ*s*
+
+    Where α*(t*) is piecewise:
+    - Phase 1 (Off): t* < t*_on, α*(t*) = 1.0
+    - Phase 2 (On): t*_on ≤ t* < t*_on + δ*, α*(t*) = R_on  
+    - Phase 3 (Return to Off): t* ≥ t*_on + δ*, α*(t*) = 1.0
 
     Args:
-        tau: Time parameter
-        u0: Initial unspliced RNA
-        s0: Initial spliced RNA
-        params: Dictionary of parameters (alpha, beta, gamma)
+        t_star: Dimensionless time parameter 
+        u0_star: Initial dimensionless unspliced RNA (= 1.0)
+        s0_star: Initial dimensionless spliced RNA (= 1.0/γ*)
+        params: Dictionary of parameters (R_on, gamma_star, t_on_star, delta_star)
 
     Returns:
-        Tuple of (unspliced, spliced) RNA counts
+        Tuple of (dimensionless unspliced, dimensionless spliced) RNA
     """
-    alpha = params["alpha"]
-    beta = params["beta"]
-    gamma = params["gamma"]
-
-    # Compute dynamics
-    ut = u0 * jnp.exp(-beta * tau) + (alpha / beta) * (1 - jnp.exp(-beta * tau))
-    st = s0 * jnp.exp(-gamma * tau) + (beta * u0 / (gamma - beta)) * (
-        jnp.exp(-beta * tau) - jnp.exp(-gamma * tau)
+    R_on = params["R_on"]
+    gamma_star = params["gamma_star"]
+    t_on_star = params["t_on_star"]
+    delta_star = params["delta_star"]
+    
+    # Numerical stability epsilon for gamma_star near 1
+    eps = 1e-8
+    gamma_stable = jnp.where(jnp.abs(gamma_star - 1.0) < eps, 1.0 + eps, gamma_star)
+    
+    # Phase boundaries
+    t_start_on = t_on_star
+    t_end_on = t_on_star + delta_star
+    
+    # Phase 1: t* < t*_on (OFF phase)
+    # Solutions: u*(t*) = 1, s*(t*) = 1/γ* 
+    phase1_mask = t_star < t_start_on
+    u_phase1 = jnp.ones_like(t_star)
+    s_phase1 = 1.0 / gamma_stable
+    
+    # Phase 2: t*_on ≤ t* < t*_on + δ* (ON phase)
+    # Analytical solution with α* = R_on
+    phase2_mask = (t_star >= t_start_on) & (t_star < t_end_on)
+    dt2 = t_star - t_start_on
+    
+    # Phase 2 solutions starting from steady state (1, 1/γ*)
+    exp_dt2 = jnp.exp(-dt2)
+    u_phase2 = R_on + (1.0 - R_on) * exp_dt2
+    
+    # s*(t*) solution for phase 2
+    gamma_diff = gamma_stable - 1.0
+    s_phase2 = jnp.where(
+        jnp.abs(gamma_diff) < eps,
+        # Near γ* = 1 case: analytical limit
+        (1.0 / gamma_stable) + dt2 * (R_on - 1.0) * exp_dt2,
+        # General case
+        (R_on / gamma_stable) + 
+        ((1.0 / gamma_stable) - (R_on / gamma_stable)) * jnp.exp(-gamma_stable * dt2) +
+        ((R_on - 1.0) / gamma_diff) * (exp_dt2 - jnp.exp(-gamma_stable * dt2))
     )
-
-    return ut, st
-
-
-@jax.jit
-def nonlinear_dynamics_function(
-    tau: Float[Array, "batch_size n_cells n_genes"],
-    u0: Float[Array, "batch_size n_cells n_genes"],
-    s0: Float[Array, "batch_size n_cells n_genes"],
-    params: Dict[str, Float[Array, "..."]],
-) -> Tuple[
-    Float[Array, "batch_size n_cells n_genes"],
-    Float[Array, "batch_size n_cells n_genes"],
-]:
-    """
-    Nonlinear RNA velocity dynamics function with saturation.
-
-    This function implements a nonlinear RNA velocity model with saturation:
-
-    du/dt = alpha * (1 / (1 + scaling * u)) - beta * u
-    ds/dt = beta * u - gamma * s
-
-    Args:
-        tau: Time parameter
-        u0: Initial unspliced RNA
-        s0: Initial spliced RNA
-        params: Dictionary of parameters (alpha, beta, gamma, scaling)
-
-    Returns:
-        Tuple of (unspliced, spliced) RNA counts
-    """
-    alpha = params["alpha"]
-    beta = params["beta"]
-    gamma = params["gamma"]
-    scaling = params.get("scaling", jnp.ones_like(alpha) * 0.1)
-
-    # For nonlinear dynamics, we use a simple Euler integration
-    # This is a simplified approximation for testing purposes
-    dt = 0.01
-    steps = jnp.ceil(tau / dt).astype(jnp.int32)
-
-    # Initialize state
-    u = u0
-    s = s0
-
-    # Integrate
-    for _ in range(100):  # Fixed number of steps for simplicity
-        # Compute derivatives
-        du_dt = alpha * (1.0 / (1.0 + scaling * u)) - beta * u
-        ds_dt = beta * u - gamma * s
-
-        # Update state
-        u = u + du_dt * dt
-        s = s + ds_dt * dt
-
-    return u, s
+    
+    # Phase 3: t* ≥ t*_on + δ* (Return to OFF)
+    # Solutions starting from end of phase 2
+    phase3_mask = t_star >= t_end_on
+    dt3 = t_star - t_end_on
+    
+    # Initial conditions for phase 3 (end values of phase 2)
+    exp_delta = jnp.exp(-delta_star)
+    u2_end = R_on + (1.0 - R_on) * exp_delta
+    
+    gamma_diff = gamma_stable - 1.0
+    s2_end = jnp.where(
+        jnp.abs(gamma_diff) < eps,
+        (1.0 / gamma_stable) + delta_star * (R_on - 1.0) * exp_delta,
+        (R_on / gamma_stable) + 
+        ((1.0 / gamma_stable) - (R_on / gamma_stable)) * jnp.exp(-gamma_stable * delta_star) +
+        ((R_on - 1.0) / gamma_diff) * (exp_delta - jnp.exp(-gamma_stable * delta_star))
+    )
+    
+    # Phase 3 solutions with α* = 1.0
+    exp_dt3 = jnp.exp(-dt3)
+    u_phase3 = 1.0 + (u2_end - 1.0) * exp_dt3
+    
+    s_phase3 = jnp.where(
+        jnp.abs(gamma_diff) < eps,
+        (1.0 / gamma_stable) + dt3 * (u2_end - 1.0) * exp_dt3,
+        (1.0 / gamma_stable) + 
+        (s2_end - (1.0 / gamma_stable)) * jnp.exp(-gamma_stable * dt3) +
+        ((u2_end - 1.0) / gamma_diff) * (exp_dt3 - jnp.exp(-gamma_stable * dt3))
+    )
+    
+    # Combine phases using masks
+    u_star = jnp.where(phase1_mask, u_phase1,
+                      jnp.where(phase2_mask, u_phase2, u_phase3))
+    s_star = jnp.where(phase1_mask, s_phase1,
+                      jnp.where(phase2_mask, s_phase2, s_phase3))
+    
+    return u_star, s_star
 
 
-def register_standard_dynamics():
-    """Register standard dynamics functions."""
-    register_dynamics("standard", standard_dynamics_function)
-    register_dynamics("nonlinear", nonlinear_dynamics_function)
+def register_piecewise_activation_dynamics():
+    """Register piecewise activation dynamics functions."""
+    register_dynamics("piecewise_activation", piecewise_activation_dynamics_function)
