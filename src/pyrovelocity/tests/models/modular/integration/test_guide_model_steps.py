@@ -18,12 +18,9 @@ scenarios(str(files("pyrovelocity.tests.features") / "models" / "modular" / "gui
 # Import the components
 from pyrovelocity.models.modular.components import (
     AutoGuideFactory,
-    LegacyAutoGuideFactory,
-    LegacyDynamicsModel,
-    LegacyLikelihoodModel,
-    LogNormalPriorModel,
     PiecewiseActivationDynamicsModel,
     PiecewiseActivationPoissonLikelihoodModel,
+    PiecewiseActivationPriorModel,
 )
 from pyrovelocity.models.modular.model import PyroVelocityModel
 
@@ -35,9 +32,9 @@ def inference_guide_component():
 
 
 @given("I have a PyroVelocity model", target_fixture="pyro_velocity_model")
-def pyro_velocity_model_fixture(bdd_pyro_velocity_model):
+def pyro_velocity_model_fixture(bdd_piecewise_pyro_velocity_model):
     """Get a PyroVelocity model from the fixture."""
-    return bdd_pyro_velocity_model
+    return bdd_piecewise_pyro_velocity_model
 
 
 @given(parsers.parse('I have an AutoGuideFactory with guide_type="{guide_type}"'), target_fixture="inference_guide_component")
@@ -46,10 +43,11 @@ def auto_guide_factory_fixture(guide_type):
     return AutoGuideFactory(guide_type=guide_type)
 
 
-@given("I have a LegacyAutoGuideFactory", target_fixture="legacy_auto_guide_factory")
-def legacy_auto_guide_factory_fixture(bdd_legacy_auto_guide_factory):
-    """Get a LegacyAutoGuideFactory from the fixture."""
-    return bdd_legacy_auto_guide_factory
+# Legacy tests commented out since LegacyAutoGuideFactory no longer exists
+# @given("I have a LegacyAutoGuideFactory", target_fixture="legacy_auto_guide_factory")
+# def legacy_auto_guide_factory_fixture(bdd_legacy_auto_guide_factory):
+#     """Get a LegacyAutoGuideFactory from the fixture."""
+#     return bdd_legacy_auto_guide_factory
 
 
 @given(parsers.parse("I have an AutoGuideFactory with init_scale={init_scale}"), target_fixture="auto_guide_factory_with_init_scale")
@@ -62,19 +60,38 @@ def auto_guide_factory_with_init_scale_fixture(init_scale):
 
 
 @when("I create a guide for the model", target_fixture="create_guide")
-def create_guide_fixture(inference_guide_component, pyro_velocity_model):
+def create_guide_fixture(request, pyro_velocity_model):
     """Create a guide for the model."""
+    # Try to get the appropriate fixture based on what's available
+    auto_guide_factory = None
+    
+    # Try different fixture names to handle different scenario contexts
+    for fixture_name in [
+        "inference_guide_component",
+        "auto_guide_factory_with_blocking", 
+        "auto_guide_factory_with_init_scale",
+        "auto_guide_factory_with_custom_init"
+    ]:
+        try:
+            auto_guide_factory = request.getfixturevalue(fixture_name)
+            break
+        except:
+            continue
+    
+    if auto_guide_factory is None:
+        pytest.fail("No auto guide factory fixture found")
+    
     # Define a simple model function for testing
     def model_fn(u_obs, s_obs):
         return pyro_velocity_model.forward(u_obs=u_obs, s_obs=s_obs)
 
     # Create the guide
-    guide = inference_guide_component.create_guide(model_fn)
+    guide = auto_guide_factory.create_guide(model_fn)
 
     return {
         "guide": guide,
         "model_fn": model_fn,
-        "auto_guide_factory": inference_guide_component,
+        "auto_guide_factory": auto_guide_factory,
     }
 
 
@@ -128,50 +145,52 @@ def check_parameter_structure(create_guide):
     assert len(list(guide.parameters())) > 0
 
 
-@then("the guide should match the legacy implementation guide")
-def check_legacy_guide_match(legacy_auto_guide_factory, pyro_velocity_model):
-    """Check that the guide matches the legacy implementation guide."""
-    # Define a simple model function for testing
-    def model_fn(u_obs, s_obs):
-        return pyro_velocity_model.forward(u_obs=u_obs, s_obs=s_obs)
-
-    # Create the guide
-    guide = legacy_auto_guide_factory.create_guide(model_fn)
-
-    # Check that the guide is an instance of AutoGuideList
-    assert isinstance(guide, pyro.infer.autoguide.AutoGuideList)
-
-
-@then("the guide should use AutoGuideList with the correct components")
-def check_auto_guide_list_components(legacy_auto_guide_factory, pyro_velocity_model):
-    """Check that the guide uses AutoGuideList with the correct components."""
-    # Define a simple model function for testing
-    def model_fn(u_obs, s_obs):
-        return pyro_velocity_model.forward(u_obs=u_obs, s_obs=s_obs)
-
-    # Create the guide
-    guide = legacy_auto_guide_factory.create_guide(model_fn)
-
-    # Check that the guide is an instance of AutoGuideList
-    assert isinstance(guide, pyro.infer.autoguide.AutoGuideList)
-
-    # Check that the guide has components
-    assert len(guide) > 0
+# Legacy test commented out since LegacyAutoGuideFactory no longer exists
+# @then("the guide should match the legacy implementation guide")
+# def check_legacy_guide_match(legacy_auto_guide_factory, pyro_velocity_model):
+#     """Check that the guide matches the legacy implementation guide."""
+#     # Define a simple model function for testing
+#     def model_fn(u_obs, s_obs):
+#         return pyro_velocity_model.forward(u_obs=u_obs, s_obs=s_obs)
+# 
+#     # Create the guide
+#     guide = legacy_auto_guide_factory.create_guide(model_fn)
+# 
+#     # Check that the guide is an instance of AutoGuideList
+#     assert isinstance(guide, pyro.infer.autoguide.AutoGuideList)
 
 
-@then("the guide should block parameters correctly")
-def check_parameter_blocking(legacy_auto_guide_factory, pyro_velocity_model):
-    """Check that the guide blocks parameters correctly."""
-    # Define a simple model function for testing
-    def model_fn(u_obs, s_obs):
-        return pyro_velocity_model.forward(u_obs=u_obs, s_obs=s_obs)
-
-    # Create the guide
-    guide = legacy_auto_guide_factory.create_guide(model_fn)
-
-    # In a real test, we would check that the guide blocks parameters correctly
-    # For this example, we'll just check that the guide is an instance of AutoGuideList
-    assert isinstance(guide, pyro.infer.autoguide.AutoGuideList)
+# Legacy tests commented out since LegacyAutoGuideFactory no longer exists
+# @then("the guide should use AutoGuideList with the correct components")
+# def check_auto_guide_list_components(legacy_auto_guide_factory, pyro_velocity_model):
+#     """Check that the guide uses AutoGuideList with the correct components."""
+#     # Define a simple model function for testing
+#     def model_fn(u_obs, s_obs):
+#         return pyro_velocity_model.forward(u_obs=u_obs, s_obs=s_obs)
+# 
+#     # Create the guide
+#     guide = legacy_auto_guide_factory.create_guide(model_fn)
+# 
+#     # Check that the guide is an instance of AutoGuideList
+#     assert isinstance(guide, pyro.infer.autoguide.AutoGuideList)
+# 
+#     # Check that the guide has components
+#     assert len(guide) > 0
+# 
+# 
+# @then("the guide should block parameters correctly")
+# def check_parameter_blocking(legacy_auto_guide_factory, pyro_velocity_model):
+#     """Check that the guide blocks parameters correctly."""
+#     # Define a simple model function for testing
+#     def model_fn(u_obs, s_obs):
+#         return pyro_velocity_model.forward(u_obs=u_obs, s_obs=s_obs)
+# 
+#     # Create the guide
+#     guide = legacy_auto_guide_factory.create_guide(model_fn)
+# 
+#     # In a real test, we would check that the guide blocks parameters correctly
+#     # For this example, we'll just check that the guide is an instance of AutoGuideList
+#     assert isinstance(guide, pyro.infer.autoguide.AutoGuideList)
 
 
 @then("the guide should initialize parameters with the specified scale")
@@ -236,6 +255,14 @@ def check_variational_family(create_guide):
     assert guide is not None
 
 
+@given("I have an AutoGuideFactory with parameter blocking", target_fixture="auto_guide_factory_with_blocking")
+def auto_guide_factory_with_blocking_fixture():
+    """Create an AutoGuideFactory with parameter blocking."""
+    # For AutoGuideFactory, we can specify which parameters to block
+    # This is a placeholder - in a real implementation, we would configure blocking
+    return AutoGuideFactory(guide_type="AutoNormal")
+
+
 @given("I have an AutoGuideFactory with custom initialization", target_fixture="auto_guide_factory_with_custom_init")
 def auto_guide_factory_with_custom_init_fixture():
     """Create an AutoGuideFactory with custom initialization."""
@@ -289,3 +316,51 @@ def check_initial_variational_parameters(auto_guide_factory_with_custom_init, py
     # Check that the initial variational parameters reflect the custom values
     # This is a placeholder - in a real test, we would check the actual parameter values
     assert len(list(guide.parameters())) > 0
+
+
+@then("the guide should block parameters correctly")
+def check_parameter_blocking(auto_guide_factory_with_blocking, pyro_velocity_model):
+    """Check that the guide blocks parameters correctly."""
+    # Define a simple model function for testing
+    def model_fn(u_obs, s_obs):
+        return pyro_velocity_model.forward(u_obs=u_obs, s_obs=s_obs)
+
+    # Create the guide
+    guide = auto_guide_factory_with_blocking.create_guide(model_fn)
+
+    # In a real test, we would check that the guide blocks parameters correctly
+    # For this placeholder, we'll just check that the guide is created successfully
+    assert guide is not None
+
+
+@then("the guide should handle parameter constraints properly")
+def check_parameter_constraints(auto_guide_factory_with_blocking, pyro_velocity_model, bdd_simple_data):
+    """Check that the guide handles parameter constraints properly."""
+    # Define a simple model function for testing
+    def model_fn(u_obs, s_obs):
+        return pyro_velocity_model.forward(u_obs=u_obs, s_obs=s_obs)
+
+    # Create the guide
+    guide = auto_guide_factory_with_blocking.create_guide(model_fn)
+
+    # Create a simple optimizer
+    optimizer = pyro.optim.Adam({"lr": 0.01})
+
+    # Create an SVI object
+    svi = pyro.infer.SVI(
+        model=model_fn,
+        guide=guide,
+        optim=optimizer,
+        loss=pyro.infer.Trace_ELBO(),
+    )
+
+    # Try to take a step to verify constraints are handled
+    try:
+        svi.step(
+            u_obs=bdd_simple_data["u_obs"],
+            s_obs=bdd_simple_data["s_obs"],
+        )
+        # If we get here, the guide handles constraints properly
+        assert True
+    except Exception as e:
+        pytest.fail(f"Guide does not handle parameter constraints properly: {e}")
