@@ -5,8 +5,8 @@ This module contains the JAX/NumPyro implementation of PyroVelocity, a probabili
 model for RNA velocity analysis.
 """
 
-# Register standard components
-from pyrovelocity.models.jax.components import register_standard_components
+# Register piecewise activation components
+from pyrovelocity.models.jax.components import register_piecewise_activation_components
 from pyrovelocity.models.jax.core import (
     InferenceConfig,
     InferenceState,
@@ -77,9 +77,9 @@ from pyrovelocity.models.jax.factory import (
     create_model,
     create_observation_function,
     create_prior_function,
-    create_standard_model,
+    create_piecewise_activation_model,
     # Predefined configurations
-    standard_model_config,
+    piecewise_activation_model_config,
 )
 from pyrovelocity.models.jax.inference import (
     analyze_posterior,
@@ -163,9 +163,9 @@ __all__ = [
     "create_observation_function",
     "create_guide_factory_function",
     "create_model",
-    "standard_model_config",
-    "create_standard_model",
-    "register_standard_components",
+    "piecewise_activation_model_config",
+    "create_piecewise_activation_model",
+    "register_piecewise_activation_components",
     # Dynamics
     "standard_dynamics_model",
     "nonlinear_dynamics_model",
