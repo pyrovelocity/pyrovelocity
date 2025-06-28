@@ -11,8 +11,16 @@ import numpyro
 import numpyro.distributions as dist
 import pytest
 
-from pyrovelocity.models.jax.core.dynamics import standard_dynamics_model
+from pyrovelocity.models.jax.registry.dynamics import get_dynamics
 from pyrovelocity.models.jax.core.model import velocity_model
+
+
+def get_test_dynamics():
+    """Get dynamics function for testing."""
+    dynamics_fn = get_dynamics("piecewise_activation")
+    if dynamics_fn is None:
+        raise ValueError("Test dynamics function 'piecewise_activation' not found in registry")
+    return dynamics_fn
 from pyrovelocity.models.jax.core.state import InferenceState
 from pyrovelocity.models.jax.inference.posterior import (
     analyze_posterior,
@@ -93,15 +101,16 @@ def test_data():
 
 @pytest.fixture
 def test_inference_state():
-    # Create posterior samples
+    # Create posterior samples using correct piecewise activation parameter names
     key = jax.random.PRNGKey(0)
-    key, subkey1, subkey2, subkey3, subkey4 = jax.random.split(key, 5)
+    key, subkey1, subkey2, subkey3, subkey4, subkey5 = jax.random.split(key, 6)
 
     posterior_samples = {
-        "alpha": jax.random.lognormal(subkey1, shape=(10,)),
-        "beta": jax.random.lognormal(subkey2, shape=(10,)),
-        "gamma": jax.random.lognormal(subkey3, shape=(10,)),
-        "tau": jax.random.normal(subkey4, shape=(10, 10)),
+        "R_on": jax.random.lognormal(subkey1, shape=(10, 10)),  # (samples, genes)
+        "gamma_star": jax.random.lognormal(subkey2, shape=(10, 10)),  # (samples, genes)
+        "t_on_star": jax.random.normal(subkey3, shape=(10, 10)),  # (samples, genes)
+        "delta_star": jax.random.lognormal(subkey4, shape=(10, 10)),  # (samples, genes)
+        "t_star": jax.random.normal(subkey5, shape=(10, 1)),  # (samples, cells)
     }
 
     # Create inference state
@@ -123,16 +132,18 @@ def test_sample_posterior(test_inference_state):
     )
 
     # Check that posterior samples are present
-    assert "alpha" in posterior_samples
-    assert "beta" in posterior_samples
-    assert "gamma" in posterior_samples
-    assert "tau" in posterior_samples
+    assert "R_on" in posterior_samples
+    assert "gamma_star" in posterior_samples
+    assert "t_on_star" in posterior_samples
+    assert "delta_star" in posterior_samples
+    assert "t_star" in posterior_samples
 
     # Check that posterior samples have the correct shape
-    assert posterior_samples["alpha"].shape == (5,)
-    assert posterior_samples["beta"].shape == (5,)
-    assert posterior_samples["gamma"].shape == (5,)
-    assert posterior_samples["tau"].shape == (5, 10)
+    assert posterior_samples["R_on"].shape == (5, 10)
+    assert posterior_samples["gamma_star"].shape == (5, 10)
+    assert posterior_samples["t_on_star"].shape == (5, 10)
+    assert posterior_samples["delta_star"].shape == (5, 10)
+    assert posterior_samples["t_star"].shape == (5, 1)
 
 
 def test_posterior_predictive(test_data, test_inference_state):
@@ -185,7 +196,7 @@ def test_compute_velocity(test_inference_state):
     # Compute velocity
     velocity_samples = compute_velocity(
         posterior_samples=posterior_samples,
-        dynamics_fn=standard_dynamics_model,
+        dynamics_fn=get_test_dynamics(),
     )
 
     # Check that velocity samples are present
@@ -214,7 +225,7 @@ def test_compute_uncertainty(test_inference_state):
     # Compute velocity
     velocity_samples = compute_velocity(
         posterior_samples=posterior_samples,
-        dynamics_fn=standard_dynamics_model,
+        dynamics_fn=get_test_dynamics(),
     )
 
     # Compute uncertainty
@@ -336,10 +347,11 @@ def test_analyze_posterior_with_model_config(test_inference_state):
     assert "inference_data" in results
 
     # Check that posterior samples have the correct shape
-    assert results["posterior_samples"]["alpha"].shape == (5,)
-    assert results["posterior_samples"]["beta"].shape == (5,)
-    assert results["posterior_samples"]["gamma"].shape == (5,)
-    assert results["posterior_samples"]["tau"].shape == (5, 10)
+    assert results["posterior_samples"]["R_on"].shape == (5, 10)
+    assert results["posterior_samples"]["gamma_star"].shape == (5, 10)
+    assert results["posterior_samples"]["t_on_star"].shape == (5, 10)
+    assert results["posterior_samples"]["delta_star"].shape == (5, 10)
+    assert results["posterior_samples"]["t_star"].shape == (5, 1)
 
     # Check that velocity samples have the correct shape
     assert "u_expected" in results["velocity"]
@@ -415,9 +427,9 @@ def test_format_anndata_output(test_inference_state):
 
     # Check that the output has the expected var
     assert "test_model_velocity_cv" in adata_out.var
-    assert "test_model_alpha" in adata_out.var
-    assert "test_model_beta" in adata_out.var
-    assert "test_model_gamma" in adata_out.var
+    assert "test_model_R_on" in adata_out.var
+    assert "test_model_gamma_star" in adata_out.var
+    assert "test_model_t_on_star" in adata_out.var
 
     # Check that the output has the expected uns
     assert "velocity_models" in adata_out.uns
@@ -433,6 +445,6 @@ def test_format_anndata_output(test_inference_state):
     assert adata_out.obs["test_model_velocity_confidence"].shape == (n_cells,)
     assert adata_out.obs["test_model_velocity_probability"].shape == (n_cells,)
     assert adata_out.var["test_model_velocity_cv"].shape == (n_genes,)
-    assert adata_out.var["test_model_alpha"].shape == (n_genes,)
-    assert adata_out.var["test_model_beta"].shape == (n_genes,)
-    assert adata_out.var["test_model_gamma"].shape == (n_genes,)
+    assert adata_out.var["test_model_R_on"].shape == (n_genes,)
+    assert adata_out.var["test_model_gamma_star"].shape == (n_genes,)
+    assert adata_out.var["test_model_t_on_star"].shape == (n_genes,)

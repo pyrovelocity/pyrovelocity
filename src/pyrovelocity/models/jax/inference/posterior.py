@@ -25,7 +25,18 @@ import torch
 from beartype import beartype
 from jaxtyping import Array, Float, PyTree
 
-from pyrovelocity.models.jax.core.dynamics import standard_dynamics_model
+from pyrovelocity.models.jax.registry.dynamics import get_dynamics
+
+# Get the default/standard dynamics function
+def get_standard_dynamics_model():
+    """Get the standard dynamics model function."""
+    # Use piecewise_activation as the standard dynamics
+    dynamics_fn = get_dynamics("piecewise_activation")
+    if dynamics_fn is None:
+        raise ValueError("Standard dynamics function 'piecewise_activation' not found in registry")
+    return dynamics_fn
+
+standard_dynamics_model = get_standard_dynamics_model()
 from pyrovelocity.models.jax.core.state import InferenceState
 from pyrovelocity.models.jax.factory.config import ModelConfig
 from pyrovelocity.models.jax.factory.factory import create_model
@@ -160,19 +171,143 @@ def compute_velocity(
     Returns:
         Dictionary of velocity results
     """
+    # Check if we have piecewise activation parameters or legacy alpha/beta/gamma
+    has_piecewise_params = all(
+        param in posterior_samples 
+        for param in ["R_on", "gamma_star", "t_on_star", "delta_star"]
+    )
+    has_legacy_params = all(
+        param in posterior_samples 
+        for param in ["alpha", "beta", "gamma"]
+    )
+    
+    if has_piecewise_params:
+        # Use piecewise activation parameters
+        return _compute_velocity_piecewise(posterior_samples, dynamics_fn)
+    elif has_legacy_params:
+        # Use legacy alpha/beta/gamma parameters
+        return _compute_velocity_legacy(posterior_samples, dynamics_fn)
+    else:
+        raise ValueError(
+            f"Posterior samples must contain either piecewise activation parameters "
+            f"(R_on, gamma_star, t_on_star, delta_star) or legacy parameters (alpha, beta, gamma). "
+            f"Found parameters: {list(posterior_samples.keys())}"
+        )
+
+
+@beartype
+def _compute_velocity_piecewise(
+    posterior_samples: Dict[str, jnp.ndarray],
+    dynamics_fn: Callable,
+) -> Dict[str, jnp.ndarray]:
+    """Compute RNA velocity from piecewise activation posterior samples."""
+    # Extract piecewise activation parameters
+    R_on = posterior_samples["R_on"]  # Shape: (num_samples,) or (num_samples, num_genes)
+    gamma_star = posterior_samples["gamma_star"]  # Shape: (num_samples,) or (num_samples, num_genes)
+    t_on_star = posterior_samples["t_on_star"]  # Shape: (num_samples,) or (num_samples, num_genes)
+    delta_star = posterior_samples["delta_star"]  # Shape: (num_samples,) or (num_samples, num_genes)
+    
+    # Get time coordinate - could be tau, t_star, or similar
+    time_param = None
+    for time_key in ["t_star", "tau"]:
+        if time_key in posterior_samples:
+            time_param = posterior_samples[time_key]
+            break
+    
+    if time_param is None:
+        raise ValueError("No time parameter found in posterior samples (expected 't_star' or 'tau')")
+
+    # Get dimensions
+    num_samples = R_on.shape[0]
+
+    # Handle both 1D and 2D parameter cases
+    if len(R_on.shape) == 1:
+        # Single gene case - reshape to 2D
+        R_on = R_on.reshape(-1, 1)  # Shape: (num_samples, 1)
+        gamma_star = gamma_star.reshape(-1, 1)  # Shape: (num_samples, 1)
+        t_on_star = t_on_star.reshape(-1, 1)  # Shape: (num_samples, 1)
+        delta_star = delta_star.reshape(-1, 1)  # Shape: (num_samples, 1)
+        num_genes = 1
+    else:
+        # Multiple genes case
+        num_genes = R_on.shape[1]
+
+    # Handle both 1D and 2D time cases
+    if len(time_param.shape) == 1:
+        # Single cell case - reshape to 2D
+        time_param = time_param.reshape(-1, 1)  # Shape: (num_samples, 1)
+        num_cells = 1
+    else:
+        # Multiple cells case
+        num_cells = time_param.shape[1]
+
+    # Reshape parameters for dynamics function: Shape (num_samples, num_cells, num_genes)
+    # Time needs to be [batch_size, n_cells, n_genes] for dynamics function
+    t_star_expanded = time_param[:, :, jnp.newaxis] * jnp.ones((1, 1, num_genes))  # Shape: (num_samples, num_cells, num_genes)
+    
+    # Parameters need to be shaped for broadcasting in dynamics function
+    # The dynamics function expects parameters with shape compatible with (batch_size, n_cells, n_genes)
+    # Since parameters are gene-specific, we need (num_samples, 1, num_genes) to broadcast across cells
+    R_on_expanded = R_on[:, jnp.newaxis, :]  # Shape: (num_samples, 1, num_genes)
+    gamma_star_expanded = gamma_star[:, jnp.newaxis, :]  # Shape: (num_samples, 1, num_genes)
+    t_on_star_expanded = t_on_star[:, jnp.newaxis, :]  # Shape: (num_samples, 1, num_genes)
+    delta_star_expanded = delta_star[:, jnp.newaxis, :]  # Shape: (num_samples, 1, num_genes)
+
+    # Create parameters dictionary for dynamics function
+    dynamics_params = {
+        "R_on": R_on_expanded,
+        "gamma_star": gamma_star_expanded,
+        "t_on_star": t_on_star_expanded,
+        "delta_star": delta_star_expanded,
+    }
+
+    # Initial conditions for piecewise activation (fixed steady state)
+    u0_expanded = jnp.ones((num_samples, num_cells, num_genes))  # u*_0 = 1.0
+    s0_expanded = jnp.ones((num_samples, num_cells, num_genes))  # s*_0 = 1.0/γ* (handled by dynamics function)
+
+    # Apply dynamics model to get expected counts
+    u_expected, s_expected = dynamics_fn(
+        t_star_expanded, u0_expanded, s0_expanded, dynamics_params
+    )
+
+    # Compute velocity as time derivative of spliced counts
+    # For piecewise activation: ds*/dt* = u* - γ*s*
+    velocity = u_expected - gamma_star_expanded * s_expected
+
+    # Compute acceleration as second time derivative
+    # For piecewise activation: d²s*/dt*² = du*/dt* - γ*ds*/dt*
+    # du*/dt* = α*(t*) - u* where α*(t*) is piecewise constant
+    # This requires evaluating the piecewise function at the current time
+    # For simplicity, approximate using finite differences or analytical derivatives
+    dt = 1e-4
+    t_plus_dt = t_star_expanded + dt
+    u_plus_dt, s_plus_dt = dynamics_fn(
+        t_plus_dt, u0_expanded, s0_expanded, dynamics_params
+    )
+    
+    du_dt = (u_plus_dt - u_expected) / dt
+    acceleration = du_dt - gamma_star_expanded * velocity
+
+    # Return results
+    return {
+        "u_expected": u_expected,
+        "s_expected": s_expected,
+        "velocity": velocity,
+        "acceleration": acceleration,
+    }
+
+
+@beartype
+def _compute_velocity_legacy(
+    posterior_samples: Dict[str, jnp.ndarray],
+    dynamics_fn: Callable,
+) -> Dict[str, jnp.ndarray]:
+    """Compute RNA velocity from legacy alpha/beta/gamma posterior samples."""
     # Extract parameters
-    alpha = posterior_samples[
-        "alpha"
-    ]  # Shape: (num_samples, num_genes) or (num_samples,)
-    beta = posterior_samples[
-        "beta"
-    ]  # Shape: (num_samples, num_genes) or (num_samples,)
-    gamma = posterior_samples[
-        "gamma"
-    ]  # Shape: (num_samples, num_genes) or (num_samples,)
-    tau = posterior_samples[
-        "tau"
-    ]  # Shape: (num_samples, num_cells) or (num_samples,)
+    alpha = posterior_samples["alpha"]  # Shape: (num_samples, num_genes) or (num_samples,)
+    beta = posterior_samples["beta"]  # Shape: (num_samples, num_genes) or (num_samples,)
+    gamma = posterior_samples["gamma"]  # Shape: (num_samples, num_genes) or (num_samples,)
+    tau = posterior_samples["tau"]  # Shape: (num_samples, num_cells) or (num_samples,)
 
     # Get dimensions
     num_samples = alpha.shape[0]
@@ -198,15 +333,9 @@ def compute_velocity(
         num_cells = tau.shape[1]
 
     # Reshape parameters for broadcasting
-    alpha_expanded = alpha[
-        :, :, jnp.newaxis
-    ]  # Shape: (num_samples, num_genes, 1)
-    beta_expanded = beta[
-        :, :, jnp.newaxis
-    ]  # Shape: (num_samples, num_genes, 1)
-    gamma_expanded = gamma[
-        :, :, jnp.newaxis
-    ]  # Shape: (num_samples, num_genes, 1)
+    alpha_expanded = alpha[:, :, jnp.newaxis]  # Shape: (num_samples, num_genes, 1)
+    beta_expanded = beta[:, :, jnp.newaxis]  # Shape: (num_samples, num_genes, 1)
+    gamma_expanded = gamma[:, :, jnp.newaxis]  # Shape: (num_samples, num_genes, 1)
     tau_expanded = tau[:, jnp.newaxis, :]  # Shape: (num_samples, 1, num_cells)
 
     # Create expanded parameters dictionary
@@ -594,12 +723,16 @@ def format_anndata_output(
     if not velocity_samples:
         # Try to compute velocity if not provided
         try:
-            from pyrovelocity.models.jax.core.dynamics import (
-                standard_dynamics_model,
-            )
+            from pyrovelocity.models.jax.registry.dynamics import get_dynamics
+
+            # Get the standard dynamics function from registry
+            dynamics_fn = get_dynamics("piecewise_activation")
+            if dynamics_fn is None:
+                raise ValueError("Standard dynamics function 'piecewise_activation' not found in registry")
+
             velocity_samples = compute_velocity(
                 posterior_samples=posterior_samples,
-                dynamics_fn=standard_dynamics_model,
+                dynamics_fn=dynamics_fn,
             )
         except Exception as e:
             raise ValueError(f"Could not compute velocity: {e}")
@@ -636,8 +769,8 @@ def format_anndata_output(
                     f"({n_cells}, {n_genes})"
                 )
 
-        # Store in layers
-        adata_copy.layers[f"{model_name}_velocity"] = jnp.array(velocity)
+        # Store in layers (convert JAX array to numpy for AnnData compatibility)
+        adata_copy.layers[f"{model_name}_velocity"] = np.array(velocity)
 
     # Add velocity confidence to cell-specific annotations
     if "velocity_confidence" in uncertainty:
@@ -674,8 +807,8 @@ def format_anndata_output(
                     f"({n_cells}, {n_genes})"
                 )
 
-        # Store in obs
-        adata_copy.obs[f"{model_name}_velocity_confidence"] = jnp.array(confidence)
+        # Store in obs (convert JAX array to numpy for AnnData compatibility)
+        adata_copy.obs[f"{model_name}_velocity_confidence"] = np.array(confidence)
 
     # Add velocity probability to cell-specific annotations
     if "velocity_prob_positive" in uncertainty:
@@ -712,8 +845,8 @@ def format_anndata_output(
                     f"({n_cells}, {n_genes})"
                 )
 
-        # Store in obs
-        adata_copy.obs[f"{model_name}_velocity_probability"] = jnp.array(probability)
+        # Store in obs (convert JAX array to numpy for AnnData compatibility)
+        adata_copy.obs[f"{model_name}_velocity_probability"] = np.array(probability)
 
     # Add expected unspliced and spliced counts to layers
     if "u_expected_mean" in uncertainty and "s_expected_mean" in uncertainty:
@@ -757,9 +890,9 @@ def format_anndata_output(
                     f"AnnData dimensions ({n_cells}, {n_genes})"
                 )
 
-        # Store in layers
-        adata_copy.layers[f"{model_name}_u_expected"] = jnp.array(u_expected)
-        adata_copy.layers[f"{model_name}_s_expected"] = jnp.array(s_expected)
+        # Store in layers (convert JAX arrays to numpy for AnnData compatibility)
+        adata_copy.layers[f"{model_name}_u_expected"] = np.array(u_expected)
+        adata_copy.layers[f"{model_name}_s_expected"] = np.array(s_expected)
 
     # Add uncertainty measures to var annotations
     for key in uncertainty:
@@ -797,11 +930,26 @@ def format_anndata_output(
                         f"AnnData dimensions ({n_cells}, {n_genes})"
                     )
 
-            # Store in var
-            adata_copy.var[f"{model_name}_{key}"] = jnp.array(value)
+            # Store in var (convert JAX array to numpy for AnnData compatibility)
+            adata_copy.var[f"{model_name}_{key}"] = np.array(value)
 
     # Add model parameters to var annotations
-    for param_name in ["alpha", "beta", "gamma"]:
+    # Handle both legacy and piecewise activation parameter names
+    legacy_params = ["alpha", "beta", "gamma"]
+    piecewise_params = ["R_on", "gamma_star", "t_on_star", "delta_star", "U_0i"]
+    
+    # Check which parameter set we have
+    has_legacy = any(param in posterior_samples for param in legacy_params)
+    has_piecewise = any(param in posterior_samples for param in piecewise_params)
+    
+    if has_piecewise:
+        param_names = piecewise_params
+    elif has_legacy:
+        param_names = legacy_params
+    else:
+        param_names = []
+    
+    for param_name in param_names:
         if param_name in posterior_samples:
             # Compute mean across samples
             param_samples = jnp.array(posterior_samples[param_name])
@@ -826,36 +974,43 @@ def format_anndata_output(
                         f"AnnData dimensions ({n_cells}, {n_genes})"
                     )
 
-            # Store in var
-            adata_copy.var[f"{model_name}_{param_name}"] = jnp.array(param_mean)
+            # Store in var (convert JAX array to numpy for AnnData compatibility)
+            adata_copy.var[f"{model_name}_{param_name}"] = np.array(param_mean)
 
     # Add latent time to obs annotations
-    if "tau" in posterior_samples:
+    # Handle both tau (legacy) and t_star (piecewise activation) time coordinates
+    time_param_name = None
+    for time_key in ["t_star", "tau"]:
+        if time_key in posterior_samples:
+            time_param_name = time_key
+            break
+    
+    if time_param_name is not None:
         # Compute mean across samples
-        tau_samples = jnp.array(posterior_samples["tau"])
-        tau_mean = jnp.mean(tau_samples, axis=0)
+        time_samples = jnp.array(posterior_samples[time_param_name])
+        time_mean = jnp.mean(time_samples, axis=0)
 
         # Handle both scalar and vector cases
-        if not isinstance(tau_mean, jnp.ndarray) or tau_mean.ndim == 0:
+        if not isinstance(time_mean, jnp.ndarray) or time_mean.ndim == 0:
             # If scalar, broadcast to all cells
-            tau_mean = jnp.array([tau_mean])
-            tau_mean = jnp.broadcast_to(tau_mean, (n_cells,))
-        elif tau_mean.shape[0] != n_cells:
+            time_mean = jnp.array([time_mean])
+            time_mean = jnp.broadcast_to(time_mean, (n_cells,))
+        elif time_mean.shape[0] != n_cells:
             # If the number of cells doesn't match, try to reshape or broadcast
-            if tau_mean.size == 1:
+            if time_mean.size == 1:
                 # If scalar, broadcast to all cells
-                tau_mean = jnp.broadcast_to(tau_mean, (n_cells,))
-            elif tau_mean.size == n_genes:
+                time_mean = jnp.broadcast_to(time_mean, (n_cells,))
+            elif time_mean.size == n_genes:
                 # If gene-wise, take mean
-                tau_mean = jnp.mean(tau_mean) * jnp.ones(n_cells)
+                time_mean = jnp.mean(time_mean) * jnp.ones(n_cells)
             else:
                 raise ValueError(
-                    f"Latent time shape {tau_mean.shape} does not match "
+                    f"Latent time shape {time_mean.shape} does not match "
                     f"AnnData dimensions ({n_cells}, {n_genes})"
                 )
 
-        # Store in obs
-        adata_copy.obs[f"{model_name}_latent_time"] = jnp.array(tau_mean)
+        # Store in obs (convert JAX array to numpy for AnnData compatibility)
+        adata_copy.obs[f"{model_name}_latent_time"] = np.array(time_mean)
 
     # Store the model name in uns
     # Initialize uns if it doesn't exist or is None
@@ -874,10 +1029,13 @@ def format_anndata_output(
     adata_copy.uns[f"{model_name}_model_type"] = "jax_numpyro"
 
     # Store model parameters in uns
-    adata_copy.uns[f"{model_name}_params"] = {
-        param: jnp.array(posterior_samples[param]).tolist()
-        for param in ["alpha", "beta", "gamma"]
-        if param in posterior_samples
-    }
+    # Handle both legacy and piecewise activation parameters
+    stored_params = {}
+    for param_name in param_names:
+        if param_name in posterior_samples:
+            # Convert JAX array to numpy then to list for JSON serialization
+            stored_params[param_name] = np.array(posterior_samples[param_name]).tolist()
+    
+    adata_copy.uns[f"{model_name}_params"] = stored_params
 
     return adata_copy
