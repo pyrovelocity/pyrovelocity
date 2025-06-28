@@ -33,8 +33,8 @@ from pyrovelocity.models.jax.factory import (
     create_model,
     create_observation_function,
     create_prior_function,
-    create_standard_model,
-    standard_model_config,
+    create_piecewise_activation_model,
+    piecewise_activation_model_config,
 )
 from pyrovelocity.models.jax.registry import (
     register_dynamics,
@@ -382,16 +382,16 @@ def test_create_model(setup_registries):
     )
     assert callable(model)
 
-    # Test standard model config
-    config = standard_model_config()
-    assert config.dynamics_function.name == "standard"
+    # Test piecewise activation model config
+    config = piecewise_activation_model_config()
+    assert config.dynamics_function.name == "piecewise_activation"
     assert config.prior_function.name == "lognormal"
     assert config.likelihood_function.name == "poisson"
     assert config.observation_function.name == "standard"
     assert config.guide_function.name == "auto"
 
-    # Test create standard model
-    model = create_standard_model()
+    # Test create piecewise activation model
+    model = create_piecewise_activation_model()
     assert callable(model)
 
 
