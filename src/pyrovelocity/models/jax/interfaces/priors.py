@@ -17,9 +17,9 @@ PriorFunction = Callable[
     [
         jnp.ndarray,  # key (random key)
         int,  # num_genes
-        Optional[Dict[str, Any]],  # prior_params
+        Optional[Dict[str, Any]],  # prior_params (can include n_cells)
     ],
-    Dict[str, Float[Array, "n_genes"]],  # sampled parameters
+    Dict[str, Float[Array, "..."]],  # sampled parameters (mixed shapes allowed)
 ]
 
 
