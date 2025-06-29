@@ -16,7 +16,6 @@ from pyrovelocity.models.jax.factory.config import (
     DynamicsFunctionConfig,
     PriorFunctionConfig,
     LikelihoodFunctionConfig,
-    ObservationFunctionConfig,
     GuideFunctionConfig,
     ModelConfig,
 )
@@ -25,11 +24,11 @@ from pyrovelocity.models.jax.factory.factory import (
     create_dynamics_function,
     create_prior_function,
     create_likelihood_function,
-    create_observation_function,
     create_guide_factory_function,
     create_model,
     piecewise_activation_model_config,
     create_piecewise_activation_model,
+    create_piecewise_activation_model_jax,
 )
 
 __all__ = [
@@ -37,17 +36,16 @@ __all__ = [
     "DynamicsFunctionConfig",
     "PriorFunctionConfig",
     "LikelihoodFunctionConfig",
-    "ObservationFunctionConfig",
     "GuideFunctionConfig",
     "ModelConfig",
     # Factory functions
     "create_dynamics_function",
     "create_prior_function",
     "create_likelihood_function",
-    "create_observation_function",
     "create_guide_factory_function",
     "create_model",
     # Predefined configurations
     "piecewise_activation_model_config",
     "create_piecewise_activation_model",
+    "create_piecewise_activation_model_jax",
 ]
