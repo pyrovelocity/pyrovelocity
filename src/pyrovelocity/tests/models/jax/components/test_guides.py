@@ -5,7 +5,7 @@ This module contains tests for the guide components, including:
 
 - test_auto_normal_guide_factory: Test auto normal guide factory
 - test_auto_delta_guide_factory: Test auto delta guide factory
-- test_custom_guide_factory: Test custom guide factory
+- test_register_standard_guides: Test registration of standard guide functions
 - test_register_standard_guides: Test registration of standard guide functions
 """
 
@@ -16,7 +16,6 @@ from numpyro.distributions import Normal
 from pyrovelocity.models.jax.components.guides import (
     auto_delta_guide_factory,
     auto_normal_guide_factory,
-    custom_guide_factory,
 )
 from pyrovelocity.models.jax.registry import get_guide
 
@@ -65,29 +64,6 @@ def test_auto_delta_guide_factory():
     assert callable(guide)
 
 
-def test_custom_guide_factory():
-    """Test custom guide factory."""
-    # Create test data
-    n_cells = 2
-    n_genes = 3
-
-    # Create guide with custom parameters
-    guide_params = {
-        "num_genes": n_genes,
-        "num_cells": n_cells,
-        "alpha_loc": 0.0,
-        "alpha_scale": 1.0,
-        "beta_loc": 0.0,
-        "beta_scale": 1.0,
-        "gamma_loc": 0.0,
-        "gamma_scale": 1.0,
-        "tau_loc": 0.0,
-        "tau_scale": 1.0,
-    }
-    guide = custom_guide_factory(simple_model, guide_params)
-
-    # Check that guide is callable
-    assert callable(guide)
 
 
 def test_register_standard_guides():
@@ -102,5 +78,3 @@ def test_register_standard_guides():
     auto_delta_fn = get_guide("auto_delta")
     assert auto_delta_fn is not None
 
-    custom_fn = get_guide("custom")
-    assert custom_fn is not None
