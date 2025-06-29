@@ -19,14 +19,8 @@ def test_state_with_utils_integration(jax_key, model_parameters):
     # Create a random key
     key = create_key(42)
 
-    # Create parameters using the key
-    key1, key2, key3 = jax.random.split(key, 3)
-    alpha = jax.random.normal(key1, (3,))
-    beta = jax.random.normal(key2, (3,))
-    gamma = jax.random.normal(key3, (3,))
-
-    # Create a model state
-    parameters = {"alpha": alpha, "beta": beta, "gamma": gamma}
+    # Use the piecewise activation model parameters from fixture
+    parameters = model_parameters
     model_state = VelocityModelState(parameters=parameters)
 
     # Create a training state
@@ -66,14 +60,14 @@ def test_training_state_update_workflow(jax_key, model_parameters):
     initial_state = TrainingState(
         step=0,
         params=model_parameters,
-        opt_state={"momentum": jnp.zeros_like(model_parameters["alpha"])},
+        opt_state={"momentum": jnp.zeros_like(model_parameters["R_on"])},
         key=jax_key,
     )
 
     # Simulate a training step
     new_key, _ = split_key(initial_state.key)
     new_params = {k: v + 0.01 for k, v in initial_state.params.items()}
-    new_opt_state = {"momentum": jnp.ones_like(model_parameters["alpha"]) * 0.1}
+    new_opt_state = {"momentum": jnp.ones_like(model_parameters["R_on"]) * 0.1}
     loss = 1.5
 
     # Update training state
@@ -102,8 +96,8 @@ def test_inference_state_update_workflow():
     """Test a typical workflow for updating InferenceState."""
     # Create initial posterior samples
     posterior_samples = {
-        "alpha": jnp.array([[1.0, 2.0], [3.0, 4.0]]),
-        "beta": jnp.array([[0.5, 1.0], [1.5, 2.0]]),
+        "R_on": jnp.array([[1.0, 2.0], [3.0, 4.0]]),
+        "gamma_star": jnp.array([[0.5, 1.0], [1.5, 2.0]]),
     }
 
     # Create initial inference state
@@ -117,8 +111,8 @@ def test_inference_state_update_workflow():
 
     # Simulate diagnostics
     diagnostics = {
-        "r_hat": {"alpha": 1.01, "beta": 1.02},
-        "n_eff": {"alpha": 950, "beta": 980},
+        "r_hat": {"R_on": 1.01, "gamma_star": 1.02},
+        "n_eff": {"R_on": 950, "gamma_star": 980},
     }
 
     # Update inference state
