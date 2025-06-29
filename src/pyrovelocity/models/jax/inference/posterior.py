@@ -267,7 +267,7 @@ def _compute_velocity_piecewise(
 
     # Apply dynamics model to get expected counts
     u_expected, s_expected = dynamics_fn(
-        t_star_expanded, u0_expanded, s0_expanded, dynamics_params
+        t_star_expanded, u0_expanded, dynamics_params
     )
 
     # Compute velocity as time derivative of spliced counts
@@ -282,7 +282,7 @@ def _compute_velocity_piecewise(
     dt = 1e-4
     t_plus_dt = t_star_expanded + dt
     u_plus_dt, s_plus_dt = dynamics_fn(
-        t_plus_dt, u0_expanded, s0_expanded, dynamics_params
+        t_plus_dt, u0_expanded, dynamics_params
     )
     
     du_dt = (u_plus_dt - u_expected) / dt
@@ -360,7 +360,7 @@ def _compute_velocity_legacy(
 
     # Apply dynamics model to get expected counts
     dynamics_result = dynamics_fn(
-        tau_expanded, u0_expanded, s0_expanded, expanded_params
+        tau_expanded, u0_expanded, expanded_params
     )
 
     # Handle both tuple and single return value cases
