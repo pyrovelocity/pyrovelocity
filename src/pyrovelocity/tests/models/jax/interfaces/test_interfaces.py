@@ -41,7 +41,6 @@ from pyrovelocity.models.jax.interfaces import (
 def example_dynamics_function(
     tau: Float[Array, "batch_size n_cells n_genes"],
     u0: Float[Array, "batch_size n_cells n_genes"],
-    s0: Float[Array, "batch_size n_cells n_genes"],
     params: Dict[str, Float[Array, "..."]],
 ) -> Tuple[
     Float[Array, "batch_size n_cells n_genes"],
@@ -61,6 +60,10 @@ def example_dynamics_function(
     ut = u0 * jnp.exp(-beta_expanded * tau) + (
         alpha_expanded / beta_expanded
     ) * (1 - jnp.exp(-beta_expanded * tau))
+    
+    # Compute s0 from steady state: s0 = u0 / gamma (assuming steady state)
+    s0 = u0 / gamma_expanded
+    
     st = s0 * jnp.exp(-gamma_expanded * tau) + (
         beta_expanded * u0 / (gamma_expanded - beta_expanded)
     ) * (jnp.exp(-beta_expanded * tau) - jnp.exp(-gamma_expanded * tau))
@@ -102,16 +105,18 @@ def example_prior_function(
 
 @jaxtyped(typechecker=beartype)
 def example_likelihood_function(
-    u_obs: Float[Array, "batch_size n_cells n_genes"],
-    s_obs: Float[Array, "batch_size n_cells n_genes"],
-    u_logits: Float[Array, "batch_size n_cells n_genes"],
-    s_logits: Float[Array, "batch_size n_cells n_genes"],
-    likelihood_params: Optional[Dict[str, Any]] = None,
+    context: Dict[str, Any],
 ) -> None:
     """Example likelihood function implementation for testing."""
-    # Sample from Poisson distribution
-    numpyro.sample("u", dist.Poisson(u_logits).to_event(2), obs=u_obs)
-    numpyro.sample("s", dist.Poisson(s_logits).to_event(2), obs=s_obs)
+    # Extract required data from context
+    u_obs = context["u_obs"]
+    s_obs = context["s_obs"]
+    u_expected = context["u_expected"]
+    s_expected = context["s_expected"]
+    
+    # Sample from Poisson distribution with expected counts as rates
+    numpyro.sample("u", dist.Poisson(u_expected).to_event(2), obs=u_obs)
+    numpyro.sample("s", dist.Poisson(s_expected).to_event(2), obs=s_obs)
 
 
 @jaxtyped(typechecker=beartype)
@@ -154,7 +159,6 @@ def test_dynamics_function_interface():
     batch_size, n_cells, n_genes = 2, 3, 4
     tau = jnp.ones((batch_size, n_cells, n_genes))
     u0 = jnp.ones((batch_size, n_cells, n_genes))
-    s0 = jnp.ones((batch_size, n_cells, n_genes))
     params = {
         "alpha": jnp.ones((n_genes,)),
         "beta": jnp.ones((n_genes,)),
@@ -162,7 +166,7 @@ def test_dynamics_function_interface():
     }
 
     # Test function execution
-    ut, st = example_dynamics_function(tau, u0, s0, params)
+    ut, st = example_dynamics_function(tau, u0, params)
 
     # Check output shapes
     assert ut.shape == (batch_size, n_cells, n_genes)
@@ -205,12 +209,20 @@ def test_likelihood_function_interface():
     batch_size, n_cells, n_genes = 2, 3, 4
     u_obs = jnp.ones((batch_size, n_cells, n_genes))
     s_obs = jnp.ones((batch_size, n_cells, n_genes))
-    u_logits = jnp.ones((batch_size, n_cells, n_genes))
-    s_logits = jnp.ones((batch_size, n_cells, n_genes))
+    u_expected = jnp.ones((batch_size, n_cells, n_genes))
+    s_expected = jnp.ones((batch_size, n_cells, n_genes))
+
+    # Create context dictionary
+    context = {
+        "u_obs": u_obs,
+        "s_obs": s_obs,
+        "u_expected": u_expected,
+        "s_expected": s_expected,
+    }
 
     # Test function execution in a numpyro model
     def model():
-        example_likelihood_function(u_obs, s_obs, u_logits, s_logits)
+        example_likelihood_function(context)
 
     # This should not raise an error
     numpyro.handlers.trace(model).get_trace()
