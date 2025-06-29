@@ -17,7 +17,6 @@ DynamicsFunction = Callable[
     [
         Float[Array, "batch_size n_cells n_genes"],  # t_star/tau (time points)
         Float[Array, "batch_size n_cells n_genes"],  # u0 (initial unspliced)
-        Float[Array, "batch_size n_cells n_genes"],  # s0 (initial spliced)
         Dict[str, Float[Array, "..."]],  # params (model parameters)
     ],
     Tuple[
@@ -52,22 +51,20 @@ def validate_dynamics_function(fn: Callable) -> bool:
     params = sig.parameters
 
     # Check parameter count
-    if len(params) != 4:
+    if len(params) != 3:
         raise TypeError(
-            f"Dynamics function must have 4 parameters, got {len(params)}"
+            f"Dynamics function must have 3 parameters, got {len(params)}"
         )
 
     # Check parameter names - use modular implementation names
     param_names = list(params.keys())
-    expected_names = ["t_star", "u0_star", "s0_star", "params"]  # Match modular metadata
+    expected_names = ["t_star", "u0_star", "params"]  # Match modular metadata (no s0_star)
     for i, name in enumerate(param_names):
         if i == 0 and name in ["tau", "t_star"]:  # Accept both legacy tau and modular t_star
             continue
         elif i == 1 and name in ["u0", "u0_star"]:  # Accept both legacy u0 and modular u0_star  
             continue
-        elif i == 2 and name in ["s0", "s0_star"]:  # Accept both legacy s0 and modular s0_star
-            continue
-        elif i == 3 and name == "params":
+        elif i == 2 and name == "params":
             continue
         else:
             raise TypeError(
