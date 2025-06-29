@@ -38,7 +38,7 @@ def test_velocity_model_state_replace(model_parameters):
     state = VelocityModelState(parameters=model_parameters)
 
     # Create new state with updated parameters
-    new_parameters = {"alpha": jnp.array([2.0, 3.0, 4.0])}
+    new_parameters = {"R_on": jnp.array([2.0, 3.0, 4.0])}
     new_state = state.replace(parameters=new_parameters)
 
     # Check that the original state is unchanged
@@ -117,8 +117,8 @@ def test_training_state_replace(jax_key):
 def test_inference_state_creation():
     """Test InferenceState creation."""
     posterior_samples = {
-        "alpha": jnp.array([[1.0, 2.0], [3.0, 4.0]]),
-        "beta": jnp.array([[0.5, 1.0], [1.5, 2.0]]),
+        "R_on": jnp.array([[1.0, 2.0], [3.0, 4.0]]),
+        "gamma_star": jnp.array([[0.5, 1.0], [1.5, 2.0]]),
     }
 
     state = InferenceState(posterior_samples=posterior_samples)
@@ -131,8 +131,8 @@ def test_inference_state_creation():
 def test_inference_state_immutability():
     """Test InferenceState immutability."""
     posterior_samples = {
-        "alpha": jnp.array([[1.0, 2.0], [3.0, 4.0]]),
-        "beta": jnp.array([[0.5, 1.0], [1.5, 2.0]]),
+        "R_on": jnp.array([[1.0, 2.0], [3.0, 4.0]]),
+        "gamma_star": jnp.array([[0.5, 1.0], [1.5, 2.0]]),
     }
 
     state = InferenceState(posterior_samples=posterior_samples)
@@ -145,15 +145,15 @@ def test_inference_state_immutability():
 def test_inference_state_replace():
     """Test InferenceState replace method."""
     posterior_samples = {
-        "alpha": jnp.array([[1.0, 2.0], [3.0, 4.0]]),
-        "beta": jnp.array([[0.5, 1.0], [1.5, 2.0]]),
+        "R_on": jnp.array([[1.0, 2.0], [3.0, 4.0]]),
+        "gamma_star": jnp.array([[0.5, 1.0], [1.5, 2.0]]),
     }
 
     state = InferenceState(posterior_samples=posterior_samples)
 
     # Create new state with updated posterior_samples
     new_posterior_samples = {
-        "gamma": jnp.array([[0.3, 0.6], [0.9, 1.2]]),
+        "t_on_star": jnp.array([[0.3, 0.6], [0.9, 1.2]]),
     }
     new_state = state.replace(posterior_samples=new_posterior_samples)
 
@@ -170,9 +170,9 @@ def test_model_config_creation():
     """Test ModelConfig creation."""
     config = ModelConfig()
 
-    assert config.dynamics == "standard"
-    assert config.likelihood == "poisson"
-    assert config.prior == "lognormal"
+    assert config.dynamics == "piecewise_activation"
+    assert config.likelihood == "piecewise_activation"
+    assert config.prior == "piecewise_activation"
     assert config.inference == "svi"
     assert config.use_observed_lib_size is True
     assert config.latent_time is True
@@ -198,12 +198,12 @@ def test_model_config_replace():
     new_config = config.replace(dynamics="nonlinear")
 
     # Check that the original config is unchanged
-    assert config.dynamics == "standard"
+    assert config.dynamics == "piecewise_activation"
 
     # Check that the new config has the updated dynamics
     assert new_config.dynamics == "nonlinear"
-    assert new_config.likelihood == "poisson"
-    assert new_config.prior == "lognormal"
+    assert new_config.likelihood == "piecewise_activation"
+    assert new_config.prior == "piecewise_activation"
     assert new_config.inference == "svi"
     assert new_config.use_observed_lib_size is True
     assert new_config.latent_time is True
