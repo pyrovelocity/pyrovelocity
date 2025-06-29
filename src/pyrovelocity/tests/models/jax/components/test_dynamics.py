@@ -27,7 +27,6 @@ def test_piecewise_activation_dynamics_function():
 
     # Initial conditions (dimensionless steady state)
     u0_star = jnp.ones((batch_size, n_cells, n_genes))  # u*_0 = 1.0
-    s0_star = jnp.ones((batch_size, n_cells, n_genes))  # s*_0 = 1.0/γ* (for γ*=1)
 
     # Create parameters for piecewise activation
     params = {
@@ -37,8 +36,8 @@ def test_piecewise_activation_dynamics_function():
         "delta_star": jnp.array([[0.3, 0.4, 0.2]]),  # Activation duration
     }
 
-    # Call function
-    u_star, s_star = piecewise_activation_dynamics_function(t_star, u0_star, s0_star, params)
+    # Call function (no s0_star parameter)
+    u_star, s_star = piecewise_activation_dynamics_function(t_star, u0_star, params)
 
     # Check shapes
     assert u_star.shape == (batch_size, n_cells, n_genes)
@@ -69,7 +68,6 @@ def test_piecewise_activation_dynamics_edge_cases():
     # Test case: gamma_star near 1.0 (numerical stability)
     t_star = jnp.array([[[0.6]]])  # During activation phase
     u0_star = jnp.ones((batch_size, n_cells, n_genes))
-    s0_star = jnp.ones((batch_size, n_cells, n_genes))
 
     params = {
         "R_on": jnp.array([[2.0]]),
@@ -79,7 +77,7 @@ def test_piecewise_activation_dynamics_edge_cases():
     }
 
     # Should not raise numerical errors
-    u_star, s_star = piecewise_activation_dynamics_function(t_star, u0_star, s0_star, params)
+    u_star, s_star = piecewise_activation_dynamics_function(t_star, u0_star, params)
     
     assert jnp.all(jnp.isfinite(u_star))
     assert jnp.all(jnp.isfinite(s_star))
