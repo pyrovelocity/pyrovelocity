@@ -18,6 +18,16 @@ from pyrovelocity.models.jax.inference.guide import (
     create_guide,
 )
 
+from pyrovelocity.models.jax.inference.posterior import (
+    sample_posterior,
+    compute_velocity,
+    compute_uncertainty,
+    analyze_posterior,
+    create_inference_data,
+    format_anndata_output,
+)
+
+
 from pyrovelocity.models.jax.inference.svi import (
     create_optimizer,
     create_svi,
@@ -41,14 +51,6 @@ from pyrovelocity.models.jax.inference.unified import (
     create_inference_state,
 )
 
-from pyrovelocity.models.jax.inference.posterior import (
-    sample_posterior,
-    compute_velocity,
-    compute_uncertainty,
-    analyze_posterior,
-    create_inference_data,
-    format_anndata_output,
-)
 
 __all__ = [
     # Config
