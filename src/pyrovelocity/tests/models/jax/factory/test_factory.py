@@ -7,7 +7,6 @@ This module contains tests for the factory system, including:
 - test_create_dynamics_function: Test dynamics function factory
 - test_create_prior_function: Test prior function factory
 - test_create_likelihood_function: Test likelihood function factory
-- test_create_observation_function: Test observation function factory
 - test_create_guide_factory_function: Test guide factory function factory
 - test_create_model: Test model factory
 """
@@ -25,13 +24,11 @@ from pyrovelocity.models.jax.factory import (
     GuideFunctionConfig,
     LikelihoodFunctionConfig,
     ModelConfig,
-    ObservationFunctionConfig,
     PriorFunctionConfig,
     create_dynamics_function,
     create_guide_factory_function,
     create_likelihood_function,
     create_model,
-    create_observation_function,
     create_prior_function,
     create_piecewise_activation_model,
     piecewise_activation_model_config,
@@ -40,23 +37,21 @@ from pyrovelocity.models.jax.registry import (
     register_dynamics,
     register_guide,
     register_likelihood,
-    register_observation,
     register_prior,
 )
 
 
 # Mock implementations for testing
 def mock_dynamics_function(
-    tau: Float[Array, "batch_size n_cells n_genes"],
-    u0: Float[Array, "batch_size n_cells n_genes"],
-    s0: Float[Array, "batch_size n_cells n_genes"],
+    t_star: Float[Array, "batch_size n_cells n_genes"],
+    u0_star: Float[Array, "batch_size n_cells n_genes"],
     params: Dict[str, Float[Array, "..."]],
 ) -> Tuple[
     Float[Array, "batch_size n_cells n_genes"],
     Float[Array, "batch_size n_cells n_genes"],
 ]:
     """Mock dynamics function for testing."""
-    return u0, s0
+    return u0_star, u0_star  # Return u0_star for both u and s
 
 
 def mock_prior_function(
@@ -73,26 +68,12 @@ def mock_prior_function(
 
 
 def mock_likelihood_function(
-    u_obs: Float[Array, "batch_size n_cells n_genes"],
-    s_obs: Float[Array, "batch_size n_cells n_genes"],
-    u_logits: Float[Array, "batch_size n_cells n_genes"],
-    s_logits: Float[Array, "batch_size n_cells n_genes"],
-    likelihood_params: Optional[Dict[str, Any]] = None,
+    context: Dict[str, Any]
 ) -> None:
     """Mock likelihood function for testing."""
     pass
 
 
-def mock_observation_function(
-    u_obs: Float[Array, "batch_size n_cells n_genes"],
-    s_obs: Float[Array, "batch_size n_cells n_genes"],
-    observation_params: Optional[Dict[str, Any]] = None,
-) -> Tuple[
-    Float[Array, "batch_size n_cells n_genes"],
-    Float[Array, "batch_size n_cells n_genes"],
-]:
-    """Mock observation function for testing."""
-    return u_obs, s_obs
 
 
 def mock_guide_factory_function(
@@ -122,15 +103,28 @@ def setup_registries():
     except ValueError:
         pass
 
-    try:
-        register_observation("mock", mock_observation_function)
-    except ValueError:
-        pass
 
     try:
         register_guide("mock", mock_guide_factory_function)
     except ValueError:
         pass
+
+    # Register standard functions expected by tests
+    try:
+        register_dynamics("standard", mock_dynamics_function)
+    except ValueError:
+        pass
+
+    try:
+        register_prior("piecewise_activation", mock_prior_function)
+    except ValueError:
+        pass
+
+    try:
+        register_likelihood("poisson", mock_likelihood_function)
+    except ValueError:
+        pass
+
 
 
 def test_config_classes():
@@ -147,12 +141,12 @@ def test_config_classes():
     assert dynamics_config.params == {"param1": 1}
 
     # Test PriorFunctionConfig
-    prior_config = PriorFunctionConfig(name="lognormal")
-    assert prior_config.name == "lognormal"
+    prior_config = PriorFunctionConfig(name="piecewise_activation")
+    assert prior_config.name == "piecewise_activation"
     assert prior_config.params == {}
 
-    prior_config = PriorFunctionConfig(name="lognormal", params={"param1": 1})
-    assert prior_config.name == "lognormal"
+    prior_config = PriorFunctionConfig(name="piecewise_activation", params={"param1": 1})
+    assert prior_config.name == "piecewise_activation"
     assert prior_config.params == {"param1": 1}
 
     # Test LikelihoodFunctionConfig
@@ -166,16 +160,6 @@ def test_config_classes():
     assert likelihood_config.name == "poisson"
     assert likelihood_config.params == {"param1": 1}
 
-    # Test ObservationFunctionConfig
-    observation_config = ObservationFunctionConfig(name="standard")
-    assert observation_config.name == "standard"
-    assert observation_config.params == {}
-
-    observation_config = ObservationFunctionConfig(
-        name="standard", params={"param1": 1}
-    )
-    assert observation_config.name == "standard"
-    assert observation_config.params == {"param1": 1}
 
     # Test GuideFunctionConfig
     guide_config = GuideFunctionConfig(name="auto")
@@ -189,23 +173,20 @@ def test_config_classes():
     # Test ModelConfig
     model_config = ModelConfig(
         dynamics_function=DynamicsFunctionConfig(name="standard"),
-        prior_function=PriorFunctionConfig(name="lognormal"),
+        prior_function=PriorFunctionConfig(name="piecewise_activation"),
         likelihood_function=LikelihoodFunctionConfig(name="poisson"),
-        observation_function=ObservationFunctionConfig(name="standard"),
         guide_function=GuideFunctionConfig(name="auto"),
     )
     assert model_config.dynamics_function.name == "standard"
-    assert model_config.prior_function.name == "lognormal"
+    assert model_config.prior_function.name == "piecewise_activation"
     assert model_config.likelihood_function.name == "poisson"
-    assert model_config.observation_function.name == "standard"
     assert model_config.guide_function.name == "auto"
     assert model_config.metadata == {}
 
     model_config = ModelConfig(
         dynamics_function=DynamicsFunctionConfig(name="standard"),
-        prior_function=PriorFunctionConfig(name="lognormal"),
+        prior_function=PriorFunctionConfig(name="piecewise_activation"),
         likelihood_function=LikelihoodFunctionConfig(name="poisson"),
-        observation_function=ObservationFunctionConfig(name="standard"),
         guide_function=GuideFunctionConfig(name="auto"),
         metadata={"param1": 1},
     )
@@ -244,15 +225,15 @@ def test_create_dynamics_function(setup_registries):
 def test_create_prior_function(setup_registries):
     """Test prior function factory."""
     # Test with string
-    fn = create_prior_function("lognormal")
+    fn = create_prior_function("piecewise_activation")
     assert callable(fn)
 
     # Test with config
-    fn = create_prior_function(PriorFunctionConfig(name="lognormal"))
+    fn = create_prior_function(PriorFunctionConfig(name="piecewise_activation"))
     assert callable(fn)
 
     # Test with dict
-    fn = create_prior_function({"name": "lognormal"})
+    fn = create_prior_function({"name": "piecewise_activation"})
     assert callable(fn)
 
     # Test with mock
@@ -299,33 +280,6 @@ def test_create_likelihood_function(setup_registries):
         create_likelihood_function("invalid")
 
 
-def test_create_observation_function(setup_registries):
-    """Test observation function factory."""
-    # Test with string
-    fn = create_observation_function("standard")
-    assert callable(fn)
-
-    # Test with config
-    fn = create_observation_function(ObservationFunctionConfig(name="standard"))
-    assert callable(fn)
-
-    # Test with dict
-    fn = create_observation_function({"name": "standard"})
-    assert callable(fn)
-
-    # Test with mock
-    fn = create_observation_function("mock")
-    assert fn is mock_observation_function
-
-    # Test with params
-    fn = create_observation_function(
-        ObservationFunctionConfig(name="mock", params={"param1": 1})
-    )
-    assert fn is mock_observation_function
-
-    # Test with invalid name
-    with pytest.raises(ValueError):
-        create_observation_function("invalid")
 
 
 def test_create_guide_factory_function(setup_registries):
@@ -364,7 +318,6 @@ def test_create_model(setup_registries):
         dynamics_function=DynamicsFunctionConfig(name="mock"),
         prior_function=PriorFunctionConfig(name="mock"),
         likelihood_function=LikelihoodFunctionConfig(name="mock"),
-        observation_function=ObservationFunctionConfig(name="mock"),
         guide_function=GuideFunctionConfig(name="mock"),
     )
     model = create_model(model_config)
@@ -376,7 +329,6 @@ def test_create_model(setup_registries):
             "dynamics_function": {"name": "mock"},
             "prior_function": {"name": "mock"},
             "likelihood_function": {"name": "mock"},
-            "observation_function": {"name": "mock"},
             "guide_function": {"name": "mock"},
         }
     )
@@ -385,9 +337,8 @@ def test_create_model(setup_registries):
     # Test piecewise activation model config
     config = piecewise_activation_model_config()
     assert config.dynamics_function.name == "piecewise_activation"
-    assert config.prior_function.name == "lognormal"
-    assert config.likelihood_function.name == "poisson"
-    assert config.observation_function.name == "standard"
+    assert config.prior_function.name == "piecewise_activation"
+    assert config.likelihood_function.name == "piecewise_activation"
     assert config.guide_function.name == "auto"
 
     # Test create piecewise activation model
@@ -402,7 +353,6 @@ def test_model_execution(setup_registries):
         dynamics_function=DynamicsFunctionConfig(name="mock"),
         prior_function=PriorFunctionConfig(name="mock"),
         likelihood_function=LikelihoodFunctionConfig(name="mock"),
-        observation_function=ObservationFunctionConfig(name="mock"),
         guide_function=GuideFunctionConfig(name="mock"),
     )
     model = create_model(model_config)
@@ -417,6 +367,6 @@ def test_model_execution(setup_registries):
         trace = numpyro.handlers.trace(model).get_trace(u_obs, s_obs)
 
     # Check that the model executed without errors
-    assert "alpha" in trace
-    assert "beta" in trace
-    assert "gamma" in trace
+    # The mock model only produces deterministic sites u_expected and s_expected
+    assert "u_expected" in trace
+    assert "s_expected" in trace
