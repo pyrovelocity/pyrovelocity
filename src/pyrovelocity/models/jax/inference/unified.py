@@ -224,16 +224,14 @@ def posterior_predictive(
     # Generate posterior predictive samples
     result = predictive(key, *args, **kwargs)
 
-    # If the result doesn't contain the expected keys, merge with posterior_samples
-    if not any(k in result for k in ["alpha", "beta", "gamma"]):
-        # Include the posterior samples in the result
-        for k, v in posterior_samples.items():
-            if k not in result:
-                # Take only the first num_samples if there are more
-                if v.shape[0] > num_samples:
-                    result[k] = v[:num_samples]
-                else:
-                    result[k] = v
+    # Merge with posterior_samples to include all parameters
+    for k, v in posterior_samples.items():
+        if k not in result:
+            # Take only the first num_samples if there are more
+            if v.shape[0] > num_samples:
+                result[k] = v[:num_samples]
+            else:
+                result[k] = v
 
     return result
 
