@@ -121,9 +121,9 @@ class ModelConfig:
         include_prior: Whether to include prior in the model
     """
 
-    dynamics: str = "standard"
-    likelihood: str = "poisson"
-    prior: str = "lognormal"
+    dynamics: str = "piecewise_activation"
+    likelihood: str = "piecewise_activation"
+    prior: str = "piecewise_activation"
     inference: str = "svi"
     use_observed_lib_size: bool = True
     latent_time: bool = True
