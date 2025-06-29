@@ -7,11 +7,11 @@ and retrieval of observation functions by name.
 
 from typing import Callable, List, Optional
 
-from pyrovelocity.models.jax.interfaces import validate_observation_function
+from pyrovelocity.models.jax.interfaces.observations import validate_observation_function
 from pyrovelocity.models.jax.registry.base import Registry
 
 # Singleton registry instance
-_OBSERVATION_REGISTRY = None
+_OBSERVATIONS_REGISTRY = None
 
 
 class ObservationRegistry(Registry):
@@ -54,11 +54,11 @@ def get_observation_registry() -> ObservationRegistry:
     Returns:
         The observation registry
     """
-    global _OBSERVATION_REGISTRY
-    if _OBSERVATION_REGISTRY is None:
-        _OBSERVATION_REGISTRY = ObservationRegistry()
+    global _OBSERVATIONS_REGISTRY
+    if _OBSERVATIONS_REGISTRY is None:
+        _OBSERVATIONS_REGISTRY = ObservationRegistry()
 
-    return _OBSERVATION_REGISTRY
+    return _OBSERVATIONS_REGISTRY
 
 
 def register_observation(name: str, fn: Callable) -> Callable:
