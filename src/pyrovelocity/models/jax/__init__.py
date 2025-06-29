@@ -7,6 +7,8 @@ model for RNA velocity analysis.
 
 # Register piecewise activation components
 from pyrovelocity.models.jax.components import register_piecewise_activation_components
+
+# Core JAX utilities and infrastructure
 from pyrovelocity.models.jax.core import (
     InferenceConfig,
     InferenceState,
@@ -19,23 +21,15 @@ from pyrovelocity.models.jax.core import (
     create_key,
     create_likelihood,
     disable_x64,
-    dynamics_ode_model,
     enable_x64,
     ensure_array,
     get_device_count,
     get_devices,
-    informative_prior,
-    # Priors
-    lognormal_prior,
     negative_binomial_likelihood,
-    nonlinear_dynamics_model,
     # Likelihoods
     poisson_likelihood,
-    sample_prior_parameters,
     set_platform_device,
     split_key,
-    # Dynamics
-    standard_dynamics_model,
     # Model
     velocity_model,
 )
@@ -68,16 +62,15 @@ from pyrovelocity.models.jax.factory import (
     GuideFunctionConfig,
     LikelihoodFunctionConfig,
     ModelConfig,
-    ObservationFunctionConfig,
     PriorFunctionConfig,
     # Factory functions
     create_dynamics_function,
     create_guide_factory_function,
     create_likelihood_function,
     create_model,
-    create_observation_function,
     create_prior_function,
     create_piecewise_activation_model,
+    create_piecewise_activation_model_jax,
     # Predefined configurations
     piecewise_activation_model_config,
 )
@@ -104,6 +97,8 @@ from pyrovelocity.models.jax.inference import (
     get_default_config,
     mcmc_diagnostics,
     posterior_predictive,
+    # Posterior
+    sample_posterior,
     # Unified
     run_inference,
     run_mcmc_inference,
@@ -155,25 +150,17 @@ __all__ = [
     "DynamicsFunctionConfig",
     "PriorFunctionConfig",
     "LikelihoodFunctionConfig",
-    "ObservationFunctionConfig",
     "GuideFunctionConfig",
     "create_dynamics_function",
     "create_prior_function",
     "create_likelihood_function",
-    "create_observation_function",
     "create_guide_factory_function",
     "create_model",
-    "piecewise_activation_model_config",
-    "create_piecewise_activation_model",
-    "register_piecewise_activation_components",
-    # Dynamics
-    "standard_dynamics_model",
-    "nonlinear_dynamics_model",
-    "dynamics_ode_model",
-    # Priors
-    "lognormal_prior",
-    "informative_prior",
-    "sample_prior_parameters",
+    # Guide
+    "auto_normal_guide",
+    "auto_delta_guide",
+    "custom_guide",
+    "create_guide",
     # Likelihoods
     "poisson_likelihood",
     "negative_binomial_likelihood",
@@ -181,6 +168,10 @@ __all__ = [
     # Model
     "velocity_model",
     "core_create_model",
+    "piecewise_activation_model_config",
+    "create_piecewise_activation_model",
+    "create_piecewise_activation_model_jax",
+    "register_piecewise_activation_components",
     # AnnData integration
     "prepare_anndata",
     "extract_layers",
@@ -202,7 +193,6 @@ __all__ = [
     "get_default_config",
     # Guide
     "auto_normal_guide",
-    "auto_delta_guide",
     "custom_guide",
     "create_guide",
     # SVI
@@ -216,14 +206,18 @@ __all__ = [
     "mcmc_diagnostics",
     # Unified
     "run_inference",
-    "extract_posterior_samples",
-    "posterior_predictive",
-    "create_inference_state",
     # Posterior
     "sample_posterior",
     "compute_velocity",
     "compute_uncertainty",
     "analyze_posterior",
+    "create_inference_data",
+    "format_anndata_output",
+    "extract_posterior_samples",
+    "posterior_predictive",
+    "create_inference_state",
+    # Posterior
+    "sample_posterior",
     "create_inference_data",
     "format_anndata_output",
     # Loop
