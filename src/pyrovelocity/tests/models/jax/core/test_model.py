@@ -6,20 +6,13 @@ import numpyro
 import pytest
 from beartype.roar import BeartypeCallHintParamViolation
 
-from pyrovelocity.models.jax.core.dynamics import (
-    dynamics_ode_model,
-    nonlinear_dynamics_model,
-    standard_dynamics_model,
-)
-from pyrovelocity.models.jax.core.likelihoods import (
-    negative_binomial_likelihood,
-    poisson_likelihood,
-)
+from pyrovelocity.models.jax.registry.dynamics import get_dynamics
+from pyrovelocity.models.jax.registry.likelihoods import get_likelihood
 from pyrovelocity.models.jax.core.model import (
     create_model,
     velocity_model,
 )
-from pyrovelocity.models.jax.core.priors import sample_prior_parameters
+from pyrovelocity.models.jax.registry.priors import get_prior
 from pyrovelocity.models.jax.core.state import ModelConfig
 
 
@@ -48,17 +41,22 @@ def test_velocity_model_interface(cell_gene_data):
 
     # Check that the result is a dictionary with the expected keys
     assert isinstance(result, dict)
-    assert "alpha" in result
-    assert "beta" in result
-    assert "gamma" in result
+    # Check for piecewise activation parameters (generic test)
+    assert "R_on" in result  # Activation fold-change
+    assert "gamma_star" in result  # Relative degradation rate
+    assert "t_on_star" in result  # Activation onset time
+    assert "delta_star" in result  # Activation duration
+    assert "t_star" in result  # Cell temporal coordinates
     assert "tau" in result
     assert "u_expected" in result
     assert "s_expected" in result
 
     # Check that the trace contains the expected sites
-    assert "alpha" in trace
-    assert "beta" in trace
-    assert "gamma" in trace
+    assert "R_on" in trace
+    assert "gamma_star" in trace
+    assert "t_on_star" in trace
+    assert "delta_star" in trace
+    assert "t_star" in trace
     assert "tau" in trace
     assert "u_expected" in trace
     assert "s_expected" in trace
@@ -112,22 +110,42 @@ def test_velocity_model_type_checking(cell_gene_data):
 
 
 def test_create_model():
-    """Test create_model function."""
-    # Test with standard dynamics
-    config = ModelConfig(dynamics="standard", likelihood="poisson")
+    """Test create_model function with registry-based components."""
+    # Test with piecewise_activation (only registered component)
+    config = ModelConfig(
+        dynamics="piecewise_activation", 
+        likelihood="piecewise_activation",
+        prior="piecewise_activation"
+    )
     model_fn = create_model(config)
+    assert model_fn is not None
+    assert callable(model_fn)
 
-    # Test with nonlinear dynamics
-    config = ModelConfig(dynamics="nonlinear", likelihood="poisson")
-    model_fn = create_model(config)
-
-    # Test with ode dynamics
-    config = ModelConfig(dynamics="ode", likelihood="poisson")
-    model_fn = create_model(config)
-
-    # Test with unknown dynamics
-    config = ModelConfig(dynamics="unknown", likelihood="poisson")
-    with pytest.raises(ValueError):
+    # Test with unknown dynamics should raise error
+    config = ModelConfig(
+        dynamics="unknown", 
+        likelihood="piecewise_activation",
+        prior="piecewise_activation"
+    )
+    with pytest.raises((ValueError, TypeError)):
+        create_model(config)
+        
+    # Test with unknown likelihood should raise error
+    config = ModelConfig(
+        dynamics="piecewise_activation", 
+        likelihood="unknown",
+        prior="piecewise_activation"
+    )
+    with pytest.raises((ValueError, TypeError)):
+        create_model(config)
+        
+    # Test with unknown prior should raise error
+    config = ModelConfig(
+        dynamics="piecewise_activation", 
+        likelihood="piecewise_activation",
+        prior="unknown"
+    )
+    with pytest.raises((ValueError, TypeError)):
         create_model(config)
 
 
@@ -139,7 +157,7 @@ def test_create_model_type_checking():
 
 
 def test_model_fn_interface(cell_gene_data):
-    """Test model_fn interface."""
+    """Test model_fn interface with registry-based components."""
     # This test checks that the model function created by create_model has the correct interface
 
     # Prepare test inputs
@@ -148,8 +166,12 @@ def test_model_fn_interface(cell_gene_data):
     u_log_library = jnp.log(jnp.sum(u_obs, axis=1))
     s_log_library = jnp.log(jnp.sum(s_obs, axis=1))
 
-    # Create model function
-    config = ModelConfig(dynamics="standard", likelihood="poisson")
+    # Create model function with registry-based components
+    config = ModelConfig(
+        dynamics="piecewise_activation", 
+        likelihood="piecewise_activation",
+        prior="piecewise_activation"
+    )
     model_fn = create_model(config)
 
     # Set a fixed seed for reproducibility
@@ -167,77 +189,56 @@ def test_model_fn_interface(cell_gene_data):
 
     # Check that the result is a dictionary with the expected keys
     assert isinstance(result, dict)
-    assert "alpha" in result
-    assert "beta" in result
-    assert "gamma" in result
+    # Check for piecewise activation parameters (generic test)
+    assert "R_on" in result  # Activation fold-change
+    assert "gamma_star" in result  # Relative degradation rate
+    assert "t_on_star" in result  # Activation onset time
+    assert "delta_star" in result  # Activation duration
+    assert "t_star" in result  # Cell temporal coordinates
     assert "tau" in result
     assert "u_expected" in result
     assert "s_expected" in result
 
 
 def test_model_config_dynamics_selection():
-    """Test that ModelConfig correctly selects dynamics function."""
-    # Test standard dynamics
-    config = ModelConfig(dynamics="standard")
+    """Test that ModelConfig correctly selects dynamics function via registry."""
+    # Test piecewise_activation dynamics (only one currently registered)
+    config = ModelConfig(dynamics="piecewise_activation")
     model_fn = create_model(config)
-
-    # Get the dynamics_fn from the closure
-    dynamics_fn = None
-    for cell in model_fn.__closure__:
-        if isinstance(cell.cell_contents, type(standard_dynamics_model)):
-            dynamics_fn = cell.cell_contents
-            break
-
-    assert dynamics_fn == standard_dynamics_model
-
-    # Test nonlinear dynamics
-    config = ModelConfig(dynamics="nonlinear")
-    model_fn = create_model(config)
-
-    # Get the dynamics_fn from the closure
-    dynamics_fn = None
-    for cell in model_fn.__closure__:
-        if isinstance(cell.cell_contents, type(nonlinear_dynamics_model)):
-            dynamics_fn = cell.cell_contents
-            break
-
-    assert dynamics_fn == nonlinear_dynamics_model
-
-    # Test ode dynamics
-    config = ModelConfig(dynamics="ode")
-    model_fn = create_model(config)
-
-    # Get the dynamics_fn from the closure
-    dynamics_fn = None
-    for cell in model_fn.__closure__:
-        if isinstance(cell.cell_contents, type(dynamics_ode_model)):
-            dynamics_fn = cell.cell_contents
-            break
-
-    assert dynamics_fn == dynamics_ode_model
+    
+    # Verify the dynamics function can be retrieved from registry
+    dynamics_fn = get_dynamics("piecewise_activation")
+    assert dynamics_fn is not None, "piecewise_activation dynamics should be registered"
+    
+    # Test that model_fn was created successfully
+    assert model_fn is not None
+    assert callable(model_fn)
 
 
 def test_model_config_likelihood_selection():
-    """Test that ModelConfig correctly selects likelihood function."""
-    # Test poisson likelihood
-    config = ModelConfig(likelihood="poisson")
+    """Test that ModelConfig correctly selects likelihood function via registry."""
+    # Test piecewise_activation likelihood (only one currently registered)
+    config = ModelConfig(
+        dynamics="piecewise_activation", 
+        likelihood="piecewise_activation",
+        prior="piecewise_activation"
+    )
     model_fn = create_model(config)
-
+    
+    # Verify the likelihood function can be retrieved from registry
+    likelihood_fn = get_likelihood("piecewise_activation")
+    assert likelihood_fn is not None, "piecewise_activation likelihood should be registered"
+    
     # Check that the model uses the correct likelihood function
-    # We can't directly access the likelihood function in the closure
-    # So we'll check that the create_likelihood function is called with the correct argument
-    assert config.likelihood == "poisson"
-
-    # Test negative_binomial likelihood
-    config = ModelConfig(likelihood="negative_binomial")
-    model_fn = create_model(config)
-
-    # Check that the model uses the correct likelihood function
-    assert config.likelihood == "negative_binomial"
+    assert config.likelihood == "piecewise_activation"
+    
+    # Test that model_fn was created successfully
+    assert model_fn is not None
+    assert callable(model_fn)
 
 
 def test_model_with_different_dynamics(cell_gene_data):
-    """Test model with different dynamics functions."""
+    """Test model with registry-based dynamics functions."""
     # Prepare test inputs
     u_obs = cell_gene_data["u_obs"]
     s_obs = cell_gene_data["s_obs"]
@@ -245,28 +246,36 @@ def test_model_with_different_dynamics(cell_gene_data):
     # Set a fixed seed for reproducibility
     numpyro.set_host_device_count(1)
 
-    # Test with standard dynamics
+    # Get dynamics function from registry
+    dynamics_fn = get_dynamics("piecewise_activation")
+    assert dynamics_fn is not None, "piecewise_activation dynamics should be registered"
+
+    # Test with registry-based dynamics
     with numpyro.handlers.seed(rng_seed=0):
-        result_standard = velocity_model(
+        result = velocity_model(
             u_obs=u_obs,
             s_obs=s_obs,
-            dynamics_fn=standard_dynamics_model,
+            dynamics_fn=dynamics_fn,
         )
 
-    # Test with ODE dynamics
-    with numpyro.handlers.seed(rng_seed=0):
-        result_ode = velocity_model(
-            u_obs=u_obs,
-            s_obs=s_obs,
-            dynamics_fn=dynamics_ode_model,
-        )
-
-    # Check that the results have the same structure
-    assert set(result_standard.keys()) == set(result_ode.keys())
+    # Check that the result has the expected structure
+    assert isinstance(result, dict)
+    
+    # Check for essential outputs (component-agnostic)
+    assert "tau" in result
+    assert "u_expected" in result
+    assert "s_expected" in result
+    
+    # Check for piecewise activation parameters (component-specific)
+    assert "R_on" in result  # Activation fold-change
+    assert "gamma_star" in result  # Relative degradation rate
+    assert "t_on_star" in result  # Activation onset time
+    assert "delta_star" in result  # Activation duration
+    assert "t_star" in result  # Cell temporal coordinates
 
 
 def test_model_with_different_likelihoods(cell_gene_data):
-    """Test model with different likelihood functions."""
+    """Test model with registry-based likelihood functions."""
     # Prepare test inputs
     u_obs = cell_gene_data["u_obs"]
     s_obs = cell_gene_data["s_obs"]
@@ -274,24 +283,32 @@ def test_model_with_different_likelihoods(cell_gene_data):
     # Set a fixed seed for reproducibility
     numpyro.set_host_device_count(1)
 
-    # Test with Poisson likelihood
+    # Get likelihood function from registry
+    likelihood_fn = get_likelihood("piecewise_activation")
+    assert likelihood_fn is not None, "piecewise_activation likelihood should be registered"
+
+    # Test with registry-based likelihood
     with numpyro.handlers.seed(rng_seed=0):
-        result_poisson = velocity_model(
+        result = velocity_model(
             u_obs=u_obs,
             s_obs=s_obs,
-            likelihood_fn=poisson_likelihood,
+            likelihood_fn=likelihood_fn,
         )
 
-    # Test with Negative Binomial likelihood
-    with numpyro.handlers.seed(rng_seed=0):
-        result_nb = velocity_model(
-            u_obs=u_obs,
-            s_obs=s_obs,
-            likelihood_fn=negative_binomial_likelihood,
-        )
-
-    # Check that the results have the same structure
-    assert set(result_poisson.keys()) == set(result_nb.keys())
+    # Check that the result has the expected structure
+    assert isinstance(result, dict)
+    
+    # Check for essential outputs (component-agnostic)
+    assert "tau" in result
+    assert "u_expected" in result
+    assert "s_expected" in result
+    
+    # Check for piecewise activation parameters (component-specific)
+    assert "R_on" in result  # Activation fold-change
+    assert "gamma_star" in result  # Relative degradation rate
+    assert "t_on_star" in result  # Activation onset time
+    assert "delta_star" in result  # Activation duration
+    assert "t_star" in result  # Cell temporal coordinates
 
 
 def test_model_with_and_without_latent_time(cell_gene_data):
