@@ -23,6 +23,18 @@ from pyrovelocity.models.jax.factory import (
 )
 
 
+@given("I have input data with unspliced and spliced JAX arrays", target_fixture="jax_input_data")
+def jax_input_data_fixture(bdd_jax_simple_data):
+    """Get input data from the fixture as JAX arrays."""
+    return bdd_jax_simple_data
+
+
+@given("I have a JAX PRNG key", target_fixture="jax_prng_key")
+def jax_prng_key_fixture():
+    """Create a JAX PRNG key."""
+    return jax.random.PRNGKey(42)
+
+
 @given("I have a JAX likelihood model component")
 def jax_likelihood_model_component():
     """Create a generic JAX likelihood model component."""

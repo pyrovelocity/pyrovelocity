@@ -45,8 +45,8 @@ def jax_prng_key_fixture():
 @given("I have a JAX PiecewiseActivationDynamicsModel", target_fixture="jax_piecewise_dynamics_model")
 def jax_piecewise_dynamics_model_fixture():
     """Create a JAX PiecewiseActivationDynamicsModel."""
-    config = DynamicsFunctionConfig(name="piecewise_activation")
-    return create_dynamics_function(config)
+    from pyrovelocity.models.jax.factory import create_piecewise_activation_model
+    return create_piecewise_activation_model()
 
 
 @when(parsers.parse("I run the forward method with JAX arrays and gamma_star {gamma_star}"), target_fixture="run_jax_forward_method")
@@ -71,7 +71,11 @@ def run_jax_forward_method_fixture(jax_piecewise_dynamics_model, jax_input_data,
     }
 
     # Run the forward method
-    result_context = jax_piecewise_dynamics_model(context, jax_prng_key)
+    result_context = jax_piecewise_dynamics_model(
+        u_obs=jax_input_data["u_obs"],
+        s_obs=jax_input_data["s_obs"],
+        model_params=context
+    )
 
     # Store the result for later steps
     return result_context
@@ -98,7 +102,33 @@ def run_jax_forward_method_boundary_fixture(jax_piecewise_dynamics_model, jax_in
 
     # Run the forward method
     try:
-        result_context = jax_piecewise_dynamics_model(context, jax_prng_key)
+        # Extract parameters for dynamics function call
+        t_star = context["t_star"][:, jnp.newaxis]  # Shape: (n_cells, 1) -> (1, n_cells, n_genes)
+        t_star = jnp.broadcast_to(t_star, (1, n_cells, n_genes))
+        
+        u0_star = jnp.ones((1, n_cells, n_genes))  # Initial condition
+        
+        # Create parameters dict for dynamics function
+        dynamics_params = {
+            "R_on": context["R_on"],
+            "gamma_star": context["gamma_star"],
+            "t_on_star": context["t_on_star"],
+            "delta_star": context["delta_star"],
+        }
+        
+        # Run the dynamics function with correct 3-parameter signature
+        u_expected, s_expected = jax_piecewise_dynamics_model(t_star, u0_star, dynamics_params)
+        
+        # Squeeze out batch dimension to match expected test shapes
+        u_expected = jnp.squeeze(u_expected, axis=0)  # (1, n_cells, n_genes) -> (n_cells, n_genes)
+        s_expected = jnp.squeeze(s_expected, axis=0)  # (1, n_cells, n_genes) -> (n_cells, n_genes)
+        
+        # Create result context similar to what a model would produce
+        result_context = {
+            **context,
+            "u_expected": u_expected,
+            "s_expected": s_expected,
+        }
         return result_context
     except Exception as e:
         return {"error": e}
@@ -127,8 +157,33 @@ def run_jax_jit_method_fixture(jax_jit_compiled_method, jax_input_data, jax_prng
         "t_star": jnp.array([0.5] * n_cells),
     }
 
-    # Run the JIT compiled method
-    result_context = jax_jit_compiled_method(context, jax_prng_key)
+    # Extract parameters for dynamics function call
+    t_star = context["t_star"][:, jnp.newaxis]  # Shape: (n_cells, 1) -> (1, n_cells, n_genes)
+    t_star = jnp.broadcast_to(t_star, (1, n_cells, n_genes))
+    
+    u0_star = jnp.ones((1, n_cells, n_genes))  # Initial condition
+    
+    # Create parameters dict for dynamics function
+    dynamics_params = {
+        "R_on": context["R_on"],
+        "gamma_star": context["gamma_star"],
+        "t_on_star": context["t_on_star"],
+        "delta_star": context["delta_star"],
+    }
+    
+    # Run the JIT compiled method with correct 3-parameter signature
+    u_expected, s_expected = jax_jit_compiled_method(t_star, u0_star, dynamics_params)
+    
+    # Squeeze out batch dimension to match expected test shapes
+    u_expected = jnp.squeeze(u_expected, axis=0)  # (1, n_cells, n_genes) -> (n_cells, n_genes)
+    s_expected = jnp.squeeze(s_expected, axis=0)  # (1, n_cells, n_genes) -> (n_cells, n_genes)
+    
+    # Create result context similar to what a model would produce
+    result_context = {
+        **context,
+        "u_expected": u_expected,
+        "s_expected": s_expected,
+    }
     return result_context
 
 
@@ -150,9 +205,32 @@ def run_jax_forward_with_key_fixture(jax_piecewise_dynamics_model, jax_input_dat
         "t_star": jnp.array([0.5] * n_cells),
     }
 
-    # Run the forward method twice with the same key
-    result1 = jax_piecewise_dynamics_model(context, specific_key)
-    result2 = jax_piecewise_dynamics_model(context, specific_key)
+    # Extract parameters for dynamics function call
+    t_star = context["t_star"][:, jnp.newaxis]  # Shape: (n_cells, 1) -> (1, n_cells, n_genes)
+    t_star = jnp.broadcast_to(t_star, (1, n_cells, n_genes))
+    
+    u0_star = jnp.ones((1, n_cells, n_genes))  # Initial condition
+    
+    # Create parameters dict for dynamics function
+    dynamics_params = {
+        "R_on": context["R_on"],
+        "gamma_star": context["gamma_star"],
+        "t_on_star": context["t_on_star"],
+        "delta_star": context["delta_star"],
+    }
+    
+    # Run the forward method twice with the same dynamics parameters (deterministic)
+    u_expected1, s_expected1 = jax_piecewise_dynamics_model(t_star, u0_star, dynamics_params)
+    u_expected2, s_expected2 = jax_piecewise_dynamics_model(t_star, u0_star, dynamics_params)
+    
+    # Squeeze out batch dimension to match expected test shapes
+    u_expected1 = jnp.squeeze(u_expected1, axis=0)
+    s_expected1 = jnp.squeeze(s_expected1, axis=0)
+    u_expected2 = jnp.squeeze(u_expected2, axis=0)
+    s_expected2 = jnp.squeeze(s_expected2, axis=0)
+    
+    result1 = {**context, "u_expected": u_expected1, "s_expected": s_expected1}
+    result2 = {**context, "u_expected": u_expected2, "s_expected": s_expected2}
     
     return {"result1": result1, "result2": result2, "key": specific_key}
 

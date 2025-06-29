@@ -26,6 +26,18 @@ from pyrovelocity.models.jax.factory import (
 )
 
 
+@given("I have input data with unspliced and spliced JAX arrays", target_fixture="jax_input_data")
+def jax_input_data_fixture(bdd_jax_simple_data):
+    """Get input data from the fixture as JAX arrays."""
+    return bdd_jax_simple_data
+
+
+@given("I have a JAX PRNG key", target_fixture="jax_prng_key")
+def jax_prng_key_fixture():
+    """Create a JAX PRNG key."""
+    return jax.random.PRNGKey(42)
+
+
 @given("I have a JAX PiecewiseActivationDynamicsModel", target_fixture="jax_piecewise_dynamics_model")
 def jax_piecewise_dynamics_model_fixture():
     """Create a JAX PiecewiseActivationDynamicsModel component."""
@@ -46,9 +58,9 @@ def jax_piecewise_likelihood_model_fixture():
 
 
 @given("I have a JAX AutoGuideFactory", target_fixture="jax_auto_guide_factory")
-def jax_auto_guide_factory_fixture():
-    """Create a JAX AutoGuideFactory component."""
-    return "auto_normal_guide"
+def jax_auto_guide_factory_fixture(bdd_jax_auto_guide_factory):
+    """Reference the JAX AutoGuideFactory from conftest.py."""
+    return bdd_jax_auto_guide_factory
 
 
 @when("I create a JAX PyroVelocity model with these components", target_fixture="create_jax_pyrovelocity_model")
@@ -61,7 +73,11 @@ def create_jax_pyrovelocity_model_fixture(
 ):
     """Create a JAX PyroVelocity model with the specified components."""
     # Create the complete model using the factory
-    model, guide = create_piecewise_activation_model()
+    model = create_piecewise_activation_model()
+    
+    # Create a guide separately using NumPyro's AutoNormal
+    from numpyro.infer import autoguide
+    guide = autoguide.AutoNormal(model)
     
     return {
         "model": model,
