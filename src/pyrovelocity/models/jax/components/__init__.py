@@ -13,6 +13,9 @@ from pyrovelocity.models.jax.components.priors import (
 from pyrovelocity.models.jax.components.likelihoods import (
     register_standard_likelihoods,
 )
+from pyrovelocity.models.jax.components.guides import (
+    register_standard_guides,
+)
 
 
 def register_piecewise_activation_components():
@@ -20,6 +23,7 @@ def register_piecewise_activation_components():
     register_piecewise_activation_dynamics()
     register_standard_priors()
     register_standard_likelihoods()
+    register_standard_guides()
 
 
 # Register piecewise activation components when the module is imported
