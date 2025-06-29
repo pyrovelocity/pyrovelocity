@@ -17,7 +17,6 @@ from pyrovelocity.models.jax.factory.config import (
     DynamicsFunctionConfig,
     PriorFunctionConfig,
     LikelihoodFunctionConfig,
-    ObservationFunctionConfig,
     GuideFunctionConfig,
     ModelConfig,
 )
@@ -26,7 +25,6 @@ from pyrovelocity.models.jax.registry import (
     get_dynamics,
     get_prior,
     get_likelihood,
-    get_observation,
     get_guide,
 )
 
@@ -126,37 +124,6 @@ def create_likelihood_function(
     return fn
 
 
-@beartype
-def create_observation_function(
-    config: Union[str, Dict, ObservationFunctionConfig]
-) -> Callable:
-    """
-    Create an observation function from a configuration.
-
-    Args:
-        config: Configuration for the observation function, either as a string,
-               an ObservationFunctionConfig object, or a dictionary.
-
-    Returns:
-        The observation function.
-
-    Raises:
-        ValueError: If the specified function is not registered.
-    """
-    # Convert config to an ObservationFunctionConfig object
-    if isinstance(config, str):
-        config = ObservationFunctionConfig(name=config)
-    elif isinstance(config, dict):
-        config = ObservationFunctionConfig(**config)
-
-    # Get the function from the registry
-    fn = get_observation(config.name)
-    if fn is None:
-        raise ValueError(
-            f"Observation function '{config.name}' is not registered"
-        )
-
-    return fn
 
 
 @beartype
@@ -192,6 +159,88 @@ def create_guide_factory_function(
     return fn
 
 
+
+
+
+
+def create_piecewise_activation_model_jax() -> Callable:
+    """
+    Create JAX piecewise activation model using registry system.
+    
+    This function creates a PyroVelocity model with native JAX piecewise activation
+    components retrieved directly from the registry system:
+    - Piecewise activation dynamics function
+    - Piecewise activation prior function  
+    - Piecewise activation likelihood function
+    - Auto guide factory function
+    
+    Returns:
+        A model function with JAX-native piecewise activation components.
+        
+    Raises:
+        ValueError: If any required component is not registered.
+    """
+    # Retrieve JAX-native components from registry
+    dynamics_fn = get_dynamics("piecewise_activation")
+    prior_fn = get_prior("piecewise_activation")
+    likelihood_fn = get_likelihood("piecewise_activation")
+    guide_factory_fn = get_guide("auto")
+    
+    # Validate all components are available
+    if dynamics_fn is None:
+        raise ValueError("Piecewise activation dynamics function not registered")
+    if prior_fn is None:
+        raise ValueError("Piecewise activation prior function not registered")
+    if likelihood_fn is None:
+        raise ValueError("Piecewise activation likelihood function not registered")
+    if guide_factory_fn is None:
+        raise ValueError("Auto guide factory function not registered")
+    
+    # Create the JAX model configuration using registry components
+    config = ModelConfig(
+        dynamics_function=DynamicsFunctionConfig(name="piecewise_activation"),
+        prior_function=PriorFunctionConfig(name="piecewise_activation"),
+        likelihood_function=LikelihoodFunctionConfig(name="piecewise_activation"),
+        guide_function=GuideFunctionConfig(name="auto"),
+    )
+    
+    return create_model(config)
+
+
+def piecewise_activation_model_config() -> ModelConfig:
+    """
+    Create a configuration for a piecewise activation PyroVelocity model.
+
+    This function returns a configuration for a PyroVelocity model with piecewise
+    activation components: piecewise activation dynamics function, piecewise 
+    activation prior function, piecewise activation likelihood function, and auto 
+    guide factory function.
+
+    Returns:
+        A ModelConfig object for piecewise activation model.
+    """
+    return ModelConfig(
+        dynamics_function=DynamicsFunctionConfig(name="piecewise_activation"),
+        prior_function=PriorFunctionConfig(name="piecewise_activation"),
+        likelihood_function=LikelihoodFunctionConfig(name="piecewise_activation"),
+        guide_function=GuideFunctionConfig(name="auto"),
+    )
+
+
+def create_piecewise_activation_model() -> Callable:
+    """
+    Create a piecewise activation PyroVelocity model.
+
+    This function creates a PyroVelocity model with piecewise activation components:
+    piecewise activation dynamics function, piecewise activation prior function, 
+    piecewise activation likelihood function, and auto guide factory function.
+
+    Returns:
+        A model function with piecewise activation components.
+    """
+    return create_model(piecewise_activation_model_config())
+
+
 @beartype
 def create_model(config: Union[Dict, ModelConfig]) -> Callable:
     """
@@ -215,147 +264,95 @@ def create_model(config: Union[Dict, ModelConfig]) -> Callable:
     dynamics_fn = create_dynamics_function(config.dynamics_function)
     prior_fn = create_prior_function(config.prior_function)
     likelihood_fn = create_likelihood_function(config.likelihood_function)
-    observation_fn = create_observation_function(config.observation_function)
     guide_factory_fn = create_guide_factory_function(config.guide_function)
 
-    # Create the model function
+    # Create the model function that uses registry components
     def model(
         u_obs: Float[Array, "batch_size n_cells n_genes"],
         s_obs: Float[Array, "batch_size n_cells n_genes"],
         u_log_library: Optional[Float[Array, "batch_size n_cells"]] = None,
         s_log_library: Optional[Float[Array, "batch_size n_cells"]] = None,
+        model_params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Float[Array, "..."]]:
         """
-        PyroVelocity model function.
+        Flexible PyroVelocity model function using registry components.
 
         Args:
             u_obs: Observed unspliced counts
             s_obs: Observed spliced counts
             u_log_library: Log library size for unspliced counts
             s_log_library: Log library size for spliced counts
+            model_params: Additional parameters for the model
 
         Returns:
             Dictionary of model outputs
         """
+        if model_params is None:
+            model_params = {}
+            
         # Get dimensions
         batch_size, n_cells, n_genes = u_obs.shape
 
         # Create default log library sizes if not provided
         if u_log_library is None:
-            u_log_library = jnp.log(jnp.sum(u_obs, axis=-1))
+            u_log_library = jnp.log(jnp.sum(u_obs, axis=-1) + 1e-6)
         if s_log_library is None:
-            s_log_library = jnp.log(jnp.sum(s_obs, axis=-1))
+            s_log_library = jnp.log(jnp.sum(s_obs, axis=-1) + 1e-6)
 
-        # Apply observation function
-        u_transformed, s_transformed = observation_fn(u_obs, s_obs)
+        # Use observations directly (no transformation needed in focused architecture)
+        u_transformed, s_transformed = u_obs, s_obs
 
-        # Sample model parameters
-        with numpyro.plate("gene", n_genes):
-            # Sample RNA velocity parameters from prior
-            # Create a deterministic key for reproducibility
-            rng_key = jax.random.PRNGKey(0)
-
-            # Use the prior function to sample parameters with a valid key
-            params = prior_fn(rng_key, n_genes)
-
-            # Register parameters with the model
-            alpha = numpyro.sample(
-                "alpha", numpyro.distributions.Delta(params["alpha"])
-            )
-            beta = numpyro.sample(
-                "beta", numpyro.distributions.Delta(params["beta"])
-            )
-            gamma = numpyro.sample(
-                "gamma", numpyro.distributions.Delta(params["gamma"])
-            )
-
-        # Sample latent time for each cell
-        with numpyro.plate("cell", n_cells):
-            tau = numpyro.sample("tau", numpyro.distributions.Normal(0.0, 1.0))
-
-        # Compute RNA dynamics
-        dynamics_params = {"alpha": alpha, "beta": beta, "gamma": gamma}
-
-        # Initial conditions (steady state)
-        u0 = alpha / beta
-        s0 = alpha / gamma
-
-        # Reshape parameters for broadcasting
-        tau_expanded = tau[:, jnp.newaxis]  # Shape: (n_cells, 1)
-        u0_expanded = u0[jnp.newaxis, :]  # Shape: (1, n_genes)
-        s0_expanded = s0[jnp.newaxis, :]  # Shape: (1, n_genes)
-
-        # Create expanded parameters dictionary
-        expanded_params = {
-            "alpha": alpha[jnp.newaxis, :],  # Shape: (1, n_genes)
-            "beta": beta[jnp.newaxis, :],  # Shape: (1, n_genes)
-            "gamma": gamma[jnp.newaxis, :],  # Shape: (1, n_genes)
-        }
-
-        # Apply dynamics model to get expected counts
-        u_expected, s_expected = dynamics_fn(
-            tau_expanded, u0_expanded, s0_expanded, expanded_params
+        # Sample model parameters using the prior function
+        # Pass dimensions via model_params to the prior function
+        prior_params = model_params.get("prior_params", {})
+        prior_params["n_cells"] = n_cells
+        
+        # Call the prior function (handles its own numpyro sampling)
+        sampled_params = prior_fn(
+            key=jax.random.PRNGKey(0),  # Will be ignored by NumPyro priors
+            num_genes=n_genes,
+            prior_params=prior_params
         )
 
-        # Register expected counts with the model
+        # Call the dynamics function to get expected RNA counts
+        dynamics_params = model_params.get("dynamics_params", {})
+        
+        # Extract time parameter - for now use zeros (steady state initial conditions)
+        # In a full implementation, this would come from the sampled parameters or model_params
+        t_star = jnp.zeros_like(u_transformed)
+        u0_star = jnp.ones_like(u_transformed)  # Fixed initial condition
+        
+        # Call the dynamics function with correct interface (no s0_star)
+        u_expected, s_expected = dynamics_fn(
+            t_star, u0_star, {**sampled_params, **dynamics_params}
+        )
+
+        # Register expected counts as deterministic
         numpyro.deterministic("u_expected", u_expected)
         numpyro.deterministic("s_expected", s_expected)
 
-        # Create scaling parameters for likelihood
-        scaling_params = {
-            "u_log_library": u_log_library,
-            "s_log_library": s_log_library,
-        }
-
-        # Apply likelihood function
+        # Call the likelihood function
+        likelihood_params = model_params.get("likelihood_params", {})
         likelihood_fn(
-            u_transformed, s_transformed, u_expected, s_expected, scaling_params
+            context={
+                **sampled_params,
+                "u_obs": u_transformed,
+                "s_obs": s_transformed,
+                "u_expected": u_expected,
+                "s_expected": s_expected,
+                "u_log_library": u_log_library,
+                "s_log_library": s_log_library,
+                "n_cells": n_cells,
+                "n_genes": n_genes,
+                **likelihood_params
+            }
         )
 
-        # Return model outputs
+        # Return all sampled parameters and computed values
         return {
-            "alpha": alpha,
-            "beta": beta,
-            "gamma": gamma,
-            "tau": tau,
+            **sampled_params,
             "u_expected": u_expected,
             "s_expected": s_expected,
         }
 
     return model
-
-
-def piecewise_activation_model_config() -> ModelConfig:
-    """
-    Create a configuration for a piecewise activation PyroVelocity model.
-
-    This function returns a configuration for a PyroVelocity model with piecewise
-    activation components: piecewise activation dynamics function, lognormal prior 
-    function, poisson likelihood function, standard observation function, and auto 
-    guide factory function.
-
-    Returns:
-        A ModelConfig object with piecewise activation component configurations.
-    """
-    return ModelConfig(
-        dynamics_function=DynamicsFunctionConfig(name="piecewise_activation"),
-        prior_function=PriorFunctionConfig(name="lognormal"),
-        likelihood_function=LikelihoodFunctionConfig(name="poisson"),
-        observation_function=ObservationFunctionConfig(name="standard"),
-        guide_function=GuideFunctionConfig(name="auto"),
-    )
-
-
-def create_piecewise_activation_model() -> Callable:
-    """
-    Create a piecewise activation PyroVelocity model.
-
-    This function creates a PyroVelocity model with piecewise activation components:
-    piecewise activation dynamics function, lognormal prior function, poisson 
-    likelihood function, standard observation function, and auto guide factory 
-    function.
-
-    Returns:
-        A model function with piecewise activation components.
-    """
-    return create_model(piecewise_activation_model_config())
