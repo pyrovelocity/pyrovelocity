@@ -174,7 +174,6 @@ def _compute_piecewise_solution(
 def piecewise_activation_dynamics_function(
     t_star: Float[Array, "batch_size n_cells n_genes"],
     u0_star: Float[Array, "batch_size n_cells n_genes"],
-    s0_star: Float[Array, "batch_size n_cells n_genes"],
     params: Dict[str, Float[Array, "..."]],
 ) -> Tuple[
     Float[Array, "batch_size n_cells n_genes"],
@@ -207,7 +206,6 @@ def piecewise_activation_dynamics_function(
     Args:
         t_star: Dimensionless time parameter [batch_size, n_cells, n_genes]
         u0_star: Initial dimensionless unspliced RNA (fixed = 1.0, unused)
-        s0_star: Initial dimensionless spliced RNA (fixed = 1.0/γ*, unused)
         params: Dictionary with keys:
             - R_on: Fold-change transcription rate during activation
             - gamma_star: Dimensionless degradation rate γ*
