@@ -7,7 +7,6 @@ This module contains tests for the registry system, including:
 - test_dynamics_registry: Test dynamics registry
 - test_prior_registry: Test prior registry
 - test_likelihood_registry: Test likelihood registry
-- test_observation_registry: Test observation registry
 - test_guide_registry: Test guide registry
 """
 
@@ -25,7 +24,6 @@ from pyrovelocity.models.jax.interfaces import (
     validate_dynamics_function,
     validate_guide_factory_function,
     validate_likelihood_function,
-    validate_observation_function,
     validate_prior_function,
 )
 from pyrovelocity.models.jax.registry import (
@@ -51,12 +49,6 @@ from pyrovelocity.models.jax.registry.likelihoods import (
     list_likelihoods,
     register_likelihood,
 )
-from pyrovelocity.models.jax.registry.observations import (
-    ObservationRegistry,
-    get_observation,
-    list_observations,
-    register_observation,
-)
 from pyrovelocity.models.jax.registry.priors import (
     PriorRegistry,
     get_prior,
@@ -70,7 +62,6 @@ from pyrovelocity.models.jax.registry.priors import (
 def example_dynamics_function(
     tau: Float[Array, "batch_size n_cells n_genes"],
     u0: Float[Array, "batch_size n_cells n_genes"],
-    s0: Float[Array, "batch_size n_cells n_genes"],
     params: Dict[str, Float[Array, "..."]],
 ) -> Tuple[
     Float[Array, "batch_size n_cells n_genes"],
@@ -90,6 +81,10 @@ def example_dynamics_function(
     ut = u0 * jnp.exp(-beta_expanded * tau) + (
         alpha_expanded / beta_expanded
     ) * (1 - jnp.exp(-beta_expanded * tau))
+    
+    # Compute s0 from steady state: s0 = u0 / gamma (assuming steady state)
+    s0 = u0 / gamma_expanded
+    
     st = s0 * jnp.exp(-gamma_expanded * tau) + (
         beta_expanded * u0 / (gamma_expanded - beta_expanded)
     ) * (jnp.exp(-beta_expanded * tau) - jnp.exp(-gamma_expanded * tau))
@@ -131,36 +126,20 @@ def example_prior_function(
 
 @jaxtyped(typechecker=beartype)
 def example_likelihood_function(
-    u_obs: Float[Array, "batch_size n_cells n_genes"],
-    s_obs: Float[Array, "batch_size n_cells n_genes"],
-    u_logits: Float[Array, "batch_size n_cells n_genes"],
-    s_logits: Float[Array, "batch_size n_cells n_genes"],
-    likelihood_params: Optional[Dict[str, Any]] = None,
+    context: Dict[str, Any]
 ) -> None:
     """Example likelihood function implementation for registry testing."""
+    # Extract observations and expected values from context
+    u_obs = context["u_obs"]
+    s_obs = context["s_obs"]
+    u_expected = context["u_expected"]
+    s_expected = context["s_expected"]
+    
     # Sample from Poisson distribution
-    numpyro.sample("u", dist.Poisson(u_logits).to_event(2), obs=u_obs)
-    numpyro.sample("s", dist.Poisson(s_logits).to_event(2), obs=s_obs)
+    numpyro.sample("u", dist.Poisson(u_expected).to_event(2), obs=u_obs)
+    numpyro.sample("s", dist.Poisson(s_expected).to_event(2), obs=s_obs)
 
 
-@jaxtyped(typechecker=beartype)
-def example_observation_function(
-    u_obs: Float[Array, "batch_size n_cells n_genes"],
-    s_obs: Float[Array, "batch_size n_cells n_genes"],
-    observation_params: Optional[Dict[str, Any]] = None,
-) -> Tuple[
-    Float[Array, "batch_size n_cells n_genes"],
-    Float[Array, "batch_size n_cells n_genes"],
-]:
-    """Example observation function implementation for registry testing."""
-    # Simple normalization
-    u_size_factor = jnp.sum(u_obs, axis=-1, keepdims=True)
-    s_size_factor = jnp.sum(s_obs, axis=-1, keepdims=True)
-
-    u_normalized = u_obs / (u_size_factor + 1e-6)
-    s_normalized = s_obs / (s_size_factor + 1e-6)
-
-    return u_normalized, s_normalized
 
 
 @jaxtyped(typechecker=beartype)
@@ -292,33 +271,6 @@ def test_likelihood_registry():
         register_likelihood("invalid", invalid_function)
 
 
-def test_observation_registry():
-    """Test observation registry."""
-    # Validate the test function
-    assert validate_observation_function(example_observation_function)
-
-    # Register the function
-    register_observation("test_observation", example_observation_function)
-
-    # Get the function
-    fn = get_observation("test_observation")
-    assert fn is not None
-    assert fn is example_observation_function
-
-    # List registered functions
-    functions = list_observations()
-    assert "test_observation" in functions
-
-    # Test registry instance
-    registry = ObservationRegistry()
-    assert registry.name == "observations"
-
-    # Test registration with invalid function
-    def invalid_function(x):
-        return x
-
-    with pytest.raises(TypeError):
-        register_observation("invalid", invalid_function)
 
 
 def test_guide_registry():
