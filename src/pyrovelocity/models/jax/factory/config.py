@@ -6,7 +6,6 @@ This module provides configuration classes for the factory system, including:
 - DynamicsFunctionConfig: Configuration for dynamics functions
 - PriorFunctionConfig: Configuration for prior functions
 - LikelihoodFunctionConfig: Configuration for likelihood functions
-- ObservationFunctionConfig: Configuration for observation functions
 - GuideFunctionConfig: Configuration for guide factory functions
 - ModelConfig: Configuration for models
 """
@@ -54,17 +53,6 @@ class LikelihoodFunctionConfig:
     params: Dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass
-class ObservationFunctionConfig:
-    """Configuration for observation functions.
-
-    Attributes:
-        name: Name of the observation function to use
-        params: Parameters to pass to the observation function
-    """
-
-    name: str
-    params: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -88,7 +76,6 @@ class ModelConfig:
         dynamics_function: Configuration for the dynamics function
         prior_function: Configuration for the prior function
         likelihood_function: Configuration for the likelihood function
-        observation_function: Configuration for the observation function
         guide_function: Configuration for the guide factory function
         metadata: Additional metadata for the model
     """
@@ -96,6 +83,5 @@ class ModelConfig:
     dynamics_function: DynamicsFunctionConfig
     prior_function: PriorFunctionConfig
     likelihood_function: LikelihoodFunctionConfig
-    observation_function: ObservationFunctionConfig
     guide_function: GuideFunctionConfig
     metadata: Dict[str, Any] = field(default_factory=dict)
