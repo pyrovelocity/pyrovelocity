@@ -15,17 +15,7 @@ from beartype.door import is_bearable
 # Type definition for likelihood functions
 LikelihoodFunction = Callable[
     [
-        Float[
-            Array, "batch_size n_cells n_genes"
-        ],  # u_obs (observed unspliced)
-        Float[Array, "batch_size n_cells n_genes"],  # s_obs (observed spliced)
-        Float[
-            Array, "batch_size n_cells n_genes"
-        ],  # u_logits (expected unspliced)
-        Float[
-            Array, "batch_size n_cells n_genes"
-        ],  # s_logits (expected spliced)
-        Optional[Dict[str, Any]],  # likelihood_params
+        Dict[str, Any],  # context dictionary containing all required parameters
     ],
     None,  # PyroEffect (implicit)
 ]
@@ -56,30 +46,19 @@ def validate_likelihood_function(fn: Callable) -> bool:
     sig = inspect.signature(fn)
     params = sig.parameters
 
-    # Check parameter count
-    if len(params) != 5:
+    # Check parameter count (expecting 1 parameter: context dict)
+    if len(params) != 1:
         raise TypeError(
-            f"Likelihood function must have 5 parameters, got {len(params)}"
+            f"Likelihood function must have 1 parameter (context dict), got {len(params)}"
         )
 
-    # Check parameter names
+    # Check parameter names (expecting single 'context' parameter)
     param_names = list(params.keys())
-    expected_names = [
-        "u_obs",
-        "s_obs",
-        "u_logits",
-        "s_logits",
-        "likelihood_params",
-    ]
-    for i, name in enumerate(param_names):
-        if name != expected_names[i]:
-            raise TypeError(
-                f"Parameter {i+1} should be named '{expected_names[i]}', got '{name}'"
-            )
-
-    # Check if the fifth parameter is optional
-    if params["likelihood_params"].default == inspect.Parameter.empty:
-        raise TypeError("Parameter 'likelihood_params' should be optional")
+    expected_name = "context"
+    if param_names[0] != expected_name:
+        raise TypeError(
+            f"Parameter should be named '{expected_name}', got '{param_names[0]}'"
+        )
 
     # Check return type annotation
     return_annotation = sig.return_annotation
