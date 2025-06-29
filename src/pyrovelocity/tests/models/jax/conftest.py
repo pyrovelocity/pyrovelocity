@@ -4,7 +4,12 @@ import pytest
 import jax
 import jax.numpy as jnp
 import numpy as np
-from pyrovelocity.models.jax.core.utils import create_key, split_key
+# Use standard JAX utilities instead of deleted core utilities
+def create_key(seed: int):
+    return jax.random.PRNGKey(seed)
+
+def split_key(key):
+    return jax.random.split(key)
 
 
 @pytest.fixture
@@ -41,9 +46,11 @@ def numpy_array_2d():
 def model_parameters():
     """Fixture for model parameters."""
     return {
-        "alpha": jnp.array([1.0, 2.0, 3.0]),
-        "beta": jnp.array([0.5, 1.0, 1.5]),
-        "gamma": jnp.array([0.3, 0.6, 0.9]),
+        "R_on": jnp.array([2.0, 2.5, 1.8]),
+        "gamma_star": jnp.array([0.7, 0.8, 0.6]),
+        "t_on_star": jnp.array([1.2, 1.5, 1.0]),
+        "delta_star": jnp.array([1.8, 2.0, 1.6]),
+        "U_0i": jnp.array([8.0, 10.0, 12.0]),
     }
 
 
@@ -71,41 +78,50 @@ def cell_gene_data():
 @pytest.fixture
 def training_state(jax_key, model_parameters):
     """Fixture for training state."""
-    from pyrovelocity.models.jax.core.state import TrainingState
-
-    return TrainingState(
-        step=0,
-        params=model_parameters,
-        opt_state={},
-        key=jax_key,
-    )
+    # Simple training state dict without core dependencies
+    return {
+        "step": 0,
+        "params": model_parameters,
+        "opt_state": {},
+        "key": jax_key,
+    }
 
 
 @pytest.fixture
 def inference_state(model_parameters):
     """Fixture for inference state."""
-    from pyrovelocity.models.jax.core.state import InferenceState
-
+    # Simple inference state dict with piecewise activation parameters
     posterior_samples = {
-        "alpha": jnp.stack([model_parameters["alpha"] for _ in range(10)]),
-        "beta": jnp.stack([model_parameters["beta"] for _ in range(10)]),
-        "gamma": jnp.stack([model_parameters["gamma"] for _ in range(10)]),
+        "R_on": jnp.stack([model_parameters["R_on"] for _ in range(10)]),
+        "gamma_star": jnp.stack([model_parameters["gamma_star"] for _ in range(10)]),
+        "t_on_star": jnp.stack([model_parameters["t_on_star"] for _ in range(10)]),
+        "delta_star": jnp.stack([model_parameters["delta_star"] for _ in range(10)]),
+        "U_0i": jnp.stack([model_parameters["U_0i"] for _ in range(10)]),
     }
 
-    return InferenceState(posterior_samples=posterior_samples)
+    return {"posterior_samples": posterior_samples}
 
 
 @pytest.fixture
 def model_config():
     """Fixture for model configuration."""
-    from pyrovelocity.models.jax.core.state import ModelConfig
+    from pyrovelocity.models.jax.factory import ModelConfig, DynamicsFunctionConfig, PriorFunctionConfig, LikelihoodFunctionConfig, GuideFunctionConfig
 
-    return ModelConfig()
+    return ModelConfig(
+        dynamics_function=DynamicsFunctionConfig(name="piecewise_activation"),
+        prior_function=PriorFunctionConfig(name="piecewise_activation"),
+        likelihood_function=LikelihoodFunctionConfig(name="piecewise_activation"),
+        guide_function=GuideFunctionConfig(name="auto"),
+    )
 
 
 @pytest.fixture
 def inference_config():
     """Fixture for inference configuration."""
-    from pyrovelocity.models.jax.core.state import InferenceConfig
-
-    return InferenceConfig()
+    # Simple inference config dict without core dependencies
+    return {
+        "method": "svi",
+        "num_steps": 1000,
+        "learning_rate": 0.01,
+        "guide_type": "auto_normal",
+    }
