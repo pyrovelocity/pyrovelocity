@@ -278,10 +278,11 @@ def test_create_inference_data(test_inference_state):
 
     # Check that posterior samples are present
     assert hasattr(inference_data, "posterior")
-    assert "alpha" in inference_data.posterior
-    assert "beta" in inference_data.posterior
-    assert "gamma" in inference_data.posterior
-    assert "tau" in inference_data.posterior
+    assert "R_on" in inference_data.posterior
+    assert "gamma_star" in inference_data.posterior
+    assert "t_on_star" in inference_data.posterior
+    assert "delta_star" in inference_data.posterior
+    assert "t_star" in inference_data.posterior
 
 
 def test_analyze_posterior_with_model_config(test_inference_state):
