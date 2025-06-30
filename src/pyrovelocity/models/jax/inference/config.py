@@ -67,10 +67,44 @@ def validate_config(config: InferenceConfig) -> bool:
     Returns:
         True if the configuration is valid, False otherwise
     """
-    # Placeholder for future implementation
-    raise NotImplementedError(
-        "This function will be implemented in a future phase."
-    )
+    # Validate method
+    if config.method not in ["svi", "mcmc"]:
+        return False
+    
+    # Common validations
+    if config.num_samples <= 0:
+        return False
+    
+    # SVI-specific validations
+    if config.method == "svi":
+        if config.learning_rate <= 0:
+            return False
+        if config.num_epochs <= 0:
+            return False
+        if config.early_stopping_patience <= 0:
+            return False
+        if config.guide_type not in [
+            "auto_normal", 
+            "auto_diagonal_normal", 
+            "auto_multivariate_normal", 
+            "auto_lowrank_multivariate_normal"
+        ]:
+            return False
+        if config.optimizer not in ["adam", "adamax", "rmsprop"]:
+            return False
+        if config.batch_size is not None and config.batch_size <= 0:
+            return False
+        if config.clip_norm is not None and config.clip_norm <= 0:
+            return False
+    
+    # MCMC-specific validations
+    elif config.method == "mcmc":
+        if config.num_warmup < 0:
+            return False
+        if config.num_chains <= 0:
+            return False
+    
+    return True
 
 
 @beartype
