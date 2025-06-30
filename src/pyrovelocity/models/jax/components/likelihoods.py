@@ -68,12 +68,12 @@ def piecewise_activation_likelihood_function(
     
     # Apply library size scaling if available
     if u_log_library is not None:
-        u_rate = ut * jnp.exp(u_log_library)[:, jnp.newaxis]
+        u_rate = ut * jnp.exp(u_log_library)[..., jnp.newaxis]
     else:
         u_rate = ut
         
     if s_log_library is not None:
-        s_rate = st * jnp.exp(s_log_library)[:, jnp.newaxis]
+        s_rate = st * jnp.exp(s_log_library)[..., jnp.newaxis]
     else:
         s_rate = st
     
