@@ -147,6 +147,14 @@ prior_predictive_adata = anndata.AnnData(
     }
 )
 
+# Store t_star as latent_time for proper time coordinate visualization
+if "t_star" in prior_samples:
+    t_star_values = prior_samples["t_star"][0, :]  # [cells]
+    prior_predictive_adata.obs["latent_time"] = np.array(t_star_values)
+    print(f"✅ Stored t_star as latent_time in prior data: shape {t_star_values.shape}, range [{t_star_values.min():.3f}, {t_star_values.max():.3f}]")
+else:
+    print("⚠️ No t_star found in prior samples")
+
 # Store true parameters for validation
 prior_predictive_adata.uns["true_parameters"] = {}
 for key_name, value in prior_samples.items():
@@ -297,6 +305,14 @@ try:
             "spliced": np.array(s_posterior_expected)
         }
     )
+    
+    # Store t_star as latent_time for proper time coordinate visualization
+    if "t_star" in posterior_predictive_samples:
+        t_star_values = posterior_predictive_samples["t_star"][0, 0, :]  # [cells]
+        posterior_predictive_adata.obs["latent_time"] = np.array(t_star_values)
+        print(f"✅ Stored t_star as latent_time: shape {t_star_values.shape}, range [{t_star_values.min():.3f}, {t_star_values.max():.3f}]")
+    else:
+        print("⚠️ No t_star found in posterior predictive samples")
     
     print("✅ Posterior predictive data generated:")
     print_anndata(posterior_predictive_adata)
