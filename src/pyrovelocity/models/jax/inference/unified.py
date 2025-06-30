@@ -74,9 +74,10 @@ def run_inference(
             key=key,
         )
 
-        # Create inference state
+        # Create inference state with training state
         inference_state = create_inference_state(
-            posterior_samples=posterior_samples
+            posterior_samples=posterior_samples,
+            training_state=training_state
         )
 
         # Return SVI object and inference state
@@ -241,6 +242,7 @@ def create_inference_state(
     posterior_samples: Dict[str, jnp.ndarray],
     posterior_predictive_samples: Optional[Dict[str, jnp.ndarray]] = None,
     diagnostics: Optional[Dict[str, Any]] = None,
+    training_state: Optional[Any] = None,
 ) -> InferenceState:
     """Create an inference state from inference results.
 
@@ -248,6 +250,7 @@ def create_inference_state(
         posterior_samples: Dictionary of posterior samples
         posterior_predictive_samples: Optional dictionary of posterior predictive samples
         diagnostics: Optional dictionary of diagnostic results
+        training_state: Optional training state with loss history
 
     Returns:
         InferenceState object
@@ -256,4 +259,5 @@ def create_inference_state(
         posterior_samples=posterior_samples,
         posterior_predictive=posterior_predictive_samples,
         diagnostics=diagnostics,
+        training_state=training_state,
     )
