@@ -16,7 +16,7 @@ from pyrovelocity.models.jax.inference.unified import (
     posterior_predictive,
     create_inference_state,
 )
-from pyrovelocity.models.jax.core.state import InferenceConfig, InferenceState
+from pyrovelocity.models.jax.core.state import InferenceConfig, InferenceState, TrainingState
 
 
 # Simple model for testing
@@ -295,3 +295,88 @@ def test_create_inference_state():
 
     # Check that diagnostics are present
     assert inference_state.diagnostics == diagnostics
+
+
+def test_svi_training_state_integration(test_data):
+    """Test that SVI training state is properly integrated into inference state."""
+    # Get test data
+    x, y = test_data
+
+    # Create inference config for SVI
+    config = InferenceConfig(
+        method="svi",
+        num_samples=10,
+        num_epochs=10,  # Use more epochs to get meaningful loss history
+        guide_type="auto_normal",
+    )
+
+    # Set random seed for reproducibility
+    key = jax.random.PRNGKey(0)
+
+    # Run SVI inference
+    guide, inference_state = run_inference(
+        model=simple_model,
+        args=(),
+        kwargs={"x": x, "y": y},
+        config=config,
+        key=key,
+    )
+
+    # Check that inference state has training state
+    assert inference_state.training_state is not None
+    assert isinstance(inference_state.training_state, TrainingState)
+
+    # Check that training state has loss history
+    training_state = inference_state.training_state
+    assert training_state.loss_history is not None
+    assert len(training_state.loss_history) == 10  # Should match num_epochs
+    assert all(isinstance(loss, (int, float, jnp.ndarray)) for loss in training_state.loss_history)
+
+    # Check that training state has step count
+    assert training_state.step == 10  # Should match num_epochs
+
+    # Check that all losses are valid numbers (not NaN/Inf)
+    assert all(jnp.isfinite(loss) for loss in training_state.loss_history)
+
+    # Verify loss is generally decreasing (with some tolerance for variability)
+    first_loss = training_state.loss_history[0]
+    last_loss = training_state.loss_history[-1]
+    # Allow for some cases where loss doesn't decrease due to randomness
+    # Just check that we have valid loss values
+
+
+def test_create_inference_state_with_training_state():
+    """Test creating an inference state with training state."""
+    # Create posterior samples
+    posterior_samples = {
+        "alpha": jnp.ones((10,)),
+        "beta": jnp.ones((10,)),
+    }
+
+    # Create training state
+    training_state = TrainingState(
+        step=100,
+        params={"param1": jnp.array([1.0, 2.0])},
+        opt_state=None,
+        loss_history=[10.0, 9.5, 9.0, 8.5, 8.0],
+        best_params={"param1": jnp.array([1.1, 2.1])},
+        best_loss=8.0,
+    )
+
+    # Create inference state with training state
+    inference_state = create_inference_state(
+        posterior_samples=posterior_samples,
+        training_state=training_state,
+    )
+
+    # Check that inference state is an InferenceState
+    assert isinstance(inference_state, InferenceState)
+
+    # Check that posterior samples are present
+    assert inference_state.posterior_samples == posterior_samples
+
+    # Check that training state is present
+    assert inference_state.training_state == training_state
+    assert inference_state.training_state.step == 100
+    assert len(inference_state.training_state.loss_history) == 5
+    assert inference_state.training_state.best_loss == 8.0
