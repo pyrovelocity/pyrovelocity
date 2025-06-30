@@ -87,11 +87,13 @@ class InferenceState:
         posterior_samples: Dictionary of posterior samples
         posterior_predictive: Optional dictionary of posterior predictive samples
         diagnostics: Optional dictionary of inference diagnostics
+        training_state: Optional training state containing loss history
     """
 
     posterior_samples: Dict[str, jnp.ndarray]
     posterior_predictive: Optional[Dict[str, jnp.ndarray]] = None
     diagnostics: Optional[Dict[str, Any]] = None
+    training_state: Optional["TrainingState"] = None
 
     def replace(self, **kwargs) -> "InferenceState":
         """Create a new InferenceState with updated values.
