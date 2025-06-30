@@ -18,8 +18,17 @@ import torch
 from anndata import AnnData
 from beartype import beartype
 from scipy.stats import linregress, pearsonr
+from numpy.typing import ArrayLike
 
 from pyrovelocity.styles import configure_matplotlib_style
+from pyrovelocity.plots.tensor_utils import (
+    convert_to_numpy,
+    convert_parameters_to_numpy,
+    ensure_numpy_parameters,
+    framework_agnostic_sigmoid,
+    framework_agnostic_log2,
+    framework_agnostic_exp,
+)
 
 # Try to import UMAP, fall back gracefully if not available
 try:
@@ -333,7 +342,7 @@ def combine_pdfs(
 
 
 def _get_available_parameters(
-    parameters: Dict[str, torch.Tensor],
+    parameters: Dict[str, ArrayLike],
     exclude_params: Optional[List[str]] = None,
     model: Optional[Any] = None
 ) -> List[str]:
@@ -385,7 +394,7 @@ def _get_available_parameters(
 
 @beartype
 def plot_parameter_marginals(
-    parameters: Dict[str, torch.Tensor],
+    parameters: Dict[str, ArrayLike],
     check_type: str = "prior",
     exclude_params: Optional[List[str]] = None,
     figsize: Optional[Tuple[Union[int, float], Union[int, float]]] = None,
@@ -399,7 +408,7 @@ def plot_parameter_marginals(
     Plot individual histograms for all parameter marginal distributions.
 
     Args:
-        parameters: Dictionary of parameter tensors
+        parameters: Dictionary of parameter tensors (PyTorch, JAX, or NumPy)
         check_type: Type of check ("prior" or "posterior")
         exclude_params: Optional list of parameter names to exclude
         figsize: Optional figure size (auto-calculated if None)
@@ -413,7 +422,10 @@ def plot_parameter_marginals(
     Returns:
         matplotlib Figure object
     """
-    available_params = _get_available_parameters(parameters, exclude_params, model)
+    # Convert all parameters to NumPy arrays for framework-agnostic plotting
+    numpy_parameters = ensure_numpy_parameters(parameters)
+    
+    available_params = _get_available_parameters(numpy_parameters, exclude_params, model)
 
     if not available_params:
         fig, ax = plt.subplots(figsize=(6, 4))
@@ -432,10 +444,10 @@ def plot_parameter_marginals(
             if param_name in true_params_dict and param_name in global_true_params:
                 true_value = true_params_dict[param_name]
                 # Convert to tensor if needed
-                if not isinstance(true_value, torch.Tensor):
-                    true_value = torch.tensor(true_value)
+                if not isinstance(true_value, np.ndarray):
+                    true_value = convert_to_numpy(true_value)
                 # Only store scalar global parameters
-                if true_value.numel() == 1:
+                if true_value.size == 1:
                     true_parameters[param_name] = true_value
         if true_parameters:
             print(f"Found {len(true_parameters)} global true parameters for validation: {list(true_parameters.keys())}")
@@ -463,7 +475,7 @@ def plot_parameter_marginals(
 
     for i, param_name in enumerate(available_params):
         ax = axes[i]
-        values = parameters[param_name].flatten().numpy()
+        values = numpy_parameters[param_name].flatten()
 
         # Use relative frequency instead of density for consistent y-axis interpretation
         counts, bins, _ = ax.hist(values, bins=30, alpha=0.7, color=colors[i], density=False)
@@ -486,7 +498,7 @@ def plot_parameter_marginals(
         # Try to infer component name from all parameters if model not provided
         component_name = None
         if model is None:
-            component_name = infer_component_name_from_parameters(parameters)
+            component_name = infer_component_name_from_parameters(numpy_parameters)
 
         # Get short label for x-axis and display name for title
         short_label = get_parameter_label(
@@ -556,7 +568,7 @@ def plot_parameter_marginals(
 
 @beartype
 def plot_parameter_relationships(
-    parameters: Dict[str, torch.Tensor],
+    parameters: Dict[str, ArrayLike],
     check_type: str = "prior",
     figsize: Tuple[Union[int, float], Union[int, float]] = (7.5, 2.5),  # Standard width, appropriate height
     save_path: Optional[str] = None,
@@ -568,7 +580,7 @@ def plot_parameter_relationships(
     Plot parameter relationships: correlations, fold-change, and timing.
 
     Args:
-        parameters: Dictionary of parameter tensors
+        parameters: Dictionary of parameter arrays (framework-agnostic)
         check_type: Type of check ("prior" or "posterior")
         figsize: Figure size (width, height)
         save_path: Optional directory path to save figures
@@ -578,6 +590,9 @@ def plot_parameter_relationships(
     Returns:
         matplotlib Figure object
     """
+    # Convert to numpy for plotting
+    parameters = ensure_numpy_parameters(parameters)
+    
     fig, axes = plt.subplots(1, 3, figsize=figsize)
 
     # Temporal coordinate distribution
@@ -712,7 +727,7 @@ def _select_genes_by_mae(
 
 @beartype
 def plot_parameter_marginals_by_gene(
-    posterior_parameters: Dict[str, torch.Tensor],
+    posterior_parameters: Dict[str, ArrayLike],
     figsize: Optional[Tuple[Union[int, float], Union[int, float]]] = None,
     save_path: Optional[str] = None,
     num_genes: int = 6,
@@ -771,6 +786,9 @@ def plot_parameter_marginals_by_gene(
 
     from pyrovelocity.plots.parameter_metadata import get_parameter_label
 
+    # Convert to numpy for plotting
+    posterior_parameters = ensure_numpy_parameters(posterior_parameters)
+
     # Determine gene selection - use same logic as temporal dynamics
     if gene_selection_method == "mae" and observed_adata is not None and predicted_adata is not None:
         gene_indices, gene_names = _select_genes_by_mae(
@@ -804,8 +822,8 @@ def plot_parameter_marginals_by_gene(
             if param_name in true_params_dict:
                 true_value = true_params_dict[param_name]
                 # Convert to tensor if needed
-                if not isinstance(true_value, torch.Tensor):
-                    true_value = torch.tensor(true_value)
+                if not isinstance(true_value, np.ndarray):
+                    true_value = convert_to_numpy(true_value)
                 true_parameters[param_name] = true_value
         print(f"Found {len(true_parameters)} true parameters for validation: {list(true_parameters.keys())}")
 
@@ -865,16 +883,16 @@ def plot_parameter_marginals_by_gene(
             num_samples = 30  # Default from the script
             if total_length % num_samples == 0:
                 num_genes_in_param = total_length // num_samples
-                param_reshaped = param_tensor.view(num_samples, num_genes_in_param)
+                param_reshaped = param_tensor.reshape(num_samples, num_genes_in_param)
             else:
                 # Fallback: treat as single sample per gene
-                param_reshaped = param_tensor.unsqueeze(0)  # [1, num_genes]
+                param_reshaped = np.expand_dims(param_tensor, axis=0)  # [1, num_genes]
         elif param_tensor.ndim == 2:
             # Already shaped: [num_samples, num_genes]
             param_reshaped = param_tensor
         else:
             # Higher dimensions: flatten and reshape
-            param_reshaped = param_tensor.view(-1, param_tensor.shape[-1])
+            param_reshaped = param_tensor.reshape(-1, param_tensor.shape[-1])
 
         param_samples_by_gene[param_name] = param_reshaped
 
@@ -885,7 +903,7 @@ def plot_parameter_marginals_by_gene(
         # Include true parameter values in range calculation if available
         if param_name in true_parameters:
             true_param = true_parameters[param_name]
-            if true_param.numel() == 1:
+            if true_param.size == 1:
                 # Scalar parameter - single value for all genes
                 true_val = float(true_param.item())
                 param_min = min(param_min, true_val)
@@ -905,7 +923,7 @@ def plot_parameter_marginals_by_gene(
     param_ranges = {}
     for param_name in available_params:
         param_samples = param_samples_by_gene[param_name]
-        all_values = param_samples.numpy().flatten()
+        all_values = convert_to_numpy(param_samples).flatten()
         # Use 5th and 95th percentiles to avoid extreme outliers
         param_ranges[param_name] = (np.percentile(all_values, 5), np.percentile(all_values, 95))
 
@@ -927,7 +945,7 @@ def plot_parameter_marginals_by_gene(
 
             # Handle gene indexing
             if gene_idx < param_samples.shape[1]:
-                gene_param_samples = param_samples[:, gene_idx].numpy()
+                gene_param_samples = convert_to_numpy(param_samples[:, gene_idx])
             else:
                 # Gene index out of range, skip this plot
                 ax.text(0.5, 0.5, 'N/A', ha='center', va='center', transform=ax.transAxes)
@@ -954,7 +972,7 @@ def plot_parameter_marginals_by_gene(
             true_line = None
             if param_name in true_parameters:
                 true_param = true_parameters[param_name]
-                if true_param.numel() == 1:
+                if true_param.size == 1:
                     # Scalar parameter - same value for all genes
                     true_val = float(true_param.item())
                 else:
@@ -1139,7 +1157,7 @@ def plot_temporal_dynamics(
 
 @beartype
 def plot_temporal_trajectories(
-    parameters: Dict[str, torch.Tensor],
+    parameters: Dict[str, ArrayLike],
     check_type: str = "prior",
     figsize: Optional[Tuple[Union[int, float], Union[int, float]]] = None,
     save_path: Optional[str] = None,
@@ -1172,6 +1190,9 @@ def plot_temporal_trajectories(
     Returns:
         matplotlib Figure object
     """
+    # Convert to numpy for plotting
+    parameters = ensure_numpy_parameters(parameters)
+    
     # Classify parameters into patterns and select examples
     pattern_examples = _classify_parameters_into_patterns(parameters, n_examples)
 
@@ -1214,26 +1235,26 @@ def plot_temporal_trajectories(
             u_star, s_star = _compute_time_course(t_star, params)
 
             # Apply log2 transformation to show fold changes more clearly
-            u_star_log2 = torch.log2(u_star)
-            s_star_log2 = torch.log2(s_star)
+            u_star_log2 = framework_agnostic_log2(u_star)
+            s_star_log2 = framework_agnostic_log2(s_star)
 
             # Plot unspliced (log2 scale)
             axes[pattern_idx, 0].plot(
-                t_star.numpy(), u_star_log2.numpy(),
+                convert_to_numpy(t_star), convert_to_numpy(u_star_log2),
                 color=color, alpha=0.7, linewidth=2,
                 label=f'Example {example_idx+1}' if example_idx < 3 else None
             )
 
             # Plot spliced (log2 scale)
             axes[pattern_idx, 1].plot(
-                t_star.numpy(), s_star_log2.numpy(),
+                convert_to_numpy(t_star), convert_to_numpy(s_star_log2),
                 color=color, alpha=0.7, linewidth=2,
                 label=f'Example {example_idx+1}' if example_idx < 3 else None
             )
 
             # Plot phase portrait (both axes log2)
             axes[pattern_idx, 2].plot(
-                u_star_log2.numpy(), s_star_log2.numpy(),
+                convert_to_numpy(u_star_log2), convert_to_numpy(s_star_log2),
                 color=color, alpha=0.7, linewidth=2,
                 label=f'Example {example_idx+1}' if example_idx < 3 else None
             )
@@ -1281,7 +1302,7 @@ def plot_temporal_trajectories(
 @beartype
 def plot_pattern_analysis(
     adata: AnnData,
-    parameters: Dict[str, torch.Tensor],
+    parameters: Dict[str, ArrayLike],
     check_type: str = "prior",
     figsize: Tuple[Union[int, float], Union[int, float]] = (7.5, 3.75),  # Standard width, half height
     save_path: Optional[str] = None,
@@ -1305,6 +1326,9 @@ def plot_pattern_analysis(
     Returns:
         matplotlib Figure object
     """
+    # Convert to numpy for plotting
+    parameters = ensure_numpy_parameters(parameters)
+    
     fig, axes = plt.subplots(1, 2, figsize=figsize)
 
     # Pattern proportions
@@ -1326,7 +1350,7 @@ def plot_pattern_analysis(
 def plot_temporal_coordinate_validation(
     model: Any,
     adata: AnnData,
-    parameters: Dict[str, torch.Tensor],
+    parameters: Dict[str, ArrayLike],
     true_parameters_adata: Optional[AnnData] = None,
     figsize: Tuple[float, float] = (7.5, 2.5),  # Match parameter relationships aspect ratio
     save_path: Optional[str] = None,
@@ -1373,6 +1397,9 @@ def plot_temporal_coordinate_validation(
     """
     fig, axes = plt.subplots(1, 3, figsize=figsize)
 
+    # Convert to numpy for plotting
+    parameters = ensure_numpy_parameters(parameters)
+    
     # Panel 1: True vs Estimated Cell Time
     _plot_true_vs_estimated_time(adata, parameters, true_parameters_adata, axes[0], check_type, default_fontsize)
 
@@ -1393,7 +1420,7 @@ def plot_temporal_coordinate_validation(
 
 def _plot_true_vs_estimated_time(
     adata: AnnData,
-    parameters: Dict[str, torch.Tensor],
+    parameters: Dict[str, ArrayLike],
     true_parameters_adata: Optional[AnnData],
     ax: plt.Axes,
     check_type: str,
@@ -1435,10 +1462,8 @@ def _plot_true_vs_estimated_time(
 
     if estimated_t_star is not None and true_t_star is not None:
         # Ensure arrays are compatible
-        if isinstance(true_t_star, torch.Tensor):
-            true_t_star = true_t_star.detach().cpu().numpy()
-        if isinstance(estimated_t_star, torch.Tensor):
-            estimated_t_star = estimated_t_star.detach().cpu().numpy()
+        true_t_star = convert_to_numpy(true_t_star)
+        estimated_t_star = convert_to_numpy(estimated_t_star)
 
         # Flatten true_t_star if it has multiple dimensions
         if true_t_star.ndim > 1:
@@ -1528,7 +1553,7 @@ def _plot_true_vs_estimated_time(
 
 def _plot_temporal_uncertainty(
     adata: AnnData,
-    parameters: Dict[str, torch.Tensor],
+    parameters: Dict[str, ArrayLike],
     ax: plt.Axes,
     check_type: str,
     default_fontsize: Union[int, float]
@@ -1595,7 +1620,7 @@ def _plot_temporal_uncertainty(
 
 
 def _compute_temporal_uncertainty(
-    t_star_samples: torch.Tensor,
+    t_star_samples: ArrayLike,
     num_cells: int
 ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
     """
@@ -1616,7 +1641,7 @@ def _compute_temporal_uncertainty(
             total_length = len(t_star_samples)
             if total_length % num_cells == 0:
                 num_samples = total_length // num_cells
-                samples_reshaped = t_star_samples.view(num_samples, num_cells)
+                samples_reshaped = t_star_samples.reshape(num_samples, num_cells)
             else:
                 # Cannot reshape properly
                 return None, None
@@ -1628,7 +1653,7 @@ def _compute_temporal_uncertainty(
             samples_flat = t_star_samples.flatten()
             if len(samples_flat) % num_cells == 0:
                 num_samples = len(samples_flat) // num_cells
-                samples_reshaped = samples_flat.view(num_samples, num_cells)
+                samples_reshaped = samples_flat.reshape(num_samples, num_cells)
             else:
                 return None, None
 
@@ -1637,7 +1662,7 @@ def _compute_temporal_uncertainty(
             return None, None
 
         # Compute statistics across samples (dim=0)
-        samples_np = samples_reshaped.detach().cpu().numpy()
+        samples_np = convert_to_numpy(samples_reshaped)
         mean_values = np.mean(samples_np, axis=0)
         std_values = np.std(samples_np, axis=0)
 
@@ -1653,9 +1678,9 @@ def _compute_temporal_uncertainty(
 
 
 def _classify_parameters_into_patterns(
-    parameters: Dict[str, torch.Tensor],
+    parameters: Dict[str, ArrayLike],
     n_examples: int = 10
-) -> Dict[str, List[Dict[str, torch.Tensor]]]:
+) -> Dict[str, List[Dict[str, ArrayLike]]]:
     """
     Classify parameter samples into patterns and select examples.
 
@@ -1691,7 +1716,7 @@ def _classify_parameters_into_patterns(
     gamma_star = gamma_star[:min_length]
 
     # Compute alpha_off (fixed at 1.0) and alpha_on from R_on
-    alpha_off = torch.ones_like(R_on)
+    alpha_off = np.ones_like(R_on)
     alpha_on = R_on * alpha_off  # R_on = alpha_on / alpha_off
 
     pattern_examples = {
@@ -1704,24 +1729,26 @@ def _classify_parameters_into_patterns(
     def sigmoid_score(value: float, threshold: float, direction: str, steepness: float = 5.0) -> float:
         """Compute soft score using sigmoid function."""
         if direction == '>':
-            return torch.sigmoid(torch.tensor(steepness * (value - threshold))).item()
+            result = framework_agnostic_sigmoid(steepness * (value - threshold))
+            return float(result.item()) if hasattr(result, 'item') else float(result)
         else:  # direction == '<'
-            return torch.sigmoid(torch.tensor(steepness * (threshold - value))).item()
+            result = framework_agnostic_sigmoid(steepness * (threshold - value))
+            return float(result.item()) if hasattr(result, 'item') else float(result)
 
     # Compute pattern scores for each sample using independent absolute parameters
-    pattern_scores = {pattern: torch.zeros(min_length) for pattern in pattern_examples.keys()}
+    pattern_scores = {pattern: np.zeros(min_length) for pattern in pattern_examples.keys()}
 
     for i in range(min_length):
         # Use independent absolute temporal parameters with mathematical specification thresholds
         
         # Pre-activation: negative onset time
-        pattern_scores['pre_activation'][i] = torch.prod(torch.tensor([
+        pattern_scores['pre_activation'][i] = np.prod(np.array([
             sigmoid_score(R_on[i].item(), 2.0, '>'),
             sigmoid_score(t_on_star[i].item(), 0.0, '<')
         ])) ** (1.0 / 2)
 
         # Transient: positive onset, early timing, short duration
-        pattern_scores['transient'][i] = torch.prod(torch.tensor([
+        pattern_scores['transient'][i] = np.prod(np.array([
             sigmoid_score(R_on[i].item(), 2.0, '>'),
             sigmoid_score(t_on_star[i].item(), 0.0, '>'),
             sigmoid_score(t_on_star[i].item(), 1.5, '<'),  # Absolute early onset
@@ -1729,7 +1756,7 @@ def _classify_parameters_into_patterns(
         ])) ** (1.0 / 4)
 
         # Sustained: positive onset, early timing, long duration
-        pattern_scores['sustained'][i] = torch.prod(torch.tensor([
+        pattern_scores['sustained'][i] = np.prod(np.array([
             sigmoid_score(R_on[i].item(), 2.0, '>'),
             sigmoid_score(t_on_star[i].item(), 0.0, '>'),
             sigmoid_score(t_on_star[i].item(), 1.5, '<'),  # Absolute early onset
@@ -1741,7 +1768,7 @@ def _classify_parameters_into_patterns(
 
     for i in range(min_length):
         scores = [pattern_scores[pattern][i] for pattern in pattern_names]
-        best_pattern_idx = torch.argmax(torch.tensor(scores))
+        best_pattern_idx = np.argmax(np.array(scores))
         best_pattern = pattern_names[best_pattern_idx]
 
         # Only add if we haven't reached the limit for this pattern
@@ -1776,7 +1803,7 @@ def _classify_parameters_into_patterns(
 
 
 def _compute_adaptive_time_range(
-    pattern_examples: Dict[str, List[Dict[str, torch.Tensor]]],
+    pattern_examples: Dict[str, List[Dict[str, ArrayLike]]],
     buffer_factor: float = 1.2,
     n_points: int = 300,
     adata: Optional[AnnData] = None
@@ -1815,7 +1842,7 @@ def _compute_adaptive_time_range(
             # Use the actual realized time range from the data
             time_range_max = float(np.max(time_coord)) * buffer_factor
             print(f"  Adaptive time range: [0, {time_range_max:.1f}] based on realized {key} values (max: {np.max(time_coord):.1f})")
-            return torch.linspace(0, time_range_max, n_points)
+            return np.linspace(0, time_range_max, n_points)
 
     # Priority 2: Look for T_M_star values in pattern examples
     global_T_M_star = None
@@ -1856,13 +1883,13 @@ def _compute_adaptive_time_range(
         time_range_max = max(max_time_scale * buffer_factor, 10.0)
         print(f"  Fallback time range: [0, {time_range_max:.1f}] estimated from parameter values")
 
-    return torch.linspace(0, time_range_max, n_points)
+    return np.linspace(0, time_range_max, n_points)
 
 
 def _compute_time_course(
-    t_star: torch.Tensor,
-    params: Dict[str, torch.Tensor]
-) -> Tuple[torch.Tensor, torch.Tensor]:
+    t_star: ArrayLike,
+    params: Dict[str, ArrayLike]
+) -> Tuple[ArrayLike, ArrayLike]:
     """
     Compute time course using piecewise activation dynamics.
 
@@ -1881,8 +1908,8 @@ def _compute_time_course(
     delta_star = params['delta_star']
 
     # Initialize output tensors
-    u_star = torch.zeros_like(t_star)
-    s_star = torch.zeros_like(t_star)
+    u_star = np.zeros_like(t_star)
+    s_star = np.zeros_like(t_star)
 
     # Phase 1: Off state (t* < t*_on)
     phase1_mask = t_star < t_on_star
@@ -1911,18 +1938,18 @@ def _compute_time_course(
 
 
 def _compute_on_phase_solution(
-    tau_on: torch.Tensor,
-    alpha_on: torch.Tensor,
-    gamma_star: torch.Tensor
-) -> Tuple[torch.Tensor, torch.Tensor]:
+    tau_on: ArrayLike,
+    alpha_on: ArrayLike,
+    gamma_star: ArrayLike
+) -> Tuple[ArrayLike, ArrayLike]:
     """Compute analytical solution for ON phase."""
     # Initial conditions: u*_0 = 1.0, s*_0 = 1.0/γ*
     u_0 = 1.0
     s_0 = 1.0 / gamma_star
 
     # Analytical solution for ON phase
-    exp_tau = torch.exp(-tau_on)
-    exp_gamma_tau = torch.exp(-gamma_star * tau_on)
+    exp_tau = framework_agnostic_exp(-tau_on)
+    exp_gamma_tau = framework_agnostic_exp(-gamma_star * tau_on)
 
     u_on = alpha_on + (u_0 - alpha_on) * exp_tau
 
@@ -1934,12 +1961,12 @@ def _compute_on_phase_solution(
 
 
 def _compute_off_phase_solution(
-    tau_off: torch.Tensor,
-    alpha_off: torch.Tensor,
-    alpha_on: torch.Tensor,
-    gamma_star: torch.Tensor,
-    delta_star: torch.Tensor
-) -> Tuple[torch.Tensor, torch.Tensor]:
+    tau_off: ArrayLike,
+    alpha_off: ArrayLike,
+    alpha_on: ArrayLike,
+    gamma_star: ArrayLike,
+    delta_star: ArrayLike
+) -> Tuple[ArrayLike, ArrayLike]:
     """Compute analytical solution for return to OFF phase."""
     # Initial conditions: endpoint values from ON phase
     u_end, s_end = _compute_on_phase_solution(
@@ -1947,8 +1974,8 @@ def _compute_off_phase_solution(
     )
 
     # Analytical solution for OFF phase
-    exp_tau = torch.exp(-tau_off)
-    exp_gamma_tau = torch.exp(-gamma_star * tau_off)
+    exp_tau = framework_agnostic_exp(-tau_off)
+    exp_gamma_tau = framework_agnostic_exp(-gamma_star * tau_off)
 
     u_off = alpha_off + (u_end - alpha_off) * exp_tau
 
@@ -1963,7 +1990,7 @@ def _compute_off_phase_solution(
 def plot_prior_predictive_checks(
     model: Any,
     prior_adata: AnnData,
-    prior_parameters: Dict[str, torch.Tensor],
+    prior_parameters: Dict[str, ArrayLike],
     figsize: Tuple[Union[int, float], Union[int, float]] = (7.5, 5.0),  # Standard width for 8.5x11" with margins
     check_type: str = "prior",
     save_path: Optional[str] = None,
@@ -1987,7 +2014,7 @@ def plot_prior_predictive_checks(
     Args:
         model: PyroVelocity model instance (unused but kept for compatibility)
         prior_adata: AnnData object with predictive samples
-        prior_parameters: Dictionary of parameter samples
+        prior_parameters: Dictionary of parameter samples (PyTorch, JAX, or NumPy)
         figsize: Figure size (width, height)
         check_type: Type of check ("prior" or "posterior")
         save_path: Optional directory path to save figures (creates if doesn't exist)
@@ -2016,6 +2043,8 @@ def plot_prior_predictive_checks(
         ...     num_genes=10
         ... )
     """
+    # Convert all parameters to NumPy arrays for framework-agnostic plotting
+    numpy_prior_parameters = ensure_numpy_parameters(prior_parameters)
     # Create individual modular plots if requested
     if create_individual_plots and save_path is not None:
         # Clean up numbered files from previous executions before creating new plots
@@ -2023,7 +2052,7 @@ def plot_prior_predictive_checks(
         cleanup_numbered_files(save_path)
 
         # Process parameters for plotting compatibility (handle batch dimensions)
-        processed_parameters = _process_parameters_for_plotting(prior_parameters)
+        processed_parameters = _process_parameters_for_plotting(numpy_prior_parameters)
 
         # Create plots in logical order with numbered prefixes for proper PDF combination ordering
         plot_parameter_marginals(processed_parameters, check_type, save_path=save_path, file_prefix="02", model=model, default_fontsize=default_fontsize, true_parameters_adata=true_parameters_adata)
@@ -2331,8 +2360,8 @@ def _plot_umap_time_coordinate(adata: AnnData, ax: plt.Axes, check_type: str, mo
 
 
 def _process_parameters_for_plotting(
-    parameters: Dict[str, torch.Tensor]
-) -> Dict[str, torch.Tensor]:
+    parameters: Dict[str, ArrayLike]
+) -> Dict[str, ArrayLike]:
     """
     Process parameters to make them compatible with plotting functions.
 
@@ -2368,7 +2397,7 @@ def _process_parameters_for_plotting(
         if any(pattern in key for pattern in guide_param_patterns):
             continue
 
-        if isinstance(value, torch.Tensor):
+        if hasattr(value, 'shape'):  # Works for both torch.Tensor and np.ndarray
             # Handle different tensor shapes
             if value.ndim == 1:
                 # Already 1D, use as-is
@@ -2401,7 +2430,7 @@ def _process_parameters_for_plotting(
 
 
 def _plot_parameter_marginals_summary(
-    parameters: Dict[str, torch.Tensor],
+    parameters: Dict[str, ArrayLike],
     ax: plt.Axes,
     check_type: str,
     model: Optional[Any] = None
@@ -2424,7 +2453,7 @@ def _plot_parameter_marginals_summary(
 
     for i, param_name in enumerate(key_params):
         if param_name in parameters:
-            values = parameters[param_name].flatten().numpy()
+            values = convert_to_numpy(parameters[param_name].flatten())
 
             # Get parameter label using new metadata system
             param_label = get_parameter_label(
@@ -2449,7 +2478,7 @@ def _plot_parameter_marginals_summary(
 
 
 def _plot_temporal_coordinate_distribution(
-    parameters: Dict[str, torch.Tensor],
+    parameters: Dict[str, ArrayLike],
     ax: plt.Axes,
     check_type: str,
     model: Optional[Any] = None,
@@ -2467,7 +2496,7 @@ def _plot_temporal_coordinate_distribution(
         component_name = infer_component_name_from_parameters(parameters)
 
     if 't_star' in parameters:
-        t_star = parameters['t_star'].flatten().numpy()
+        t_star = convert_to_numpy(parameters['t_star'].flatten())
 
         # Plot histogram of temporal coordinates
         ax.hist(t_star, bins=50, alpha=0.7, color='purple', density=True)
@@ -2544,7 +2573,7 @@ def _compute_adaptive_fold_change_thresholds(
 
 
 def _plot_fold_change_distribution(
-    parameters: Dict[str, torch.Tensor],
+    parameters: Dict[str, ArrayLike],
     ax: plt.Axes,
     check_type: str,
     model: Optional[Any] = None,
@@ -2563,12 +2592,12 @@ def _plot_fold_change_distribution(
 
     # Use R_on directly (preferred) or fall back to alpha_on/alpha_off ratio
     if 'R_on' in parameters:
-        fold_change = parameters['R_on'].flatten().numpy()
+        fold_change = convert_to_numpy(parameters['R_on'].flatten())
         param_source = "R_on"
     elif 'alpha_off' in parameters and 'alpha_on' in parameters:
         alpha_off = parameters['alpha_off'].flatten()
         alpha_on = parameters['alpha_on'].flatten()
-        fold_change = (alpha_on / alpha_off).numpy()
+        fold_change = convert_to_numpy(alpha_on / alpha_off)
         param_source = "alpha_ratio"
     else:
         ax.text(0.5, 0.5, 'Fold-change parameters\nnot available',
@@ -2628,7 +2657,7 @@ def _plot_fold_change_distribution(
 
 
 def _compute_adaptive_timing_thresholds(
-    parameters: Dict[str, torch.Tensor]
+    parameters: Dict[str, ArrayLike]
 ) -> Dict[str, float]:
     """
     Compute thresholds for activation timing classification using independent absolute parameters.
@@ -2653,7 +2682,7 @@ def _compute_adaptive_timing_thresholds(
 
 
 def _plot_activation_timing(
-    parameters: Dict[str, torch.Tensor],
+    parameters: Dict[str, ArrayLike],
     ax: plt.Axes,
     check_type: str,
     model: Optional[Any] = None,
@@ -2672,8 +2701,8 @@ def _plot_activation_timing(
 
     # Use independent absolute parameters only
     if 't_on_star' in parameters and 'delta_star' in parameters:
-        t_on = parameters['t_on_star'].flatten().numpy()
-        delta = parameters['delta_star'].flatten().numpy()
+        t_on = convert_to_numpy(parameters['t_on_star'].flatten())
+        delta = convert_to_numpy(parameters['delta_star'].flatten())
 
         # Get parameter labels
         t_on_label = get_parameter_label(
@@ -3417,7 +3446,7 @@ def _set_temporal_dynamics_aspect(axes_dict: Dict[str, plt.Axes]) -> None:
 
 def _plot_pattern_proportions(
     adata: AnnData,
-    parameters: Dict[str, torch.Tensor],
+    parameters: Dict[str, ArrayLike],
     ax: plt.Axes,
     check_type: str,
     default_fontsize: Union[int, float] = 8
@@ -3540,7 +3569,7 @@ def _plot_correlation_structure(
         ax.set_title(f'{check_type.title()} Gene Correlations')
 
 
-def _classify_patterns_from_parameters(parameters: Dict[str, torch.Tensor]) -> Dict[str, int]:
+def _classify_patterns_from_parameters(parameters: Dict[str, ArrayLike]) -> Dict[str, int]:
     """
     Classify expression patterns from parameter samples using soft scoring approach.
 
@@ -3595,14 +3624,16 @@ def _classify_patterns_from_parameters(parameters: Dict[str, torch.Tensor]) -> D
     def sigmoid_score(value: float, threshold: float, direction: str, steepness: float = 5.0) -> float:
         """Compute soft score using sigmoid function."""
         if direction == '>':
-            return torch.sigmoid(torch.tensor(steepness * (value - threshold))).item()
+            result = framework_agnostic_sigmoid(steepness * (value - threshold))
+            return float(result.item()) if hasattr(result, 'item') else float(result)
         else:  # direction == '<'
-            return torch.sigmoid(torch.tensor(steepness * (threshold - value))).item()
+            result = framework_agnostic_sigmoid(steepness * (threshold - value))
+            return float(result.item()) if hasattr(result, 'item') else float(result)
 
     # Compute pattern scores for each sample
     pattern_scores = {}
     for pattern in pattern_constraints.keys():
-        pattern_scores[pattern] = torch.zeros(n_samples)
+        pattern_scores[pattern] = np.zeros(n_samples)
 
     for i in range(n_samples):
         for pattern, constraints in pattern_constraints.items():
@@ -3631,15 +3662,15 @@ def _classify_patterns_from_parameters(parameters: Dict[str, torch.Tensor]) -> D
 
             # Compute geometric mean of scores
             if scores:
-                pattern_scores[pattern][i] = torch.prod(torch.tensor(scores)) ** (1.0 / len(scores))
+                pattern_scores[pattern][i] = np.prod(np.array(scores)) ** (1.0 / len(scores))
 
     # Assign each sample to the pattern with highest score
-    assignments = torch.zeros(n_samples, dtype=torch.long)
+    assignments = np.zeros(n_samples, dtype=np.int64)
     pattern_names = list(pattern_constraints.keys())
 
     for i in range(n_samples):
         scores = [pattern_scores[pattern][i] for pattern in pattern_names]
-        assignments[i] = torch.argmax(torch.tensor(scores))
+        assignments[i] = np.argmax(np.array(scores))
 
     # Count pattern assignments
     pattern_counts = {}
@@ -3661,7 +3692,7 @@ def _classify_patterns_from_parameters(parameters: Dict[str, torch.Tensor]) -> D
 def plot_posterior_predictive_checks(
     model: Any,
     posterior_adata: AnnData,
-    posterior_parameters: Dict[str, torch.Tensor],
+    posterior_parameters: Dict[str, ArrayLike],
     figsize: Tuple[Union[int, float], Union[int, float]] = (7.5, 5.0),  # Standard width for 8.5x11" with margins
     save_path: Optional[str] = None,
     figure_name: Optional[str] = None,
@@ -3846,7 +3877,7 @@ def plot_training_loss(
 
 @beartype
 def plot_parameter_recovery_correlation(
-    posterior_parameters: Dict[str, torch.Tensor],
+    posterior_parameters: Dict[str, ArrayLike],
     true_parameters_adata: AnnData,
     parameters_to_validate: List[str] = ["R_on", "gamma_star", "t_on_star", "delta_star"],
     figsize: Optional[Tuple[Union[int, float], Union[int, float]]] = None,
@@ -3905,6 +3936,9 @@ def plot_parameter_recovery_correlation(
     """
     from pyrovelocity.plots.parameter_metadata import get_parameter_label
 
+    # Convert to numpy for plotting
+    posterior_parameters = ensure_numpy_parameters(posterior_parameters)
+
     # Validate inputs
     if 'true_parameters' not in true_parameters_adata.uns:
         raise ValueError("true_parameters_adata must contain 'true_parameters' in adata.uns")
@@ -3950,8 +3984,8 @@ def plot_parameter_recovery_correlation(
 
         # Extract true parameter values
         true_param = true_params_dict[param_name]
-        if not isinstance(true_param, torch.Tensor):
-            true_param = torch.tensor(true_param)
+        if not isinstance(true_param, np.ndarray):
+            true_param = convert_to_numpy(true_param)
 
         # Handle different tensor shapes and flatten properly
         true_param_flat = true_param.flatten()
@@ -3966,34 +4000,35 @@ def plot_parameter_recovery_correlation(
             num_genes = len(true_param_flat)
             if total_length % num_genes == 0:
                 num_samples = total_length // num_genes
-                posterior_reshaped = posterior_param.view(num_samples, num_genes)
+                posterior_reshaped = posterior_param.reshape(num_samples, num_genes)
             else:
                 # Fallback: treat as single sample per gene
-                posterior_reshaped = posterior_param.unsqueeze(0)
+                posterior_reshaped = np.expand_dims(posterior_param, axis=0)
         elif posterior_param.ndim == 2:
             # Already shaped: [num_samples, num_genes]
             posterior_reshaped = posterior_param
         else:
             # Higher dimensions: flatten and reshape
-            posterior_reshaped = posterior_param.view(-1, posterior_param.shape[-1])
+            posterior_reshaped = posterior_param.reshape(-1, posterior_param.shape[-1])
 
-        # Compute summary statistic and standard deviation across samples
+        # Convert to numpy and compute summary statistic and standard deviation across samples
+        posterior_np = convert_to_numpy(posterior_reshaped)
         if summary_statistic == "median":
-            posterior_summary = torch.median(posterior_reshaped, dim=0)[0]
+            posterior_summary = np.median(posterior_np, axis=0)
             # For median, use MAD (median absolute deviation) scaled to approximate std
-            mad = torch.median(torch.abs(posterior_reshaped - posterior_summary.unsqueeze(0)), dim=0)[0]
+            mad = np.median(np.abs(posterior_np - posterior_summary[np.newaxis, :]), axis=0)
             posterior_std = 1.4826 * mad  # Scale factor to approximate std from MAD
         elif summary_statistic == "mean":
-            posterior_summary = torch.mean(posterior_reshaped, dim=0)
-            posterior_std = torch.std(posterior_reshaped, dim=0)
+            posterior_summary = np.mean(posterior_np, axis=0)
+            posterior_std = np.std(posterior_np, axis=0)
         else:
             raise ValueError(f"Unknown summary_statistic: {summary_statistic}")
 
         # Ensure we have the same number of genes
         n_genes = min(len(true_param_flat), len(posterior_summary))
-        true_values = true_param_flat[:n_genes].numpy()
-        estimated_values = posterior_summary[:n_genes].detach().numpy()
-        estimated_std = posterior_std[:n_genes].detach().numpy()
+        true_values = convert_to_numpy(true_param_flat[:n_genes])
+        estimated_values = convert_to_numpy(posterior_summary[:n_genes])
+        estimated_std = convert_to_numpy(posterior_std[:n_genes])
 
         # Compute correlation metrics
         try:
