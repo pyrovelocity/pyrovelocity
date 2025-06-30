@@ -10,13 +10,13 @@ from typing import Any, Dict, Optional, Union
 
 from beartype import beartype
 
-from pyrovelocity.models.modular.interfaces import (
+from pyrovelocity.models.metadata import (
     ComponentParameterMetadata,
-    ParameterMetadataProvider,
-)
-from pyrovelocity.models.modular.metadata import (
     get_parameter_display_names,
     get_parameter_short_labels,
+)
+from pyrovelocity.models.modular.interfaces import (
+    ParameterMetadataProvider,
 )
 
 
