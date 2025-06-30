@@ -26,10 +26,6 @@ from pyrovelocity.models.jax.interfaces.likelihoods import (
     LikelihoodFunction,
     validate_likelihood_function,
 )
-from pyrovelocity.models.jax.interfaces.observations import (
-    ObservationFunction,
-    validate_observation_function,
-)
 from pyrovelocity.models.jax.interfaces.guides import (
     GuideFactoryFunction,
     validate_guide_factory_function,
@@ -45,9 +41,6 @@ __all__ = [
     # Likelihoods
     "LikelihoodFunction",
     "validate_likelihood_function",
-    # Observations
-    "ObservationFunction",
-    "validate_observation_function",
     # Guides
     "GuideFactoryFunction",
     "validate_guide_factory_function",
