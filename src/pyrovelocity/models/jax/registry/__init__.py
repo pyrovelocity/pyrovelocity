@@ -35,12 +35,6 @@ from pyrovelocity.models.jax.registry.likelihoods import (
     list_likelihoods,
 )
 
-from pyrovelocity.models.jax.registry.observations import (
-    ObservationRegistry,
-    register_observation,
-    get_observation,
-    list_observations,
-)
 
 from pyrovelocity.models.jax.registry.guides import (
     GuideRegistry,
@@ -69,11 +63,6 @@ __all__ = [
     "register_likelihood",
     "get_likelihood",
     "list_likelihoods",
-    # Observation registry
-    "ObservationRegistry",
-    "register_observation",
-    "get_observation",
-    "list_observations",
     # Guide registry
     "GuideRegistry",
     "register_guide",
