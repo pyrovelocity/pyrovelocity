@@ -325,7 +325,7 @@ class PiecewiseActivationDynamicsModel:
         safe_gamma_minus_1 = torch.where(
             torch.abs(gamma_minus_1) > 1e-8,
             gamma_minus_1,
-            torch.sign(gamma_minus_1) * 1e-8
+            1e-8  # Use positive epsilon instead of sign * epsilon to avoid 0 * epsilon = 0
         )
         
         s_phase1 = (alpha_off_bc / gamma_star_bc + 

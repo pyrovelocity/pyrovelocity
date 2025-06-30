@@ -317,19 +317,39 @@ def create_model(config: Union[Dict, ModelConfig]) -> Callable:
         # Call the dynamics function to get expected RNA counts
         dynamics_params = model_params.get("dynamics_params", {})
         
-        # Extract time parameter - for now use zeros (steady state initial conditions)
-        # In a full implementation, this would come from the sampled parameters or model_params
-        t_star = jnp.zeros_like(u_transformed)
+        # Extract time parameter from sampled parameters
+        t_star = sampled_params["t_star"]  # Use the actual sampled time coordinates
+        
+        # Expand t_star to match the shape needed by dynamics function
+        # t_star is [n_cells], but dynamics expects [batch_size, n_cells, n_genes]
+        t_star_expanded = t_star[jnp.newaxis, :, jnp.newaxis]  # [1, n_cells, 1]
+        t_star_expanded = jnp.broadcast_to(t_star_expanded, (batch_size, n_cells, n_genes))
+        
         u0_star = jnp.ones_like(u_transformed)  # Fixed initial condition
         
         # Call the dynamics function with correct interface (no s0_star)
         u_expected, s_expected = dynamics_fn(
-            t_star, u0_star, {**sampled_params, **dynamics_params}
+            t_star_expanded, u0_star, {**sampled_params, **dynamics_params}
         )
 
-        # Register expected counts as deterministic
-        numpyro.deterministic("u_expected", u_expected)
-        numpyro.deterministic("s_expected", s_expected)
+        # 🔧 CRITICAL FIX: Apply scaling BEFORE registering deterministic sites
+        # Extract scaling parameters
+        lambda_j = sampled_params["lambda_j"]  # [n_cells]
+        U_0i = sampled_params["U_0i"]  # [n_genes]
+
+        # Apply scaling: rate = lambda_j * U_0i * raw_concentration
+        scaling_factor = lambda_j[jnp.newaxis, :, jnp.newaxis] * U_0i[jnp.newaxis, jnp.newaxis, :]
+        u_expected_scaled = u_expected * scaling_factor
+        s_expected_scaled = s_expected * scaling_factor
+
+        # Ensure positive rates for numerical stability
+        eps = 1e-6
+        u_expected_scaled = jnp.maximum(u_expected_scaled, eps)
+        s_expected_scaled = jnp.maximum(s_expected_scaled, eps)
+
+        # Register SCALED values as deterministic
+        numpyro.deterministic("u_expected", u_expected_scaled)
+        numpyro.deterministic("s_expected", s_expected_scaled)
 
         # Call the likelihood function
         likelihood_params = model_params.get("likelihood_params", {})
@@ -338,8 +358,8 @@ def create_model(config: Union[Dict, ModelConfig]) -> Callable:
                 **sampled_params,
                 "u_obs": u_transformed,
                 "s_obs": s_transformed,
-                "u_expected": u_expected,
-                "s_expected": s_expected,
+                "u_expected": u_expected_scaled,
+                "s_expected": s_expected_scaled,
                 "u_log_library": u_log_library,
                 "s_log_library": s_log_library,
                 "n_cells": n_cells,
@@ -351,8 +371,8 @@ def create_model(config: Union[Dict, ModelConfig]) -> Callable:
         # Return all sampled parameters and computed values
         return {
             **sampled_params,
-            "u_expected": u_expected,
-            "s_expected": s_expected,
+            "u_expected": u_expected_scaled,
+            "s_expected": s_expected_scaled,
         }
 
     return model

@@ -62,9 +62,21 @@ def piecewise_activation_likelihood_function(
     s_log_library = context.get("s_log_library")
     eps = context.get("eps", 1e-6)
     
-    # Use expected concentrations directly as rates
-    ut = u_expected
-    st = s_expected
+    # Extract scaling parameters from context
+    lambda_j = context.get("lambda_j")  # Cell-specific capture efficiency [n_cells]
+    U_0i = context.get("U_0i")  # Gene-specific concentration scale [n_genes]
+    
+    # Apply scaling to expected concentrations
+    # u_{ij} ∼ Poisson(λ_j · U_{0i} · u*_{ij})
+    if lambda_j is not None and U_0i is not None:
+        # Ensure proper broadcasting: lambda_j [n_cells] × U_0i [n_genes] × u/s_expected [batch, n_cells, n_genes]
+        scaling_factor = lambda_j[jnp.newaxis, :, jnp.newaxis] * U_0i[jnp.newaxis, jnp.newaxis, :]
+        ut = u_expected * scaling_factor
+        st = s_expected * scaling_factor
+    else:
+        # Fallback to unscaled if parameters not provided
+        ut = u_expected
+        st = s_expected
     
     # Apply library size scaling if available
     if u_log_library is not None:
