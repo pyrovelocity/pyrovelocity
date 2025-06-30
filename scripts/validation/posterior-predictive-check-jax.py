@@ -1,3 +1,4 @@
+import anndata
 import jax
 import jax.numpy as jnp
 import numpyro
@@ -10,8 +11,6 @@ from pyrovelocity.models.jax.factory.factory import create_piecewise_activation_
 from pyrovelocity.models.jax.inference.config import create_inference_config
 from pyrovelocity.models.jax.inference.unified import (
     run_inference, 
-    extract_posterior_samples,
-    posterior_predictive
 )
 from pyrovelocity.plots.predictive_checks import (
     plot_prior_predictive_checks,
@@ -89,7 +88,7 @@ AVAILABLE_METHODS = {
 # ============================================================================
 # EDIT THIS LINE to choose which method to run:
 # ============================================================================
-SELECTED_METHOD = "svi_auto_normal"
+SELECTED_METHOD = "svi_auto_lowrank_multivariate_normal"
 
 # Validate selection
 if SELECTED_METHOD not in AVAILABLE_METHODS:
@@ -140,8 +139,7 @@ u_observed = prior_samples["u_expected"][0, 0, :, :]  # [cells, genes]
 s_observed = prior_samples["s_expected"][0, 0, :, :]  # [cells, genes]
 
 # Create AnnData object for training
-import anndata as adata_module
-prior_predictive_adata = adata_module.AnnData(
+prior_predictive_adata = anndata.AnnData(
     X=np.array(s_observed),  # Use spliced as main expression
     layers={
         "unspliced": np.array(u_observed),
@@ -239,6 +237,14 @@ try:
     # Extract posterior samples
     posterior_samples = inference_state.posterior_samples
     
+    # Attach training state to model for compatibility with plotting functions
+    class ModelState:
+        def __init__(self, inference_state):
+            self.inference_state = inference_state
+    
+    # Attach state to model
+    model.state = ModelState(inference_state)
+    
     print(f"✅ Generated {len(posterior_samples)} types of posterior parameters")
     for key_name in sorted(posterior_samples.keys()):
         param_shape = posterior_samples[key_name].shape if hasattr(posterior_samples[key_name], 'shape') else len(posterior_samples[key_name])
@@ -284,7 +290,7 @@ try:
     s_posterior_expected = posterior_predictive_samples["s_expected"][0, 0, :, :]  # [cells, genes]
     
     # Create AnnData object for posterior predictive data
-    posterior_predictive_adata = adata_module.AnnData(
+    posterior_predictive_adata = anndata.AnnData(
         X=np.array(s_posterior_expected),  # Use spliced as main expression
         layers={
             "unspliced": np.array(u_posterior_expected),
