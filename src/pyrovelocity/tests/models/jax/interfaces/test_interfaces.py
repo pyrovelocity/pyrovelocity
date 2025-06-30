@@ -6,7 +6,6 @@ This module contains tests for the interface definitions, including:
 - test_dynamics_function_interface: Test dynamics function interface
 - test_prior_function_interface: Test prior function interface
 - test_likelihood_function_interface: Test likelihood function interface
-- test_observation_function_interface: Test observation function interface
 - test_guide_factory_function_interface: Test guide factory function interface
 - test_interface_validation: Test interface validation utilities
 """
@@ -26,12 +25,10 @@ from pyrovelocity.models.jax.interfaces import (
     DynamicsFunction,
     GuideFactoryFunction,
     LikelihoodFunction,
-    ObservationFunction,
     PriorFunction,
     validate_dynamics_function,
     validate_guide_factory_function,
     validate_likelihood_function,
-    validate_observation_function,
     validate_prior_function,
 )
 
@@ -119,24 +116,6 @@ def example_likelihood_function(
     numpyro.sample("s", dist.Poisson(s_expected).to_event(2), obs=s_obs)
 
 
-@jaxtyped(typechecker=beartype)
-def example_observation_function(
-    u_obs: Float[Array, "batch_size n_cells n_genes"],
-    s_obs: Float[Array, "batch_size n_cells n_genes"],
-    observation_params: Optional[Dict[str, Any]] = None,
-) -> Tuple[
-    Float[Array, "batch_size n_cells n_genes"],
-    Float[Array, "batch_size n_cells n_genes"],
-]:
-    """Example observation function implementation for testing."""
-    # Simple normalization
-    u_size_factor = jnp.sum(u_obs, axis=-1, keepdims=True)
-    s_size_factor = jnp.sum(s_obs, axis=-1, keepdims=True)
-
-    u_normalized = u_obs / (u_size_factor + 1e-6)
-    s_normalized = s_obs / (s_size_factor + 1e-6)
-
-    return u_normalized, s_normalized
 
 
 @jaxtyped(typechecker=beartype)
@@ -231,25 +210,6 @@ def test_likelihood_function_interface():
     assert validate_likelihood_function(example_likelihood_function)
 
 
-def test_observation_function_interface():
-    """Test observation function interface."""
-    # Test that the example function conforms to the interface
-    assert validate_observation_function(example_observation_function)
-
-    # Create test data
-    batch_size, n_cells, n_genes = 2, 3, 4
-    u_obs = jnp.ones((batch_size, n_cells, n_genes))
-    s_obs = jnp.ones((batch_size, n_cells, n_genes))
-
-    # Test function execution
-    u_transformed, s_transformed = example_observation_function(u_obs, s_obs)
-
-    # Check output shapes
-    assert u_transformed.shape == (batch_size, n_cells, n_genes)
-    assert s_transformed.shape == (batch_size, n_cells, n_genes)
-
-    # Test validation utility
-    assert validate_observation_function(example_observation_function)
 
 
 def test_guide_factory_function_interface():
@@ -298,13 +258,6 @@ def test_interface_validation_with_invalid_functions():
     with pytest.raises(TypeError):
         validate_likelihood_function(invalid_likelihood_function)
 
-    # Test with a function that doesn't match the observation function interface
-    def invalid_observation_function(x):
-        return x, x
-
-    # This should fail validation
-    with pytest.raises(TypeError):
-        validate_observation_function(invalid_observation_function)
 
     # Test with a function that doesn't match the guide factory function interface
     def invalid_guide_factory_function(x):
