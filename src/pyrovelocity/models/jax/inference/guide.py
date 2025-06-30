@@ -16,7 +16,7 @@ import numpyro
 import numpyro.distributions as dist
 from beartype import beartype
 from jaxtyping import Array, Float, PyTree
-from numpyro.infer.autoguide import AutoDelta, AutoGuide, AutoNormal
+from numpyro.infer.autoguide import AutoDelta, AutoGuide, AutoNormal, AutoDiagonalNormal, AutoMultivariateNormal, AutoLowRankMultivariateNormal
 
 
 @beartype
@@ -72,6 +72,83 @@ def auto_delta_guide(
     else:
         # Create AutoDelta guide with custom initialization
         return numpyro.infer.autoguide.AutoDelta(model, init_loc_fn=init_loc_fn)
+
+
+@beartype
+def auto_diagonal_normal_guide(
+    model: Callable,
+    init_loc_fn: Optional[Callable] = None,
+) -> AutoDiagonalNormal:
+    """Create an AutoDiagonalNormal guide for variational inference.
+
+    Args:
+        model: NumPyro model function
+        init_loc_fn: Function to initialize location parameters
+
+    Returns:
+        AutoDiagonalNormal guide
+    """
+    # Use default initialization if not provided
+    if init_loc_fn is None:
+        return numpyro.infer.autoguide.AutoDiagonalNormal(
+            model, init_loc_fn=numpyro.infer.autoguide.init_to_median
+        )
+    else:
+        return numpyro.infer.autoguide.AutoDiagonalNormal(
+            model, init_loc_fn=init_loc_fn
+        )
+
+
+@beartype
+def auto_multivariate_normal_guide(
+    model: Callable,
+    init_loc_fn: Optional[Callable] = None,
+) -> AutoMultivariateNormal:
+    """Create an AutoMultivariateNormal guide for variational inference.
+
+    Args:
+        model: NumPyro model function
+        init_loc_fn: Function to initialize location parameters
+
+    Returns:
+        AutoMultivariateNormal guide
+    """
+    # Use default initialization if not provided
+    if init_loc_fn is None:
+        return numpyro.infer.autoguide.AutoMultivariateNormal(
+            model, init_loc_fn=numpyro.infer.autoguide.init_to_median
+        )
+    else:
+        return numpyro.infer.autoguide.AutoMultivariateNormal(
+            model, init_loc_fn=init_loc_fn
+        )
+
+
+@beartype
+def auto_lowrank_multivariate_normal_guide(
+    model: Callable,
+    init_loc_fn: Optional[Callable] = None,
+    rank: int = 1,
+) -> AutoLowRankMultivariateNormal:
+    """Create an AutoLowRankMultivariateNormal guide for variational inference.
+
+    Args:
+        model: NumPyro model function
+        init_loc_fn: Function to initialize location parameters
+        rank: Rank of the low-rank approximation
+
+    Returns:
+        AutoLowRankMultivariateNormal guide
+    """
+    # Use default initialization if not provided
+    if init_loc_fn is None:
+        return numpyro.infer.autoguide.AutoLowRankMultivariateNormal(
+            model, init_loc_fn=numpyro.infer.autoguide.init_to_median, rank=rank
+        )
+    else:
+        return numpyro.infer.autoguide.AutoLowRankMultivariateNormal(
+            model, init_loc_fn=init_loc_fn, rank=rank
+        )
 
 
 @beartype
@@ -166,7 +243,9 @@ def create_guide(
 
     Args:
         model: NumPyro model function
-        guide_type: Type of guide ("auto_normal", "auto_delta", or "custom")
+        guide_type: Type of guide ("auto_normal", "auto_diagonal_normal", 
+                   "auto_multivariate_normal", "auto_lowrank_multivariate_normal", 
+                   "auto_delta", or "custom")
         **kwargs: Additional guide parameters
 
     Returns:
@@ -174,6 +253,12 @@ def create_guide(
     """
     if guide_type == "auto_normal":
         return auto_normal_guide(model, **kwargs)
+    elif guide_type == "auto_diagonal_normal":
+        return auto_diagonal_normal_guide(model, **kwargs)
+    elif guide_type == "auto_multivariate_normal":
+        return auto_multivariate_normal_guide(model, **kwargs)
+    elif guide_type == "auto_lowrank_multivariate_normal":
+        return auto_lowrank_multivariate_normal_guide(model, **kwargs)
     elif guide_type == "auto_delta":
         return auto_delta_guide(model, **kwargs)
     elif guide_type == "custom":
