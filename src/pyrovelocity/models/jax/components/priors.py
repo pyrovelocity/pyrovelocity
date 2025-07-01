@@ -35,7 +35,7 @@ def piecewise_activation_prior_function(
     
     Global Time:
         T_M_star ~ Gamma(α=5.0, β=1.0)                    # Maximum dimensionless time
-        boundary_concentration ~ Gamma(α=100.0, β=100.0)  # Temporal boundary control
+        boundary_concentration ~ Gamma(α=2.0, β=1.0)      # Temporal boundary control (calibrated)
         
     Cell Temporal Coordinates:
         κ = boundary_concentration
@@ -45,7 +45,7 @@ def piecewise_activation_prior_function(
         
     Gene Piecewise Activation Parameters:
         α*_off = 1.0 (fixed reference)                   # Eliminates scaling redundancy
-        R_on ~ LogNormal(loc=0.693, scale=0.35)          # Activation fold-change (≈2.0)
+        R_on ~ LogNormal(loc=0.916, scale=0.4)           # Activation fold-change (≈2.5, calibrated)
         γ* ~ LogNormal(loc=-0.405, scale=0.5)            # Relative degradation rate
         t*_on ~ Normal(loc=1.5, scale=2.296)             # Activation onset (allows negative)
         δ* ~ LogNormal(loc=0.48, scale=0.464)            # Activation duration
@@ -81,8 +81,8 @@ def piecewise_activation_prior_function(
     boundary_concentration = numpyro.sample(
         "boundary_concentration", 
         dist.Gamma(
-            concentration=prior_params.get("boundary_conc_alpha", 100.0),
-            rate=prior_params.get("boundary_conc_beta", 100.0)
+            concentration=prior_params.get("boundary_conc_alpha", 2.0),
+            rate=prior_params.get("boundary_conc_beta", 1.0)
         )
     )
     
@@ -114,12 +114,12 @@ def piecewise_activation_prior_function(
     
     # Gene-specific piecewise activation parameters
     with numpyro.plate("genes", num_genes):
-        # Activation fold-change (target mean ≈ 2.0)
+        # Activation fold-change (target mean ≈ 2.5)
         R_on = numpyro.sample(
             "R_on",
             dist.LogNormal(
-                loc=prior_params.get("R_on_loc", 0.693),    # log(2.0) ≈ 0.693
-                scale=prior_params.get("R_on_scale", 0.35)
+                loc=prior_params.get("R_on_loc", 0.916),    # log(2.5) ≈ 0.916
+                scale=prior_params.get("R_on_scale", 0.4)
             )
         )
         
