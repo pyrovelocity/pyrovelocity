@@ -105,10 +105,21 @@ def piecewise_activation_likelihood_function(
     u_obs_int = None if u_obs is None else jnp.round(u_obs).astype(jnp.int32)
     s_obs_int = None if s_obs is None else jnp.round(s_obs).astype(jnp.int32)
     
-    # Sample from Poisson distributions
+    # Sample from Poisson distributions with proper independence structure
     # When obs=None, NumPyro performs unconditional sampling (prior predictive)
-    numpyro.sample("u_obs", dist.Poisson(rate=u_rate).to_event(2), obs=u_obs_int)
-    numpyro.sample("s_obs", dist.Poisson(rate=s_rate).to_event(2), obs=s_obs_int)
+    # Get dimensions for proper plate notation
+    batch_shape = u_rate.shape
+    if len(batch_shape) >= 2:
+        n_cells = batch_shape[-2]
+        n_genes = batch_shape[-1]
+    else:
+        raise ValueError(f"Expected at least 2D tensor for rates, got shape {batch_shape}")
+    
+    # Use proper plate notation with consistent names and explicit dimensions
+    with numpyro.plate("cells_likelihood", n_cells, dim=-2):
+        with numpyro.plate("genes_likelihood", n_genes, dim=-1):
+            numpyro.sample("u_obs", dist.Poisson(rate=u_rate), obs=u_obs_int)
+            numpyro.sample("s_obs", dist.Poisson(rate=s_rate), obs=s_obs_int)
 
 
 def register_standard_likelihoods():
