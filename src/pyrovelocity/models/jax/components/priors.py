@@ -20,7 +20,6 @@ from pyrovelocity.models.jax.registry import register_prior
 
 @jaxtyped(typechecker=beartype)
 def piecewise_activation_prior_function(
-    key: jnp.ndarray,
     num_genes: int,
     prior_params: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Float[Array, "..."]]:
@@ -29,7 +28,8 @@ def piecewise_activation_prior_function(
     
     This function implements the complete hierarchical prior structure for the 
     piecewise activation RNA velocity model, following the JAX functional pattern
-    where dimensions are passed via prior_params.
+    where dimensions are passed via prior_params. NumPyro handles randomness
+    automatically through numpyro.sample() calls.
     
     Mathematical Structure:
     
@@ -52,7 +52,6 @@ def piecewise_activation_prior_function(
         U_0i ~ LogNormal(loc=2.3, scale=0.4)             # Gene concentration scale
 
     Args:
-        key: Random key (unused in NumPyro context, but required by interface)
         num_genes: Number of genes in the dataset
         prior_params: Dictionary containing n_cells and hyperparameter overrides
         
