@@ -103,8 +103,16 @@ METHOD_CONFIG = AVAILABLE_METHODS[SELECTED_METHOD]
 # Set random seeds for reproducibility
 numpyro.set_platform("cpu")  # Ensure CPU execution for consistency
 jax.config.update("jax_enable_x64", True)  # Enable double precision
-key = jax.random.PRNGKey(RANDOM_SEED)
+
+# Master seed - user controls this one value
+MASTER_SEED = RANDOM_SEED
+rng_key = jax.random.PRNGKey(MASTER_SEED)
 np.random.seed(RANDOM_SEED)
+
+# Split keys for major workflow components
+rng_key, rng_key_data = jax.random.split(rng_key)
+rng_key, rng_key_inference = jax.random.split(rng_key)
+rng_key, rng_key_prediction = jax.random.split(rng_key)
 
 print("=" * 70)
 print("🚀 JAX Single-Method Posterior Predictive Check Workflow")
@@ -156,13 +164,11 @@ num_genes = 100
 # u_obs = jnp.ones((1, num_cells, num_genes))
 # s_obs = jnp.ones((1, num_cells, num_genes))
 
-# Use NumPyro's Predictive class to generate single prior sample for training data
+# Use NumPyro's Predictive class for deterministic sampling
 prior_predictive = Predictive(model, num_samples=1)
-key, subkey = jax.random.split(key)
 
-# Generate single prior sample for "observed" data
-# prior_samples = prior_predictive(subkey, u_obs=u_obs, s_obs=s_obs)
-prior_samples = prior_predictive(subkey, u_obs=None, s_obs=None, num_cells=num_cells, num_genes=num_genes)
+# Generate single prior sample for "observed" data using proper key management  
+prior_samples = prior_predictive(rng_key_data, u_obs=None, s_obs=None, num_cells=num_cells, num_genes=num_genes)
 
 # Use the generated expected counts as our "observed" data
 u_observed = prior_samples["u_expected"][0, 0, :, :]  # [cells, genes]
@@ -263,101 +269,74 @@ print(f"🎯 Training with {SELECTED_METHOD}...")
 u_obs_batch = jnp.expand_dims(jnp.array(prior_predictive_adata.layers["unspliced"]), 0)  # [1, cells, genes]
 s_obs_batch = jnp.expand_dims(jnp.array(prior_predictive_adata.layers["spliced"]), 0)  # [1, cells, genes]
 
-# Run inference
-key, subkey = jax.random.split(key)
+# Run inference using proper seed management
 config = METHOD_CONFIG['config']
 
-try:
-    # Run inference using unified interface
-    inference_object, inference_state = run_inference(
-        model=model,
-        args=(u_obs_batch, s_obs_batch),
-        kwargs={},
-        config=config,
-        key=subkey
-    )
+# Run inference using unified interface
+inference_object, inference_state = run_inference(
+    model=model,
+    args=(u_obs_batch, s_obs_batch),
+    kwargs={},
+    config=config,
+    key=rng_key_inference
+)
     
-    print(f"✅ {SELECTED_METHOD} training completed")
+print(f"✅ {SELECTED_METHOD} training completed")
     
-    # Extract posterior samples
-    posterior_samples = inference_state.posterior_samples
+# Extract posterior samples
+posterior_samples = inference_state.posterior_samples
     
-    # Attach training state to model for compatibility with plotting functions
-    class ModelState:
-        def __init__(self, inference_state):
-            self.inference_state = inference_state
+# Attach training state to model for compatibility with plotting functions
+class ModelState:
+    def __init__(self, inference_state):
+        self.inference_state = inference_state
     
-    # Attach state to model
-    model.state = ModelState(inference_state)
+# Attach state to model
+model.state = ModelState(inference_state)
     
-    print(f"✅ Generated {len(posterior_samples)} types of posterior parameters")
-    for key_name in sorted(posterior_samples.keys()):
-        param_shape = posterior_samples[key_name].shape if hasattr(posterior_samples[key_name], 'shape') else len(posterior_samples[key_name])
-        print(f"    {key_name}: {param_shape}")
-
-except Exception as e:
-    print(f"❌ Training failed with error: {e}")
-    print("This is expected in the early development phase. Continuing with mock posterior samples...")
-    
-    # Create mock posterior samples for demonstration
-    posterior_samples = {}
-    for key_name, value in prior_samples.items():
-        if key_name not in ["u_expected", "s_expected"]:
-            # Create mock posterior by adding small noise to prior
-            if hasattr(value, "shape"):
-                mock_samples = jnp.repeat(value, 30, axis=0)  # 30 samples
-                noise = jax.random.normal(subkey, mock_samples.shape) * 0.1
-                posterior_samples[key_name] = mock_samples + noise
-            else:
-                posterior_samples[key_name] = value
-
+print(f"✅ Generated {len(posterior_samples)} types of posterior parameters")
+for key_name in sorted(posterior_samples.keys()):
+    param_shape = posterior_samples[key_name].shape if hasattr(posterior_samples[key_name], 'shape') else len(posterior_samples[key_name])
+    print(f"    {key_name}: {param_shape}")
 
 # Step 3: Generate posterior predictive data using posterior samples
 print(f"\n📊 Step 3: Generating posterior predictive data for {SELECTED_METHOD}...")
 print("  Using full posterior samples to generate synthetic data with uncertainty")
 
-try:
-    # Generate posterior predictive data with uncertainty using NumPyro Predictive
-    key, subkey = jax.random.split(key)
+# Generate posterior predictive data with uncertainty using NumPyro Predictive
+# Create posterior predictive using NumPyro
+predictive = Predictive(
+    model, 
+    posterior_samples=posterior_samples,
+    num_samples=1  # Generate one sample for visualization
+)
     
-    # Create posterior predictive using NumPyro
-    predictive = Predictive(
-        model, 
-        posterior_samples=posterior_samples,
-        num_samples=1  # Generate one sample for visualization
-    )
+# Generate posterior predictive samples
+posterior_predictive_samples = predictive(rng_key_prediction, u_obs=u_obs_batch, s_obs=s_obs_batch)
     
-    # Generate posterior predictive samples
-    posterior_predictive_samples = predictive(subkey, u_obs=u_obs_batch, s_obs=s_obs_batch)
+# Extract expected counts
+u_posterior_expected = posterior_predictive_samples["u_expected"][0, 0, :, :]  # [cells, genes]
+s_posterior_expected = posterior_predictive_samples["s_expected"][0, 0, :, :]  # [cells, genes]
     
-    # Extract expected counts
-    u_posterior_expected = posterior_predictive_samples["u_expected"][0, 0, :, :]  # [cells, genes]
-    s_posterior_expected = posterior_predictive_samples["s_expected"][0, 0, :, :]  # [cells, genes]
+# Create AnnData object for posterior predictive data
+posterior_predictive_adata = anndata.AnnData(
+    X=np.array(s_posterior_expected),  # Use spliced as main expression
+    layers={
+        "unspliced": np.array(u_posterior_expected),
+        "spliced": np.array(s_posterior_expected)
+    }
+)
     
-    # Create AnnData object for posterior predictive data
-    posterior_predictive_adata = anndata.AnnData(
-        X=np.array(s_posterior_expected),  # Use spliced as main expression
-        layers={
-            "unspliced": np.array(u_posterior_expected),
-            "spliced": np.array(s_posterior_expected)
-        }
-    )
+# Store t_star as latent_time for proper time coordinate visualization
+if "t_star" in posterior_predictive_samples:
+    t_star_values = posterior_predictive_samples["t_star"][0, :]  # [cells]
+    posterior_predictive_adata.obs["latent_time"] = np.array(t_star_values)
+    print(f"✅ Stored t_star as latent_time: shape {t_star_values.shape}, range [{t_star_values.min():.3f}, {t_star_values.max():.3f}]")
+else:
+    print("⚠️ No t_star found in posterior predictive samples")
     
-    # Store t_star as latent_time for proper time coordinate visualization
-    if "t_star" in posterior_predictive_samples:
-        t_star_values = posterior_predictive_samples["t_star"][0, 0, :]  # [cells]
-        posterior_predictive_adata.obs["latent_time"] = np.array(t_star_values)
-        print(f"✅ Stored t_star as latent_time: shape {t_star_values.shape}, range [{t_star_values.min():.3f}, {t_star_values.max():.3f}]")
-    else:
-        print("⚠️ No t_star found in posterior predictive samples")
-    
-    print("✅ Posterior predictive data generated:")
-    print_anndata(posterior_predictive_adata)
-
-except Exception as e:
-    print(f"❌ Posterior predictive generation failed: {e}")
-    print("Using prior predictive data as fallback for demonstration...")
-    posterior_predictive_adata = prior_predictive_adata.copy()
+print("✅ Posterior predictive data generated:")
+print_anndata(posterior_predictive_adata)
 
 # Copy UMAP coordinates for consistent visualization
 print(f"\n🗺️ Copying UMAP coordinates from prior predictive data for consistent visualization...")
