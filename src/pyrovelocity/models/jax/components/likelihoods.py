@@ -52,14 +52,15 @@ def piecewise_activation_likelihood_function(
         None: Uses numpyro.sample to register observations in probabilistic model
     """
     # Extract required parameters from context
-    u_obs = context["u_obs"]
-    s_obs = context["s_obs"]
-    u_expected = context["u_expected"]
+    # Use get() method to allow None values for prior predictive sampling
+    u_obs = context.get("u_obs")
+    s_obs = context.get("s_obs")
+    u_expected = context["u_expected"]  # These should always be present
     s_expected = context["s_expected"]
     
     # Extract optional scaling parameters
-    u_log_library = context.get("u_log_library")
-    s_log_library = context.get("s_log_library")
+    # u_log_library = context.get("u_log_library")
+    # s_log_library = context.get("s_log_library")
     eps = context.get("eps", 1e-6)
     
     # Extract scaling parameters from context
@@ -68,36 +69,44 @@ def piecewise_activation_likelihood_function(
     
     # Apply scaling to expected concentrations
     # u_{ij} ∼ Poisson(λ_j · U_{0i} · u*_{ij})
-    if lambda_j is not None and U_0i is not None:
-        # Ensure proper broadcasting: lambda_j [n_cells] × U_0i [n_genes] × u/s_expected [batch, n_cells, n_genes]
-        scaling_factor = lambda_j[jnp.newaxis, :, jnp.newaxis] * U_0i[jnp.newaxis, jnp.newaxis, :]
-        ut = u_expected * scaling_factor
-        st = s_expected * scaling_factor
-    else:
-        # Fallback to unscaled if parameters not provided
-        ut = u_expected
-        st = s_expected
+    # if lambda_j is not None and U_0i is not None:
+    #     # Ensure proper broadcasting: lambda_j [n_cells] × U_0i [n_genes] × u/s_expected [batch, n_cells, n_genes]
+    #     scaling_factor = lambda_j[jnp.newaxis, :, jnp.newaxis] * U_0i[jnp.newaxis, jnp.newaxis, :]
+    #     ut = u_expected * scaling_factor
+    #     st = s_expected * scaling_factor
+    # else:
+    #     # Fallback to unscaled if parameters not provided
+    #     ut = u_expected
+    #     st = s_expected
+
+    scaling_factor = lambda_j[jnp.newaxis, :, jnp.newaxis] * U_0i[jnp.newaxis, jnp.newaxis, :]
+    ut = u_expected * scaling_factor
+    st = s_expected * scaling_factor
     
     # Apply library size scaling if available
-    if u_log_library is not None:
-        u_rate = ut * jnp.exp(u_log_library)[..., jnp.newaxis]
-    else:
-        u_rate = ut
+    # if u_log_library is not None:
+    #     u_rate = ut * jnp.exp(u_log_library)[..., jnp.newaxis]
+    # else:
+    #     u_rate = ut
         
-    if s_log_library is not None:
-        s_rate = st * jnp.exp(s_log_library)[..., jnp.newaxis]
-    else:
-        s_rate = st
+    # if s_log_library is not None:
+    #     s_rate = st * jnp.exp(s_log_library)[..., jnp.newaxis]
+    # else:
+    #     s_rate = st
+    u_rate = ut
+    s_rate = st
     
     # Ensure positive rates for numerical stability
     u_rate = jnp.maximum(u_rate, eps)
     s_rate = jnp.maximum(s_rate, eps)
     
     # Convert observations to integers for Poisson distribution compatibility
-    u_obs_int = jnp.round(u_obs).astype(jnp.int32)
-    s_obs_int = jnp.round(s_obs).astype(jnp.int32)
+    # Handle None observations for prior predictive sampling
+    u_obs_int = None if u_obs is None else jnp.round(u_obs).astype(jnp.int32)
+    s_obs_int = None if s_obs is None else jnp.round(s_obs).astype(jnp.int32)
     
     # Sample from Poisson distributions
+    # When obs=None, NumPyro performs unconditional sampling (prior predictive)
     numpyro.sample("u_obs", dist.Poisson(rate=u_rate).to_event(2), obs=u_obs_int)
     numpyro.sample("s_obs", dist.Poisson(rate=s_rate).to_event(2), obs=s_obs_int)
 
