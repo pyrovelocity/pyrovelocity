@@ -173,8 +173,8 @@ def velocity_model(
     prior_params = {"n_cells": num_cells}
 
     # Call the prior function within NumPyro context (it handles sampling internally)
-    rng_key = jax.random.PRNGKey(0)
-    sampled_params = prior_fn(rng_key, num_genes, prior_params)
+    # NumPyro manages randomness automatically through numpyro.sample() calls
+    sampled_params = prior_fn(num_genes, prior_params)
 
     # Sample latent time for each cell
     if latent_time:
