@@ -143,6 +143,10 @@ def get_parameter_label(
     """
     # Strategy 1: Get from model metadata
     if model is not None:
+        # Check if model has a component_name attribute (e.g., MetadataAwareJAXModel)
+        if hasattr(model, 'component_name') and component_name is None:
+            component_name = model.component_name
+        
         if label_type == "short":
             labels = get_parameter_short_labels_from_model(model, fallback_to_legacy=False)
         elif label_type == "display":
