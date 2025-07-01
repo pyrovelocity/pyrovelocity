@@ -47,22 +47,22 @@ def validate_prior_function(fn: Callable) -> bool:
     sig = inspect.signature(fn)
     params = sig.parameters
 
-    # Check parameter count
-    if len(params) != 3:
+    # Check parameter count (updated for NumPyro pattern without explicit key)
+    if len(params) != 2:
         raise TypeError(
-            f"Prior function must have 3 parameters, got {len(params)}"
+            f"Prior function must have 2 parameters, got {len(params)}"
         )
 
-    # Check parameter names
+    # Check parameter names (updated for NumPyro pattern)
     param_names = list(params.keys())
-    expected_names = ["key", "num_genes", "prior_params"]
+    expected_names = ["num_genes", "prior_params"]
     for i, name in enumerate(param_names):
         if name != expected_names[i]:
             raise TypeError(
                 f"Parameter {i+1} should be named '{expected_names[i]}', got '{name}'"
             )
 
-    # Check if the third parameter is optional
+    # Check if the second parameter is optional
     if params["prior_params"].default == inspect.Parameter.empty:
         raise TypeError("Parameter 'prior_params' should be optional")
 
