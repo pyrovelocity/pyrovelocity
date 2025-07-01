@@ -329,8 +329,8 @@ def create_model(config: Union[Dict, ModelConfig]) -> Callable:
         prior_params["n_cells"] = n_cells
         
         # Call the prior function (handles its own numpyro sampling)
+        # NumPyro manages randomness automatically through numpyro.sample() calls
         sampled_params = prior_fn(
-            key=jax.random.PRNGKey(0),  # Will be ignored by NumPyro priors
             num_genes=n_genes,
             prior_params=prior_params
         )
