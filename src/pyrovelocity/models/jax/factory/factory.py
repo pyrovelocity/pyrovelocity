@@ -268,21 +268,25 @@ def create_model(config: Union[Dict, ModelConfig]) -> Callable:
 
     # Create the model function that uses registry components
     def model(
-        u_obs: Float[Array, "batch_size n_cells n_genes"],
-        s_obs: Float[Array, "batch_size n_cells n_genes"],
+        u_obs: Optional[Float[Array, "batch_size n_cells n_genes"]] = None,
+        s_obs: Optional[Float[Array, "batch_size n_cells n_genes"]] = None,
         u_log_library: Optional[Float[Array, "batch_size n_cells"]] = None,
         s_log_library: Optional[Float[Array, "batch_size n_cells"]] = None,
         model_params: Optional[Dict[str, Any]] = None,
+        num_cells: Optional[int] = None,
+        num_genes: Optional[int] = None,
     ) -> Dict[str, Float[Array, "..."]]:
         """
         Flexible PyroVelocity model function using registry components.
 
         Args:
-            u_obs: Observed unspliced counts
-            s_obs: Observed spliced counts
+            u_obs: Observed unspliced counts (None for prior predictive sampling)
+            s_obs: Observed spliced counts (None for prior predictive sampling)
             u_log_library: Log library size for unspliced counts
             s_log_library: Log library size for spliced counts
             model_params: Additional parameters for the model
+            num_cells: Number of cells (required if u_obs/s_obs are None)
+            num_genes: Number of genes (required if u_obs/s_obs are None)
 
         Returns:
             Dictionary of model outputs
@@ -290,16 +294,33 @@ def create_model(config: Union[Dict, ModelConfig]) -> Callable:
         if model_params is None:
             model_params = {}
             
-        # Get dimensions
-        batch_size, n_cells, n_genes = u_obs.shape
+        # Get dimensions from observations or parameters
+        if u_obs is not None and s_obs is not None:
+            batch_size, n_cells, n_genes = u_obs.shape
+        else:
+            # For prior predictive sampling, get dimensions from parameters
+            if num_cells is None or num_genes is None:
+                raise ValueError("num_cells and num_genes must be provided when u_obs/s_obs are None")
+            batch_size = 1  # Default batch size for prior predictive
+            n_cells = num_cells
+            n_genes = num_genes
 
         # Create default log library sizes if not provided
         if u_log_library is None:
-            u_log_library = jnp.log(jnp.sum(u_obs, axis=-1) + 1e-6)
+            if u_obs is not None:
+                u_log_library = jnp.log(jnp.sum(u_obs, axis=-1) + 1e-6)
+            else:
+                # Default log library for prior predictive sampling
+                u_log_library = jnp.zeros((batch_size, n_cells))
         if s_log_library is None:
-            s_log_library = jnp.log(jnp.sum(s_obs, axis=-1) + 1e-6)
+            if s_obs is not None:
+                s_log_library = jnp.log(jnp.sum(s_obs, axis=-1) + 1e-6)
+            else:
+                # Default log library for prior predictive sampling
+                s_log_library = jnp.zeros((batch_size, n_cells))
 
         # Use observations directly (no transformation needed in focused architecture)
+        # For prior predictive sampling, preserve None values for the likelihood
         u_transformed, s_transformed = u_obs, s_obs
 
         # Sample model parameters using the prior function
@@ -325,7 +346,8 @@ def create_model(config: Union[Dict, ModelConfig]) -> Callable:
         t_star_expanded = t_star[jnp.newaxis, :, jnp.newaxis]  # [1, n_cells, 1]
         t_star_expanded = jnp.broadcast_to(t_star_expanded, (batch_size, n_cells, n_genes))
         
-        u0_star = jnp.ones_like(u_transformed)  # Fixed initial condition
+        # Create initial condition using dimensions instead of observations
+        u0_star = jnp.ones((batch_size, n_cells, n_genes))  # Fixed initial condition
         
         # Call the dynamics function with correct interface (no s0_star)
         u_expected, s_expected = dynamics_fn(
