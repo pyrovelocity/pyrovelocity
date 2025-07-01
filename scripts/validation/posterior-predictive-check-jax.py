@@ -153,15 +153,16 @@ num_cells = 200
 num_genes = 100
 
 # Generate dummy observations for the model to get prior predictive samples
-u_obs = jnp.ones((1, num_cells, num_genes))
-s_obs = jnp.ones((1, num_cells, num_genes))
+# u_obs = jnp.ones((1, num_cells, num_genes))
+# s_obs = jnp.ones((1, num_cells, num_genes))
 
 # Use NumPyro's Predictive class to generate single prior sample for training data
 prior_predictive = Predictive(model, num_samples=1)
 key, subkey = jax.random.split(key)
 
 # Generate single prior sample for "observed" data
-prior_samples = prior_predictive(subkey, u_obs=u_obs, s_obs=s_obs)
+# prior_samples = prior_predictive(subkey, u_obs=u_obs, s_obs=s_obs)
+prior_samples = prior_predictive(subkey, u_obs=None, s_obs=None, num_cells=num_cells, num_genes=num_genes)
 
 # Use the generated expected counts as our "observed" data
 u_observed = prior_samples["u_expected"][0, 0, :, :]  # [cells, genes]
