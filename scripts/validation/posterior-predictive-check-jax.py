@@ -18,6 +18,10 @@ from pyrovelocity.plots.predictive_checks import (
 )
 from pyrovelocity.utils import print_anndata
 from numpyro.infer import Predictive
+from pyrovelocity.models.metadata import (
+    get_parameter_display_names,
+    get_parameter_short_labels,
+)
 
 
 RANDOM_SEED = 42
@@ -116,6 +120,31 @@ print(f"\n📊 Step 1: Generating prior predictive data (seed: {RANDOM_SEED})...
 # Create model for sample data generation
 model = create_piecewise_activation_model()
 
+# Create a metadata-aware wrapper for the JAX model
+class MetadataAwareJAXModel:
+    """Wrapper to provide metadata to JAX models for consistent plot labeling."""
+    
+    def __init__(self, jax_model):
+        self._jax_model = jax_model
+        # Store the component name for metadata lookup
+        self._component_name = "piecewise_activation_prior"
+    
+    def __call__(self, *args, **kwargs):
+        """Forward calls to the underlying JAX model."""
+        return self._jax_model(*args, **kwargs)
+    
+    def __getattr__(self, name):
+        """Forward attribute access to the underlying JAX model."""
+        return getattr(self._jax_model, name)
+    
+    @property
+    def component_name(self):
+        """Provide component name for metadata lookup."""
+        return self._component_name
+
+# Wrap the model with metadata support
+model = MetadataAwareJAXModel(model)
+
 # Generate synthetic data with known true parameters from prior
 print("Generating synthetic data...")
 
@@ -178,7 +207,11 @@ print_anndata(prior_predictive_adata)
 prior_parameter_samples = {}
 if "true_parameters" in prior_predictive_adata.uns:
     for param_key, value in prior_predictive_adata.uns['true_parameters'].items():
-        prior_parameter_samples[param_key] = value  # Let plotting functions handle conversion
+        # Normalize parameter names to match metadata registry
+        normalized_key = param_key
+        if param_key == "boundaryconcentration":
+            normalized_key = "boundary_concentration"
+        prior_parameter_samples[normalized_key] = value  # Let plotting functions handle conversion
 
 # Check if prior predictive plots already exist (caching)
 sample_data_path = Path(REPORTS_SAVE_PATH) / str(RANDOM_SEED) / "sample_data"
@@ -194,6 +227,7 @@ if plots_exist:
 else:
     print(f"🎨 Generating prior predictive plots...")
     # Generate prior predictive plots (this is the expensive part)
+    # Pass the wrapped model which provides metadata access
     plot_prior_predictive_checks(
         model=model,
         prior_adata=prior_predictive_adata,
@@ -217,7 +251,9 @@ method_save_path = f"{REPORTS_SAVE_PATH}/{RANDOM_SEED}/{SELECTED_METHOD}"
 os.makedirs(method_save_path, exist_ok=True)
 
 # Create model
-model = create_piecewise_activation_model()
+base_model = create_piecewise_activation_model()
+# Wrap with metadata support for consistent parameter labeling
+model = MetadataAwareJAXModel(base_model)
 print(f"✅ Created JAX model for {SELECTED_METHOD}")
 
 print(f"🎯 Training with {SELECTED_METHOD}...")
@@ -343,14 +379,19 @@ print(f"\n🎨 Step 4: Creating posterior predictive check plots for {SELECTED_M
 posterior_parameter_samples = {}
 for key_name, value in posterior_samples.items():
     if key_name not in ["u_expected", "s_expected"]:
+        # Normalize parameter names to match metadata registry
+        normalized_key = key_name
+        if key_name == "boundaryconcentration":
+            normalized_key = "boundary_concentration"
+        
         if hasattr(value, "shape") and len(value.shape) > 1:
             # Take mean across samples for plotting
-            posterior_parameter_samples[key_name] = np.mean(np.array(value), axis=0)
+            posterior_parameter_samples[normalized_key] = np.mean(np.array(value), axis=0)
         else:
-            posterior_parameter_samples[key_name] = np.array(value)
+            posterior_parameter_samples[normalized_key] = np.array(value)
 
 _ = plot_posterior_predictive_checks(
-    model=model,
+    model=model,  # Uses wrapped model with metadata support
     posterior_adata=posterior_predictive_adata,
     posterior_parameters=posterior_parameter_samples,
     figsize=(7.5, 5.0),
