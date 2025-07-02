@@ -6,16 +6,12 @@ This module registers standard prior functions for the JAX implementation of Pyr
 
 from typing import Any, Dict, Optional
 
-import jax
-import jax.numpy as jnp
 import numpyro
 import numpyro.distributions as dist
 from beartype import beartype
 from jaxtyping import Array, Float, jaxtyped
 
 from pyrovelocity.models.jax.registry import register_prior
-
-
 
 
 @jaxtyped(typechecker=beartype)
@@ -81,15 +77,16 @@ def piecewise_activation_prior_function(
     boundary_concentration = numpyro.sample(
         "boundary_concentration", 
         dist.Gamma(
-            concentration=prior_params.get("boundary_conc_alpha", 2.0),
-            rate=prior_params.get("boundary_conc_beta", 1.0)
+            concentration=prior_params.get("boundary_conc_alpha", 100.0),
+            rate=prior_params.get("boundary_conc_beta", 100.0)
         )
     )
     
+    kappa = 1.0 / boundary_concentration
+
     # Cell-specific temporal coordinates with boundary concentration
     with numpyro.plate("cells", n_cells, dim=-2):
         # Beta distribution concentration parameter 
-        kappa = 1.0 / boundary_concentration
         
         # Normalized temporal coordinates using Beta boundary concentration
         t_star_normalized = numpyro.sample(
