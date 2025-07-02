@@ -259,6 +259,7 @@ plot_posterior_predictive_checks(
     posterior_adata=posterior_predictive_adata,
     posterior_parameters=posterior_samples,
     true_parameters_adata=prior_predictive_adata,
+    observed_adata=prior_predictive_adata,
     figsize=(7.5, 5.0),
     save_path=method_save_path,
     figure_name=f"posterior_predictive_check_{SELECTED_METHOD}_jax_{RANDOM_SEED}",
