@@ -2001,6 +2001,7 @@ def plot_prior_predictive_checks(
     observed_adata: Optional[AnnData] = None,
     num_genes: int = 6,
     true_parameters_adata: Optional[AnnData] = None,
+    metadata: Optional[Any] = None,
 ) -> plt.Figure:
     """
     Generate comprehensive predictive check plots for PyroVelocity models.
@@ -2012,7 +2013,7 @@ def plot_prior_predictive_checks(
     Optionally creates individual modular plots in addition to the overview.
 
     Args:
-        model: PyroVelocity model instance (unused but kept for compatibility)
+        model: PyroVelocity model instance (deprecated, use metadata instead)
         prior_adata: AnnData object with predictive samples
         prior_parameters: Dictionary of parameter samples (PyTorch, JAX, or NumPy)
         figsize: Figure size (width, height)
@@ -2027,6 +2028,7 @@ def plot_prior_predictive_checks(
         num_genes: Number of genes to include in temporal dynamics plots (default: 6)
         true_parameters_adata: Optional AnnData object containing true parameters
                               in adata.uns['true_parameters'] for parameter recovery validation
+        metadata: Optional PlotMetadata object or dict with component_name for parameter labeling
 
     Returns:
         matplotlib Figure object
