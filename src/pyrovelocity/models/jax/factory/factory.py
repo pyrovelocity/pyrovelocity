@@ -342,8 +342,19 @@ def create_model(config: Union[Dict, ModelConfig]) -> Callable:
         t_star = sampled_params["t_star"]  # Use the actual sampled time coordinates
         
         # Expand t_star to match the shape needed by dynamics function
-        # t_star is [n_cells], but dynamics expects [batch_size, n_cells, n_genes]
-        t_star_expanded = t_star[jnp.newaxis, :, jnp.newaxis]  # [1, n_cells, 1]
+        # With explicit plate dimensions, t_star shape may have extra dimensions
+        # Ensure we get the right shape for dynamics: [batch_size, n_cells, n_genes]
+        if t_star.ndim == 1:
+            # Shape [n_cells] -> [1, n_cells, 1] 
+            t_star_expanded = t_star[jnp.newaxis, :, jnp.newaxis]
+        else:
+            # Handle potential shape changes from explicit plate dimensions
+            # Squeeze any extra dimensions and then expand correctly
+            t_star_flat = jnp.squeeze(t_star)
+            if t_star_flat.ndim != 1:
+                raise ValueError(f"Expected t_star to be 1D after squeezing, got shape {t_star_flat.shape}")
+            t_star_expanded = t_star_flat[jnp.newaxis, :, jnp.newaxis]
+        
         t_star_expanded = jnp.broadcast_to(t_star_expanded, (batch_size, n_cells, n_genes))
         
         # Create initial condition using dimensions instead of observations
@@ -356,8 +367,17 @@ def create_model(config: Union[Dict, ModelConfig]) -> Callable:
 
         # 🔧 CRITICAL FIX: Apply scaling BEFORE registering deterministic sites
         # Extract scaling parameters
-        lambda_j = sampled_params["lambda_j"]  # [n_cells]
-        U_0i = sampled_params["U_0i"]  # [n_genes]
+        lambda_j = sampled_params["lambda_j"]  # Should be [n_cells]
+        U_0i = sampled_params["U_0i"]  # Should be [n_genes]
+        
+        
+        # Handle potential extra dimensions from explicit plate dimensions
+        # Ensure lambda_j is 1D [n_cells]
+        if lambda_j.ndim > 1:
+            lambda_j = jnp.squeeze(lambda_j)
+        # Ensure U_0i is 1D [n_genes]  
+        if U_0i.ndim > 1:
+            U_0i = jnp.squeeze(U_0i)
 
         # Apply scaling: rate = lambda_j * U_0i * raw_concentration
         scaling_factor = lambda_j[jnp.newaxis, :, jnp.newaxis] * U_0i[jnp.newaxis, jnp.newaxis, :]

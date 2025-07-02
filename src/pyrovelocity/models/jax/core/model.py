@@ -178,7 +178,7 @@ def velocity_model(
 
     # Sample latent time for each cell
     if latent_time:
-        with numpyro.plate("cell", num_cells):
+        with numpyro.plate("cells", num_cells, dim=-2):
             tau = numpyro.sample("tau", dist.Normal(0.0, 1.0))
     else:
         # Use fixed time points if latent_time is False

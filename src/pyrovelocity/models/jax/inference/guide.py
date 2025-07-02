@@ -178,7 +178,7 @@ def custom_guide(
             num_cells, num_genes = data.shape
 
         # Sample alpha, beta, gamma with Normal distributions
-        with numpyro.plate("gene", num_genes):
+        with numpyro.plate("genes", num_genes, dim=-1):
             # Use initial values if provided, otherwise use defaults
             if init_params is not None and "alpha_loc" in init_params:
                 alpha_loc = init_params["alpha_loc"]
@@ -218,7 +218,7 @@ def custom_guide(
 
         # Sample latent time if needed
         if "tau" in model.__code__.co_varnames:
-            with numpyro.plate("cell", num_cells):
+            with numpyro.plate("cells", num_cells, dim=-2):
                 # Use initial values if provided, otherwise use defaults
                 if init_params is not None and "tau_loc" in init_params:
                     tau_loc = init_params["tau_loc"]

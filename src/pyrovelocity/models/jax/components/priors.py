@@ -87,7 +87,7 @@ def piecewise_activation_prior_function(
     )
     
     # Cell-specific temporal coordinates with boundary concentration
-    with numpyro.plate("cells_prior", n_cells):
+    with numpyro.plate("cells", n_cells, dim=-2):
         # Beta distribution concentration parameter 
         kappa = 1.0 / boundary_concentration
         
@@ -113,7 +113,7 @@ def piecewise_activation_prior_function(
         )
     
     # Gene-specific piecewise activation parameters
-    with numpyro.plate("genes_prior", num_genes):
+    with numpyro.plate("genes", num_genes, dim=-1):
         # Activation fold-change (target mean ≈ 2.0, aligned with modular)
         R_on = numpyro.sample(
             "R_on",

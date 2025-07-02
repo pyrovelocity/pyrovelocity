@@ -116,8 +116,8 @@ def piecewise_activation_likelihood_function(
         raise ValueError(f"Expected at least 2D tensor for rates, got shape {batch_shape}")
     
     # Use proper plate notation with consistent names and explicit dimensions
-    with numpyro.plate("cells_likelihood", n_cells, dim=-2):
-        with numpyro.plate("genes_likelihood", n_genes, dim=-1):
+    with numpyro.plate("cells", n_cells, dim=-2):
+        with numpyro.plate("genes", n_genes, dim=-1):
             numpyro.sample("u_obs", dist.Poisson(rate=u_rate), obs=u_obs_int)
             numpyro.sample("s_obs", dist.Poisson(rate=s_rate), obs=s_obs_int)
 
