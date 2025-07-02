@@ -170,9 +170,27 @@ prior_predictive = Predictive(model, num_samples=1)
 # Generate single prior sample for "observed" data using proper key management  
 prior_samples = prior_predictive(rng_key_data, u_obs=None, s_obs=None, num_cells=num_cells, num_genes=num_genes)
 
-# Use the generated expected counts as our "observed" data
-u_observed = prior_samples["u_expected"][0, 0, :, :]  # [cells, genes]
-s_observed = prior_samples["s_expected"][0, 0, :, :]  # [cells, genes]
+# Use the generated Poisson samples as our "observed" data (NOT expected values!)
+# This is critical for realistic Poisson noise and proper scatter in phase space plots
+u_obs_shape = prior_samples["u_obs"].shape
+s_obs_shape = prior_samples["s_obs"].shape
+
+if len(u_obs_shape) == 5:
+    # Shape: [batch, sample, dim1, cells, genes] - extract the last 2 dimensions
+    u_observed = prior_samples["u_obs"][0, 0, 0, :, :] 
+    s_observed = prior_samples["s_obs"][0, 0, 0, :, :]
+elif len(u_obs_shape) == 4:
+    # Expected shape: [batch, sample, cells, genes]
+    u_observed = prior_samples["u_obs"][0, 0, :, :] 
+    s_observed = prior_samples["s_obs"][0, 0, :, :]
+elif len(u_obs_shape) == 3:
+    # Shape might be [sample, cells, genes] 
+    u_observed = prior_samples["u_obs"][0, :, :] 
+    s_observed = prior_samples["s_obs"][0, :, :]
+else:
+    # Shape might be [cells, genes]
+    u_observed = prior_samples["u_obs"]
+    s_observed = prior_samples["s_obs"]
 
 # Create AnnData object for training
 prior_predictive_adata = anndata.AnnData(
@@ -185,7 +203,16 @@ prior_predictive_adata = anndata.AnnData(
 
 # Store t_star as latent_time for proper time coordinate visualization
 if "t_star" in prior_samples:
-    t_star_values = prior_samples["t_star"][0, :]  # [cells]
+    # Adapt t_star extraction based on its shape
+    t_star_shape = prior_samples["t_star"].shape
+    if len(t_star_shape) == 3:
+        # Shape is (1, 200, 1) - extract the middle dimension
+        t_star_values = prior_samples["t_star"][0, :, 0]  # [cells]
+    elif len(t_star_shape) == 2:
+        t_star_values = prior_samples["t_star"][0, :]  # [cells]
+    else:
+        t_star_values = prior_samples["t_star"]  # Already 1D
+        
     prior_predictive_adata.obs["latent_time"] = np.array(t_star_values)
     print(f"✅ Stored t_star as latent_time in prior data: shape {t_star_values.shape}, range [{t_star_values.min():.3f}, {t_star_values.max():.3f}]")
 else:
