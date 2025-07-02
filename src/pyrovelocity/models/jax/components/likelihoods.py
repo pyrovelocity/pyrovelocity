@@ -79,15 +79,11 @@ def piecewise_activation_likelihood_function(
     #     ut = u_expected
     #     st = s_expected
 
-    # Proper broadcasting to match modular implementation:
-    # lambda_j: [N] -> [N, 1], U_0i: [G] -> [1, G]
-    # Result: [N, 1] * [1, G] * [N, G] = [N, G] (not 3D!)
-    lambda_j_expanded = lambda_j[:, jnp.newaxis]  # [N, 1]
-    U_0i_expanded = U_0i[jnp.newaxis, :]  # [1, G]
-    
-    # Compute rates with proper 2D broadcasting
-    u_rate = lambda_j_expanded * U_0i_expanded * u_expected
-    s_rate = lambda_j_expanded * U_0i_expanded * s_expected
+    # NOTE: u_expected and s_expected from factory are ALREADY SCALED
+    # Factory applies: u_expected_scaled = lambda_j * U_0i * u_expected_raw
+    # So we should use them directly as rates, not scale again
+    u_rate = u_expected
+    s_rate = s_expected
     
     # Apply library size scaling if available
     # if u_log_library is not None:
