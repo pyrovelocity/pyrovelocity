@@ -187,10 +187,13 @@ def velocity_model(
 
     # Compute RNA dynamics with generic parameters
     # Use t_star from sampled parameters
-    t_star = sampled_params["t_star"]  # Shape: (num_cells,)
+    t_star_raw = sampled_params["t_star"]  # May have extra dimensions from NumPyro
     
-    # Expand time coordinates for dynamics function: Shape (1, num_cells, num_genes)
-    time_expanded = t_star[jnp.newaxis, :, jnp.newaxis] * jnp.ones((1, 1, num_genes))
+    # Ensure correct shape: squeeze any extra dimensions and add batch dimension
+    t_star_squeezed = jnp.squeeze(t_star_raw)  # Remove extra singleton dims
+    if t_star_squeezed.ndim == 0:  # If scalar, make it 1D
+        t_star_squeezed = t_star_squeezed[jnp.newaxis]
+    t_star_batched = t_star_squeezed[jnp.newaxis, :]  # Shape: (1, num_cells)
     
     # Create generic initial conditions (dynamics function should handle specifics)  
     u0_expanded = jnp.ones((1, num_cells, num_genes))
@@ -203,7 +206,7 @@ def velocity_model(
 
     # Apply dynamics model to get expected counts
     u_expected, s_expected = dynamics_fn(
-        time_expanded, u0_expanded, dynamics_params
+        t_star_batched, u0_expanded, dynamics_params
     )
 
     # Register expected counts with the model

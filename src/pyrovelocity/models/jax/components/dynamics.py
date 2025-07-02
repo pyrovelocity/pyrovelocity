@@ -59,7 +59,7 @@ def _ensure_positive_values(
 
 @jaxtyped(typechecker=beartype)  
 def _compute_piecewise_solution(
-    t_star: Float[Array, "batch_size n_cells n_genes"],
+    t_star: Float[Array, "batch_size n_cells"],
     params: Dict[str, Float[Array, "..."]],
 ) -> Tuple[
     Float[Array, "batch_size n_cells n_genes"],
@@ -84,6 +84,9 @@ def _compute_piecewise_solution(
     t_on_star = params["t_on_star"] 
     delta_star = params["delta_star"]
     
+    # Handle broadcasting from (batch_size, n_cells) to (batch_size, n_cells, n_genes)
+    t_star_bc = t_star[..., jnp.newaxis]  # Add gene dimension for broadcasting
+    
     # Numerical stability for γ* ≈ 1 case
     safe_gamma_minus_1 = _handle_gamma_boundary_case(gamma_star)
     
@@ -92,28 +95,28 @@ def _compute_piecewise_solution(
     t_switch_off = t_on_star + delta_star
     
     # Phase masks
-    phase1_mask = t_star < t_switch_on
-    phase2_mask = (t_star >= t_switch_on) & (t_star < t_switch_off)
-    phase3_mask = t_star >= t_switch_off
+    phase1_mask = t_star_bc < t_switch_on
+    phase2_mask = (t_star_bc >= t_switch_on) & (t_star_bc < t_switch_off)
+    phase3_mask = t_star_bc >= t_switch_off
     
     # Phase 1: t* < t*_on (OFF phase, α* = 1.0)
     # Fixed initial conditions: u0 = 1.0, s0 = 1.0/γ*
     # In steady state with α*=1.0, u*=1.0 and s*=1.0/γ*
-    exp_minus_t = jnp.exp(-t_star)
-    exp_minus_gamma_t = jnp.exp(-gamma_star * t_star)
+    exp_minus_t = jnp.exp(-t_star_bc)
+    exp_minus_gamma_t = jnp.exp(-gamma_star * t_star_bc)
     
-    u_phase1 = jnp.ones_like(t_star)  # Always 1.0 in steady state
+    u_phase1 = jnp.ones_like(t_star_bc)  # Always 1.0 in steady state
     
     # Special handling for γ* ≈ 1 case in s_phase1
     # When γ*=1, the system is at steady state and s* = 1.0
     s_phase1 = jnp.where(
         jnp.abs(gamma_star - 1.0) < 1e-8,
-        jnp.ones_like(t_star),  # γ* ≈ 1: s* = 1.0 (steady state)
+        jnp.ones_like(t_star_bc),  # γ* ≈ 1: s* = 1.0 (steady state)
         1.0 / gamma_star  # General case: s* = 1.0/γ* (steady state)
     )
     
     # Phase 2: t*_on ≤ t* < t*_on + δ* (ON phase, α* = R_on)
-    t_rel = t_star - t_switch_on
+    t_rel = t_star_bc - t_switch_on
     exp_minus_t_rel = jnp.exp(-t_rel)
     exp_minus_gamma_t_rel = jnp.exp(-gamma_star * t_rel)
     
@@ -140,7 +143,7 @@ def _compute_piecewise_solution(
     )
     
     # Phase 3: t* ≥ t*_on + δ* (Return to OFF, α* = 1.0)  
-    t_rel_off = t_star - t_switch_off
+    t_rel_off = t_star_bc - t_switch_off
     exp_minus_t_rel_off = jnp.exp(-t_rel_off)
     exp_minus_gamma_t_rel_off = jnp.exp(-gamma_star * t_rel_off)
     
@@ -172,7 +175,7 @@ def _compute_piecewise_solution(
 @jax.jit
 @jaxtyped(typechecker=beartype)
 def piecewise_activation_dynamics_function(
-    t_star: Float[Array, "batch_size n_cells n_genes"],
+    t_star: Float[Array, "batch_size n_cells"],
     u0_star: Float[Array, "batch_size n_cells n_genes"],
     params: Dict[str, Float[Array, "..."]],
 ) -> Tuple[

@@ -339,30 +339,29 @@ def create_model(config: Union[Dict, ModelConfig]) -> Callable:
         dynamics_params = model_params.get("dynamics_params", {})
         
         # Extract time parameter from sampled parameters
-        t_star = sampled_params["t_star"]  # Use the actual sampled time coordinates
+        t_star_raw = sampled_params["t_star"]  # May have various shapes from NumPyro predictive
         
-        # Expand t_star to match the shape needed by dynamics function
-        # With explicit plate dimensions, t_star shape may have extra dimensions
-        # Ensure we get the right shape for dynamics: [batch_size, n_cells, n_genes]
-        if t_star.ndim == 1:
-            # Shape [n_cells] -> [1, n_cells, 1] 
-            t_star_expanded = t_star[jnp.newaxis, :, jnp.newaxis]
+        # Ensure correct shape: handle different NumPyro predictive behaviors
+        if t_star_raw.shape == (n_cells, batch_size):
+            # Transpose if dimensions are swapped
+            t_star = t_star_raw.T  # Shape: (batch_size, n_cells)
+        elif t_star_raw.shape == (batch_size, n_cells):
+            # Already correct shape
+            t_star = t_star_raw
         else:
-            # Handle potential shape changes from explicit plate dimensions
-            # Squeeze any extra dimensions and then expand correctly
-            t_star_flat = jnp.squeeze(t_star)
-            if t_star_flat.ndim != 1:
-                raise ValueError(f"Expected t_star to be 1D after squeezing, got shape {t_star_flat.shape}")
-            t_star_expanded = t_star_flat[jnp.newaxis, :, jnp.newaxis]
-        
-        t_star_expanded = jnp.broadcast_to(t_star_expanded, (batch_size, n_cells, n_genes))
+            # Try to squeeze and reshape
+            t_star_squeezed = jnp.squeeze(t_star_raw)
+            if t_star_squeezed.ndim == 1 and t_star_squeezed.shape[0] == n_cells:
+                t_star = t_star_squeezed[jnp.newaxis, :]  # Shape: (1, n_cells)
+            else:
+                raise ValueError(f"Unexpected t_star shape: {t_star_raw.shape}, expected compatible with ({batch_size}, {n_cells})")
         
         # Create initial condition using dimensions instead of observations
         u0_star = jnp.ones((batch_size, n_cells, n_genes))  # Fixed initial condition
         
         # Call the dynamics function with correct interface (no s0_star)
         u_expected, s_expected = dynamics_fn(
-            t_star_expanded, u0_star, {**sampled_params, **dynamics_params}
+            t_star, u0_star, {**sampled_params, **dynamics_params}
         )
 
         # 🔧 CRITICAL FIX: Apply scaling BEFORE registering deterministic sites
