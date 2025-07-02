@@ -379,10 +379,15 @@ def create_model(config: Union[Dict, ModelConfig]) -> Callable:
         if U_0i.ndim > 1:
             U_0i = jnp.squeeze(U_0i)
 
-        # Apply scaling: rate = lambda_j * U_0i * raw_concentration
-        scaling_factor = lambda_j[jnp.newaxis, :, jnp.newaxis] * U_0i[jnp.newaxis, jnp.newaxis, :]
-        u_expected_scaled = u_expected * scaling_factor
-        s_expected_scaled = s_expected * scaling_factor
+        # Apply scaling: rate = lambda_j * U_0i * raw_concentration  
+        # Proper 2D broadcasting to match modular implementation:
+        # lambda_j: [N] -> [N, 1], U_0i: [G] -> [1, G] 
+        # Result: [N, 1] * [1, G] * [N, G] = [N, G] (not 3D!)
+        lambda_j_expanded = lambda_j[:, jnp.newaxis]  # [N, 1]
+        U_0i_expanded = U_0i[jnp.newaxis, :]  # [1, G]
+        
+        u_expected_scaled = lambda_j_expanded * U_0i_expanded * u_expected
+        s_expected_scaled = lambda_j_expanded * U_0i_expanded * s_expected
 
         # Ensure positive rates for numerical stability
         eps = 1e-6

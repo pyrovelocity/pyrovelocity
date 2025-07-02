@@ -79,22 +79,21 @@ def piecewise_activation_likelihood_function(
     #     ut = u_expected
     #     st = s_expected
 
-    scaling_factor = lambda_j[jnp.newaxis, :, jnp.newaxis] * U_0i[jnp.newaxis, jnp.newaxis, :]
-    ut = u_expected * scaling_factor
-    st = s_expected * scaling_factor
+    # Proper broadcasting to match modular implementation:
+    # lambda_j: [N] -> [N, 1], U_0i: [G] -> [1, G]
+    # Result: [N, 1] * [1, G] * [N, G] = [N, G] (not 3D!)
+    lambda_j_expanded = lambda_j[:, jnp.newaxis]  # [N, 1]
+    U_0i_expanded = U_0i[jnp.newaxis, :]  # [1, G]
+    
+    # Compute rates with proper 2D broadcasting
+    u_rate = lambda_j_expanded * U_0i_expanded * u_expected
+    s_rate = lambda_j_expanded * U_0i_expanded * s_expected
     
     # Apply library size scaling if available
     # if u_log_library is not None:
-    #     u_rate = ut * jnp.exp(u_log_library)[..., jnp.newaxis]
-    # else:
-    #     u_rate = ut
-        
+    #     u_rate = u_rate * jnp.exp(u_log_library)[..., jnp.newaxis]
     # if s_log_library is not None:
-    #     s_rate = st * jnp.exp(s_log_library)[..., jnp.newaxis]
-    # else:
-    #     s_rate = st
-    u_rate = ut
-    s_rate = st
+    #     s_rate = s_rate * jnp.exp(s_log_library)[..., jnp.newaxis]
     
     # Ensure positive rates for numerical stability
     u_rate = jnp.maximum(u_rate, eps)
