@@ -17,18 +17,18 @@ import seaborn as sns
 import torch
 from anndata import AnnData
 from beartype import beartype
-from scipy.stats import linregress, pearsonr
 from numpy.typing import ArrayLike
+from scipy.stats import linregress, pearsonr
 
-from pyrovelocity.styles import configure_matplotlib_style
 from pyrovelocity.plots.tensor_utils import (
-    convert_to_numpy,
     convert_parameters_to_numpy,
+    convert_to_numpy,
     ensure_numpy_parameters,
-    framework_agnostic_sigmoid,
-    framework_agnostic_log2,
     framework_agnostic_exp,
+    framework_agnostic_log2,
+    framework_agnostic_sigmoid,
 )
+from pyrovelocity.styles import configure_matplotlib_style
 
 # Try to import UMAP, fall back gracefully if not available
 try:
@@ -495,10 +495,8 @@ def plot_parameter_marginals(
             infer_component_name_from_parameters,
         )
 
-        # Try to infer component name from all parameters if model not provided
-        component_name = None
-        if model is None:
-            component_name = infer_component_name_from_parameters(numpy_parameters)
+        # Try to infer component name from all parameters for robust metadata lookup
+        component_name = infer_component_name_from_parameters(numpy_parameters)
 
         # Get short label for x-axis and display name for title
         short_label = get_parameter_label(
@@ -1004,14 +1002,14 @@ def plot_parameter_marginals_by_gene(
 
             # Add x-axis labels only on bottom row using parameter metadata
             if row == available_genes - 1:
-                # Get parameter short label using metadata system
-                param_short_label = get_parameter_label(
+                # Get parameter display label using metadata system
+                param_display_label = get_parameter_label(
                     param_name=param_name,
-                    label_type="short",
+                    label_type="display",
                     model=model,
                     fallback_to_legacy=True
                 )
-                ax.set_xlabel(param_short_label, fontsize=default_fontsize)
+                ax.set_xlabel(param_display_label, fontsize=default_fontsize)
             else:
                 ax.set_xlabel('')
 
@@ -1272,20 +1270,20 @@ def plot_temporal_trajectories(
 
         # Format axes with metadata-derived labels (log2 scale for fold changes)
         axes[pattern_idx, 0].set_xlabel(_latex_safe_text(f'{time_label}'), fontsize=default_fontsize * 0.9)
-        axes[pattern_idx, 0].set_ylabel(_latex_safe_text('log2(Unspliced) (u*)'), fontsize=default_fontsize * 0.9)
+        axes[pattern_idx, 0].set_ylabel(r'$\log_2(u^*_{ij})$', fontsize=default_fontsize * 0.9)
         axes[pattern_idx, 0].set_title(f'{formatted_pattern}: Unspliced', fontsize=default_fontsize)
         axes[pattern_idx, 0].grid(True, alpha=0.3)
         axes[pattern_idx, 0].legend(fontsize=default_fontsize * 0.8)
         axes[pattern_idx, 0].tick_params(labelsize=default_fontsize * 0.75)
 
         axes[pattern_idx, 1].set_xlabel(_latex_safe_text(f'{time_label}'), fontsize=default_fontsize * 0.9)
-        axes[pattern_idx, 1].set_ylabel(_latex_safe_text('log2(Spliced) (s*)'), fontsize=default_fontsize * 0.9)
+        axes[pattern_idx, 1].set_ylabel(r'$\log_2(s^*_{ij})$', fontsize=default_fontsize * 0.9)
         axes[pattern_idx, 1].set_title(f'{formatted_pattern}: Spliced', fontsize=default_fontsize)
         axes[pattern_idx, 1].grid(True, alpha=0.3)
         axes[pattern_idx, 1].tick_params(labelsize=default_fontsize * 0.75)
 
-        axes[pattern_idx, 2].set_xlabel(_latex_safe_text('log2(Unspliced) (u*)'), fontsize=default_fontsize * 0.9)
-        axes[pattern_idx, 2].set_ylabel(_latex_safe_text('log2(Spliced) (s*)'), fontsize=default_fontsize * 0.9)
+        axes[pattern_idx, 2].set_xlabel(r'$\log_2(u^*_{ij})$', fontsize=default_fontsize * 0.9)
+        axes[pattern_idx, 2].set_ylabel(r'$\log_2(s^*_{ij})$', fontsize=default_fontsize * 0.9)
         axes[pattern_idx, 2].set_title(f'{formatted_pattern}: Phase Portrait', fontsize=default_fontsize)
         axes[pattern_idx, 2].grid(True, alpha=0.3)
         axes[pattern_idx, 2].tick_params(labelsize=default_fontsize * 0.75)
@@ -1531,7 +1529,7 @@ def _plot_true_vs_estimated_time(
         from pyrovelocity.plots.parameter_metadata import get_parameter_label
         time_label = get_parameter_label(
             param_name="t_star",
-            label_type="short",
+            label_type="display",
             model=None,
             fallback_to_legacy=True
         )
@@ -2444,9 +2442,8 @@ def _plot_parameter_marginals_summary(
     )
 
     # Try to infer component name from all parameters if model not provided
-    component_name = None
-    if model is None:
-        component_name = infer_component_name_from_parameters(parameters)
+    # Try to infer component name from all parameters for robust metadata lookup
+    component_name = infer_component_name_from_parameters(parameters)
 
     # Focus on piecewise activation parameters (use R_on instead of deprecated alpha_on)
     key_params = ['R_on', 't_on_star', 'delta_star', 'gamma_star']
@@ -2493,9 +2490,8 @@ def _plot_temporal_coordinate_distribution(
     )
 
     # Try to infer component name from all parameters if model not provided
-    component_name = None
-    if model is None:
-        component_name = infer_component_name_from_parameters(parameters)
+    # Try to infer component name from all parameters for robust metadata lookup
+    component_name = infer_component_name_from_parameters(parameters)
 
     if 't_star' in parameters:
         t_star = convert_to_numpy(parameters['t_star'].flatten())
@@ -2588,9 +2584,8 @@ def _plot_fold_change_distribution(
     )
 
     # Try to infer component name from all parameters if model not provided
-    component_name = None
-    if model is None:
-        component_name = infer_component_name_from_parameters(parameters)
+    # Try to infer component name from all parameters for robust metadata lookup
+    component_name = infer_component_name_from_parameters(parameters)
 
     # Use R_on directly (preferred) or fall back to alpha_on/alpha_off ratio
     if 'R_on' in parameters:
@@ -2698,9 +2693,8 @@ def _plot_activation_timing(
     )
 
     # Try to infer component name from all parameters if model not provided
-    component_name = None
-    if model is None:
-        component_name = infer_component_name_from_parameters(parameters)
+    # Try to infer component name from all parameters for robust metadata lookup
+    component_name = infer_component_name_from_parameters(parameters)
 
     # Use independent absolute parameters only
     # CRITICAL FIX: Use unprocessed parameters when available for proper scatter plots
@@ -4086,7 +4080,7 @@ def plot_parameter_recovery_correlation(
         # Get parameter labels using metadata system
         x_label = get_parameter_label(
             param_name=param_name,
-            label_type="short",
+            label_type="display",
             model=model,
             fallback_to_legacy=True
         )
