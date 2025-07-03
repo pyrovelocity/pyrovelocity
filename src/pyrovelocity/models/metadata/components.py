@@ -201,6 +201,29 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             plot_order=15
         ),
 
+        # Latent RNA concentrations in JAX model (true/unobserved Poisson mean continuous values)
+        "u_expected": ParameterMetadata(
+            name="u_expected",
+            display_name=r"$u^*_{ij}$",
+            short_label="Latent Unspliced",
+            description="Latent dimensionless unspliced RNA concentrations",
+            units="dimensionless concentration",
+            typical_range=(0.0, 10.0),
+            biological_interpretation="True underlying unspliced RNA concentrations before observation noise and technical effects",
+            plot_order=14
+        ),
+
+        "s_expected": ParameterMetadata(
+            name="s_expected",
+            display_name=r"$s^*_{ij}$",
+            short_label="Latent Spliced",
+            description="Latent dimensionless spliced RNA concentrations",
+            units="dimensionless concentration",
+            typical_range=(0.0, 10.0),
+            biological_interpretation="True underlying spliced RNA concentrations before observation noise and technical effects",
+            plot_order=15
+        ),
+
         # Observed RNA counts (measured values)
         "u_obs": ParameterMetadata(
             name="u_obs",
