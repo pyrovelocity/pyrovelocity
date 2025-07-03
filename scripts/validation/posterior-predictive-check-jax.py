@@ -22,12 +22,18 @@ from numpyro.infer import Predictive
 
 RANDOM_SEED = 42
 REPORTS_SAVE_PATH = "reports/docs/posterior_predictive_jax"
+num_samples = 1000
+num_cells = 200
+num_genes = 100
+num_epochs = 1000
+
 
 AVAILABLE_METHODS = {
     "svi_auto_normal": {
         "config": create_inference_config(
             method="svi",
-            num_epochs=1000,
+            num_samples=num_samples,
+            num_epochs=num_epochs,
             learning_rate=0.01,
             guide_type="auto_normal",
             early_stopping=True,
@@ -38,7 +44,8 @@ AVAILABLE_METHODS = {
     "svi_auto_lowrank_multivariate_normal": {
         "config": create_inference_config(
             method="svi",
-            num_epochs=1000,
+            num_samples=num_samples,
+            num_epochs=num_epochs,
             learning_rate=0.01,
             guide_type="auto_lowrank_multivariate_normal",
             early_stopping=True,
@@ -46,11 +53,35 @@ AVAILABLE_METHODS = {
         ),
         "guide_type": "auto_lowrank_multivariate_normal"
     },
+    "svi_auto_diagonal_normal": {
+        "config": create_inference_config(
+            method="svi",
+            num_samples=num_samples,
+            num_epochs=num_epochs,
+            learning_rate=0.01,
+            guide_type="auto_diagonal_normal",
+            early_stopping=True,
+            early_stopping_patience=10,
+        ),
+        "guide_type": "auto_diagonal_normal"
+    },
+    "svi_auto_iaf_normal": {
+        "config": create_inference_config(
+            method="svi",
+            num_samples=num_samples,
+            num_epochs=num_epochs,
+            learning_rate=0.001,  # Reduced learning rate for stability
+            guide_type="auto_iaf_normal",
+            early_stopping=True,
+            early_stopping_patience=10,
+        ),
+        "guide_type": "auto_iaf_normal"
+    },
     "mcmc_nuts": {
         "config": create_inference_config(
             method="mcmc",
-            num_samples=500,
-            num_warmup=250,
+            num_samples=num_samples,
+            num_warmup=500,
             num_chains=1,
         ),
         "guide_type": None
@@ -73,15 +104,10 @@ os.makedirs(f"{REPORTS_SAVE_PATH}/{RANDOM_SEED}", exist_ok=True)
 os.makedirs(f"{REPORTS_SAVE_PATH}/{RANDOM_SEED}/sample_data", exist_ok=True)
 
 
-
-
 # Step 1: Generate prior predictive data
 print(f"\n📊 Step 1: Generating prior predictive data (seed: {RANDOM_SEED})...")
 
 model = create_piecewise_activation_model()
-
-num_cells = 200
-num_genes = 100
 
 dummy_u_obs = jnp.zeros((1, num_cells, num_genes))
 dummy_s_obs = jnp.zeros((1, num_cells, num_genes))
@@ -137,8 +163,8 @@ print_anndata(prior_predictive_adata)
 # Generate prior predictive plots
 sample_data_path = Path(f"{REPORTS_SAVE_PATH}/{RANDOM_SEED}/sample_data")
 key_files = [
-    f"01_data_overview_posterior_predictive_check_sample_data_jax_{RANDOM_SEED}.pdf",
-    f"combined_prior_predictive_checks_jax_{RANDOM_SEED}.pdf"
+    f"01_posterior_predictive_check_sample_data_jax_{RANDOM_SEED}.pdf",
+    f"combined_prior_predictive_checks_{RANDOM_SEED}.pdf"
 ]
 plots_exist = sample_data_path.exists() and all((sample_data_path / f).exists() for f in key_files)
 
@@ -211,29 +237,116 @@ print(f"\n📊 Step 3: Generating posterior predictive data for {SELECTED_METHOD
 
 rng_key, rng_key_prediction = jax.random.split(rng_key)
 
-predictive = Predictive(
-    model, 
-    posterior_samples=posterior_samples,
-    num_samples=1
-)
+# COMPREHENSIVE FIX: Proper posterior predictive checking with multiple samples
+# Generate multiple predictive datasets to capture posterior predictive uncertainty
+n_predictive_samples = min(50, posterior_samples[list(posterior_samples.keys())[0]].shape[0])
+print(f"  📊 Generating {n_predictive_samples} posterior predictive datasets...")
+
+all_u_samples = []
+all_s_samples = []
+all_t_star_samples = []
+
+for sample_idx in range(n_predictive_samples):
+    # Extract single parameter set for this posterior sample
+    single_posterior_sample = {}
+    for key, value in posterior_samples.items():
+        if hasattr(value, 'shape') and len(value.shape) > 0:
+            single_posterior_sample[key] = value[sample_idx:sample_idx+1]
+        else:
+            single_posterior_sample[key] = value
     
-posterior_predictive_samples = predictive(rng_key_prediction, u_obs=u_obs_batch, s_obs=s_obs_batch)
+    # CRITICAL FIX: Extract t_star from posterior samples (don't generate new ones!)
+    # t_star is a latent variable we've already inferred, not something to predict
+    if "t_star" in single_posterior_sample:
+        t_star_from_posterior = single_posterior_sample["t_star"][0, :, 0]  # [n_cells,]
+        all_t_star_samples.append(t_star_from_posterior)
     
-u_posterior_expected = posterior_predictive_samples["u_expected"][0, 0, :, :]
-s_posterior_expected = posterior_predictive_samples["s_expected"][0, 0, :, :]
+    # Generate predictive data for this parameter set
+    # The Predictive will use the t_star from posterior_samples to generate u_obs, s_obs
+    predictive = Predictive(
+        model, 
+        posterior_samples=single_posterior_sample,
+        num_samples=1
+    )
     
+    # Generate new random key for each sample
+    rng_key_prediction, rng_key_sample = jax.random.split(rng_key_prediction)
+    
+    sample_predictive = predictive(rng_key_sample, u_obs=None, s_obs=None, 
+                                  num_cells=num_cells, num_genes=num_genes)
+    
+    u_sample = sample_predictive["u_obs"][0, 0, :, :]
+    s_sample = sample_predictive["s_obs"][0, 0, :, :]
+    
+    all_u_samples.append(u_sample)
+    all_s_samples.append(s_sample)
+
+# Stack all samples and compute statistics
+all_u_samples = np.stack(all_u_samples, axis=0)  # [n_samples, n_cells, n_genes]
+all_s_samples = np.stack(all_s_samples, axis=0)  # [n_samples, n_cells, n_genes]
+
+# Compute posterior predictive summary statistics
+# For count data, median preserves integer nature better than mean
+u_median = np.median(all_u_samples, axis=0).astype(np.int32)
+s_median = np.median(all_s_samples, axis=0).astype(np.int32)
+
+# Still compute mean for comparison, but acknowledge it's not integer
+u_mean = np.mean(all_u_samples, axis=0)
+s_mean = np.mean(all_s_samples, axis=0)
+
+# Standard deviation and CV for dispersion
+u_std = np.std(all_u_samples, axis=0)
+s_std = np.std(all_s_samples, axis=0)
+
+# Coefficient of variation (CV) is more meaningful for count data
+u_cv = np.where(u_mean > 0, u_std / u_mean, 0)
+s_cv = np.where(s_mean > 0, s_std / s_mean, 0)
+
+# Quantiles - round to nearest integer for count data
+u_q025 = np.round(np.quantile(all_u_samples, 0.025, axis=0)).astype(np.int32)
+u_q975 = np.round(np.quantile(all_u_samples, 0.975, axis=0)).astype(np.int32)
+s_q025 = np.round(np.quantile(all_s_samples, 0.025, axis=0)).astype(np.int32)
+s_q975 = np.round(np.quantile(all_s_samples, 0.975, axis=0)).astype(np.int32)
+
+# Compute proportion of zeros (important for count data)
+u_zero_prop = np.mean(all_u_samples == 0, axis=0)
+s_zero_prop = np.mean(all_s_samples == 0, axis=0)
+
+print(f"  📊 Computed statistics over {n_predictive_samples} posterior samples")
+print(f"    - U counts: median={np.median(u_median):.0f}, mean={u_mean.mean():.2f}, CV={np.median(u_cv):.2f}")
+print(f"    - S counts: median={np.median(s_median):.0f}, mean={s_mean.mean():.2f}, CV={np.median(s_cv):.2f}")
+print(f"    - Zero proportions: U={u_zero_prop.mean():.2%}, S={s_zero_prop.mean():.2%}")
+
+# Create AnnData with median (integer) values as primary data
+# Store mean and other continuous statistics in layers for reference
 posterior_predictive_adata = anndata.AnnData(
-    X=np.array(s_posterior_expected),
+    X=s_median,  # Use median (integer) as primary data
     layers={
-        "unspliced": np.array(u_posterior_expected),
-        "spliced": np.array(s_posterior_expected)
+        "unspliced": u_median,  # Integer median
+        "spliced": s_median,    # Integer median
+        "unspliced_mean": u_mean,  # Continuous mean for reference
+        "spliced_mean": s_mean,    # Continuous mean for reference
+        "unspliced_std": u_std,
+        "spliced_std": s_std,
+        "unspliced_cv": u_cv,   # Coefficient of variation
+        "spliced_cv": s_cv,     # Coefficient of variation
+        "unspliced_q025": u_q025,  # Integer quantiles
+        "unspliced_q975": u_q975,  # Integer quantiles
+        "spliced_q025": s_q025,    # Integer quantiles
+        "spliced_q975": s_q975,    # Integer quantiles
+        "unspliced_zero_prop": u_zero_prop,  # Proportion of zeros
+        "spliced_zero_prop": s_zero_prop,    # Proportion of zeros
     }
 )
     
-if "t_star" in posterior_predictive_samples:
-    t_star_values = posterior_predictive_samples["t_star"][0, :, 0]
-    posterior_predictive_adata.obs["t_star"] = np.array(t_star_values)
-    print(f"✅ Stored t_star: shape {t_star_values.shape}, range [{t_star_values.min():.3f}, {t_star_values.max():.3f}]")
+# Add t_star statistics if available
+if len(all_t_star_samples) > 0:
+    all_t_star_samples = np.stack(all_t_star_samples, axis=0)  # [n_samples, n_cells]
+    t_star_mean = np.mean(all_t_star_samples, axis=0)
+    t_star_std = np.std(all_t_star_samples, axis=0)
+    posterior_predictive_adata.obs["t_star"] = t_star_mean
+    posterior_predictive_adata.obs["t_star_std"] = t_star_std
+    print(f"✅ Stored t_star: shape {t_star_mean.shape}, range [{t_star_mean.min():.3f}, {t_star_mean.max():.3f}], avg_std={t_star_std.mean():.3f}")
     
 print("✅ Posterior predictive data generated:")
 print_anndata(posterior_predictive_adata)
