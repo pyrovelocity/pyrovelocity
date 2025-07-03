@@ -2058,7 +2058,7 @@ def plot_prior_predictive_checks(
 
         # Create plots in logical order with numbered prefixes for proper PDF combination ordering
         plot_parameter_marginals(processed_parameters, check_type, save_path=save_path, file_prefix="02", model=model, default_fontsize=default_fontsize, true_parameters_adata=true_parameters_adata)
-        plot_parameter_relationships(processed_parameters, check_type, save_path=save_path, file_prefix="03", model=model, default_fontsize=default_fontsize)
+        plot_parameter_relationships(numpy_prior_parameters, check_type, save_path=save_path, file_prefix="03", model=model, default_fontsize=default_fontsize)
         plot_temporal_trajectories(processed_parameters, check_type, save_path=save_path, file_prefix="04", adata=prior_adata, default_fontsize=default_fontsize)
 
         # Plot 05: Parameter marginals by gene - lowest error genes
@@ -2154,7 +2154,7 @@ def plot_prior_predictive_checks(
     _plot_fold_change_distribution(processed_parameters, ax3, check_type, model=model, default_fontsize=default_fontsize)
 
     ax4 = fig.add_subplot(gs[0, 3])
-    _plot_activation_timing(processed_parameters, ax4, check_type, model=model, default_fontsize=default_fontsize)
+    _plot_activation_timing(processed_parameters, ax4, check_type, model=model, default_fontsize=default_fontsize, unprocessed_parameters=prior_parameters)
 
     # Row 2: Expression Data Validation
     ax5 = fig.add_subplot(gs[1, 0])
@@ -2688,7 +2688,8 @@ def _plot_activation_timing(
     ax: plt.Axes,
     check_type: str,
     model: Optional[Any] = None,
-    default_fontsize: Union[int, float] = 8
+    default_fontsize: Union[int, float] = 8,
+    unprocessed_parameters: Optional[Dict[str, ArrayLike]] = None
 ) -> None:
     """Plot activation timing and duration distributions."""
     from pyrovelocity.plots.parameter_metadata import (
@@ -2702,9 +2703,24 @@ def _plot_activation_timing(
         component_name = infer_component_name_from_parameters(parameters)
 
     # Use independent absolute parameters only
-    if 't_on_star' in parameters and 'delta_star' in parameters:
-        t_on = convert_to_numpy(parameters['t_on_star'].flatten())
-        delta = convert_to_numpy(parameters['delta_star'].flatten())
+    # CRITICAL FIX: Use unprocessed parameters when available for proper scatter plots
+    source_params = unprocessed_parameters if unprocessed_parameters is not None else parameters
+    
+    if 't_on_star' in source_params and 'delta_star' in source_params:
+        t_on_raw = convert_to_numpy(source_params['t_on_star'])
+        delta_raw = convert_to_numpy(source_params['delta_star'])
+        
+        # Handle different parameter structures:
+        # For posterior samples: shape is (n_samples, n_genes) → compute gene-level summaries  
+        # For prior samples: shape is (n_genes,) → use as-is
+        
+        if t_on_raw.ndim == 2:  # Posterior samples: (n_samples, n_genes)
+            # Compute posterior mean for each gene (one point per gene)
+            t_on = np.mean(t_on_raw, axis=0)  # Shape: (n_genes,)
+            delta = np.mean(delta_raw, axis=0)  # Shape: (n_genes,)
+        else:  # Prior samples or already summarized: (n_genes,)
+            t_on = t_on_raw.flatten()
+            delta = delta_raw.flatten()
 
         # Get parameter labels
         t_on_label = get_parameter_label(
