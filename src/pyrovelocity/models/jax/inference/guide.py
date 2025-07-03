@@ -16,7 +16,16 @@ import numpyro
 import numpyro.distributions as dist
 from beartype import beartype
 from jaxtyping import Array, Float, PyTree
-from numpyro.infer.autoguide import AutoDelta, AutoGuide, AutoNormal, AutoDiagonalNormal, AutoMultivariateNormal, AutoLowRankMultivariateNormal
+from numpyro.infer.autoguide import (
+    AutoDelta,
+    AutoGuide,
+    AutoNormal,
+    AutoDiagonalNormal,
+    AutoMultivariateNormal,
+    AutoLowRankMultivariateNormal,
+    AutoIAFNormal,
+    AutoBNAFNormal,
+)
 
 
 @beartype
@@ -128,14 +137,14 @@ def auto_multivariate_normal_guide(
 def auto_lowrank_multivariate_normal_guide(
     model: Callable,
     init_loc_fn: Optional[Callable] = None,
-    rank: int = 1,
+    rank: Optional[int] = None,
 ) -> AutoLowRankMultivariateNormal:
     """Create an AutoLowRankMultivariateNormal guide for variational inference.
 
     Args:
         model: NumPyro model function
         init_loc_fn: Function to initialize location parameters
-        rank: Rank of the low-rank approximation
+        rank: Rank of the low-rank approximation (None for automatic selection based on sqrt(latent_dim))
 
     Returns:
         AutoLowRankMultivariateNormal guide
@@ -148,6 +157,89 @@ def auto_lowrank_multivariate_normal_guide(
     else:
         return numpyro.infer.autoguide.AutoLowRankMultivariateNormal(
             model, init_loc_fn=init_loc_fn, rank=rank
+        )
+
+
+@beartype
+def auto_iaf_normal_guide(
+    model: Callable,
+    num_flows: int = 1,  # Reduced from 3 to 1 for stability
+    hidden_dims: Optional[List[int]] = None,
+    init_loc_fn: Optional[Callable] = None,
+) -> AutoIAFNormal:
+    """Create an AutoIAFNormal guide with normalizing flows for flexible posterior approximation.
+    
+    This guide uses Inverse Autoregressive Flows (IAF) to capture complex posterior
+    geometries that cannot be represented by simple Gaussian distributions.
+    
+    Args:
+        model: NumPyro model function
+        num_flows: Number of normalizing flow transformations (default: 3)
+        hidden_dims: Hidden layer dimensions for flow transformations
+        init_loc_fn: Function to initialize location parameters
+        
+    Returns:
+        AutoIAFNormal guide
+    """
+    # Note: IAF will use default hidden_dims if None is provided
+    # Default is [latent_dim, latent_dim] which ensures compatibility
+    # If we provide custom hidden_dims, they must all be >= latent_dim
+        
+    # Use default initialization if not provided
+    if init_loc_fn is None:
+        return numpyro.infer.autoguide.AutoIAFNormal(
+            model, 
+            num_flows=num_flows,
+            hidden_dims=hidden_dims,
+            init_loc_fn=numpyro.infer.autoguide.init_to_median
+        )
+    else:
+        return numpyro.infer.autoguide.AutoIAFNormal(
+            model,
+            num_flows=num_flows,
+            hidden_dims=hidden_dims,
+            init_loc_fn=init_loc_fn
+        )
+
+
+@beartype
+def auto_bnaf_normal_guide(
+    model: Callable,
+    num_flows: int = 1,
+    hidden_factors: Optional[List[int]] = None,
+    init_loc_fn: Optional[Callable] = None,
+) -> AutoBNAFNormal:
+    """Create an AutoBNAFNormal guide with Block Neural Autoregressive Flows.
+    
+    This guide uses Block Neural Autoregressive Flows (BNAF) which are more
+    flexible than IAF but computationally more expensive.
+    
+    Args:
+        model: NumPyro model function
+        num_flows: Number of BNAF transformations (default: 1)
+        hidden_factors: Hidden layer factors for flow transformations
+        init_loc_fn: Function to initialize location parameters
+        
+    Returns:
+        AutoBNAFNormal guide
+    """
+    if hidden_factors is None:
+        hidden_factors = [8]
+        
+    # Use default initialization if not provided
+    if init_loc_fn is None:
+        return numpyro.infer.autoguide.AutoBNAFNormal(
+            model,
+            num_flows=num_flows,
+            hidden_factors=hidden_factors,
+            init_loc_fn=numpyro.infer.autoguide.init_to_median
+        )
+    else:
+        return numpyro.infer.autoguide.AutoBNAFNormal(
+            model,
+            num_flows=num_flows,
+            hidden_factors=hidden_factors,
+            init_loc_fn=init_loc_fn
         )
 
 
@@ -244,8 +336,8 @@ def create_guide(
     Args:
         model: NumPyro model function
         guide_type: Type of guide ("auto_normal", "auto_diagonal_normal", 
-                   "auto_multivariate_normal", "auto_lowrank_multivariate_normal", 
-                   "auto_delta", or "custom")
+                   "auto_multivariate_normal", "auto_lowrank_multivariate_normal",
+                   "auto_iaf_normal", "auto_bnaf_normal", "auto_delta", or "custom")
         **kwargs: Additional guide parameters
 
     Returns:
@@ -259,6 +351,10 @@ def create_guide(
         return auto_multivariate_normal_guide(model, **kwargs)
     elif guide_type == "auto_lowrank_multivariate_normal":
         return auto_lowrank_multivariate_normal_guide(model, **kwargs)
+    elif guide_type == "auto_iaf_normal":
+        return auto_iaf_normal_guide(model, **kwargs)
+    elif guide_type == "auto_bnaf_normal":
+        return auto_bnaf_normal_guide(model, **kwargs)
     elif guide_type == "auto_delta":
         return auto_delta_guide(model, **kwargs)
     elif guide_type == "custom":
