@@ -1128,7 +1128,7 @@ def plot_temporal_dynamics(
         _plot_gene_phase_portrait_rainbow(adata, axes_dict, n, gene_idx, gene_name, check_type, available_genes, observed_adata)
 
         # Spliced dynamics
-        _plot_gene_spliced_dynamics_rainbow(adata, axes_dict, n, gene_idx, gene_name, check_type, available_genes)
+        _plot_gene_spliced_dynamics_rainbow(adata, axes_dict, n, gene_idx, gene_name, check_type, available_genes, observed_adata)
 
         # Predictive spliced in UMAP
         _plot_gene_predictive_umap_rainbow(adata, axes_dict, n, gene_idx, gene_name, check_type, basis)
@@ -3132,7 +3132,8 @@ def _plot_gene_spliced_dynamics_rainbow(
     gene_idx: int,
     gene_name: str,
     check_type: str,
-    total_genes: int
+    total_genes: int,
+    observed_adata: Optional[AnnData] = None
 ) -> None:
     """Plot spliced expression dynamics over time using rainbow plot style."""
     # Find available time column, prioritizing canonical parameter names
@@ -3150,6 +3151,37 @@ def _plot_gene_spliced_dynamics_rainbow(
         sort_idx = np.argsort(time)
         time_sorted = time.iloc[sort_idx] if hasattr(time, 'iloc') else time[sort_idx]
         s_sorted = s_gene[sort_idx]
+
+        # Plot observed data first (behind predictive data in z-order) if available
+        if (observed_adata is not None and
+            'spliced' in observed_adata.layers and
+            gene_idx < observed_adata.n_vars):
+            
+            # Find time column in observed data - this is the true time coordinate
+            obs_time_col = None
+            for col in ['t_star', 'cell_time', 'latent_time', 'time']:
+                if col in observed_adata.obs:
+                    obs_time_col = col
+                    break
+            
+            if obs_time_col is not None:
+                s_obs = observed_adata.layers['spliced'][:, gene_idx]
+                time_obs = observed_adata.obs[obs_time_col]
+                
+                # Sort observed data by time for better visualization
+                obs_sort_idx = np.argsort(time_obs)
+                time_obs_sorted = time_obs.iloc[obs_sort_idx] if hasattr(time_obs, 'iloc') else time_obs[obs_sort_idx]
+                s_obs_sorted = s_obs[obs_sort_idx]
+                
+                # Plot observed data as highly transparent, small gray points
+                axes_dict[f"dynamics_{n}"].scatter(
+                    time_obs_sorted, s_obs_sorted,
+                    alpha=0.3,  # Highly transparent
+                    s=1.5,      # Relatively small
+                    color='gray',
+                    edgecolors='none',
+                    zorder=1     # Behind predictive data
+                )
 
         # Color by clusters if available to match UMAP cluster plot
         cluster_col = None
@@ -3171,9 +3203,9 @@ def _plot_gene_spliced_dynamics_rainbow(
             for cluster in unique_clusters:
                 mask = clusters == cluster
                 axes_dict[f"dynamics_{n}"].scatter(time_sorted[mask], s_sorted[mask],
-                          alpha=0.6, s=3, color=cluster_color_map[cluster], edgecolors='none')
+                          alpha=0.6, s=3, color=cluster_color_map[cluster], edgecolors='none', zorder=2)
         else:
-            axes_dict[f"dynamics_{n}"].scatter(time_sorted, s_sorted, alpha=0.6, s=3, color='steelblue', edgecolors='none')
+            axes_dict[f"dynamics_{n}"].scatter(time_sorted, s_sorted, alpha=0.6, s=3, color='steelblue', edgecolors='none', zorder=2)
     else:
         axes_dict[f"dynamics_{n}"].text(0.5, 0.5, 'Time data\nnot available',
                ha='center', va='center', transform=axes_dict[f"dynamics_{n}"].transAxes)
