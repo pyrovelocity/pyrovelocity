@@ -20,7 +20,7 @@ from pyrovelocity.utils import print_anndata
 from numpyro.infer import Predictive
 
 
-RANDOM_SEED = 42
+RANDOM_SEED = int(os.environ.get("RANDOM_SEED", 42))
 REPORTS_SAVE_PATH = "reports/docs/posterior_predictive_jax"
 num_samples = 1000
 num_cells = 200
