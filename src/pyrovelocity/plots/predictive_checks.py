@@ -665,12 +665,14 @@ def _select_genes_by_mae(
 ) -> Tuple[List[int], List[str]]:
     """
     Select genes by MAE for temporal dynamics plotting.
+    
+    Computes MAE using both unspliced and spliced data for comprehensive model evaluation.
 
     Args:
         observed_adata: AnnData object with observed data
         predicted_adata: AnnData object with predicted data
         num_genes: Number of genes to select
-        layer: Layer to use for MAE computation (default: "spliced")
+        layer: Layer to use for MAE computation (default: "spliced", kept for backward compatibility)
         select_highest_error: If True, select genes with highest MAE instead of lowest.
                              Genes are always sorted from lowest to highest error (default: False)
 
@@ -679,25 +681,34 @@ def _select_genes_by_mae(
     """
     from pyrovelocity.analysis.analyze import mae_per_gene
 
-    # Get count data from appropriate layers
-    if layer in observed_adata.layers and layer in predicted_adata.layers:
-        observed_counts = observed_adata.layers[layer]
-        predicted_counts = predicted_adata.layers[layer]
-    else:
-        # Fallback to X if layer not found
-        observed_counts = observed_adata.X
-        predicted_counts = predicted_adata.X
-
+    # Get unspliced and spliced data (assuming both layers always exist)
+    observed_u = observed_adata.layers["unspliced"]
+    predicted_u = predicted_adata.layers["unspliced"]
+    observed_s = observed_adata.layers["spliced"]
+    predicted_s = predicted_adata.layers["spliced"]
+    
     # Convert sparse matrices to dense if needed
-    if hasattr(observed_counts, 'toarray'):
-        observed_counts = observed_counts.toarray()
-    if hasattr(predicted_counts, 'toarray'):
-        predicted_counts = predicted_counts.toarray()
-
-    # Compute MAE per gene (returns negative values, higher is better)
-    mae_scores = mae_per_gene(predicted_counts, observed_counts)
-
+    if hasattr(observed_u, 'toarray'):
+        observed_u = observed_u.toarray()
+    if hasattr(predicted_u, 'toarray'):
+        predicted_u = predicted_u.toarray()
+    if hasattr(observed_s, 'toarray'):
+        observed_s = observed_s.toarray()
+    if hasattr(predicted_s, 'toarray'):
+        predicted_s = predicted_s.toarray()
+        
+    # Compute MAE per gene for both layers
+    mae_u = mae_per_gene(predicted_u, observed_u)
+    mae_s = mae_per_gene(predicted_s, observed_s)
+    
+    # Combine MAE scores (average of unspliced and spliced)
+    mae_scores = (mae_u + mae_s) / 2
+    
     # Store MAE scores in predicted_adata for transparency
+    predicted_adata.var['mae_unspliced'] = mae_u
+    predicted_adata.var['mae_spliced'] = mae_s
+    predicted_adata.var['mae_combined'] = mae_scores
+    # Keep mae_score for backward compatibility (used in phase space plots)
     predicted_adata.var['mae_score'] = mae_scores
 
     # Sort all genes by MAE (lowest error to highest error)
