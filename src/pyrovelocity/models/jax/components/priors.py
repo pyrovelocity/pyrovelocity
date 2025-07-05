@@ -30,12 +30,11 @@ def piecewise_activation_prior_function(
     Mathematical Structure:
     
     Global Time:
-        T_M_star ~ Gamma(α=5.0, β=1.0)                    # Maximum dimensionless time
-        boundary_concentration ~ Gamma(α=2.0, β=1.0)      # Temporal boundary control (calibrated)
+        T_M_star ~ Gamma(α=1.0, β=0.25)                   # Skeptical prior: mode=0, mean=4.0
+                                                          # Forces data to justify large T_M values
         
     Cell Temporal Coordinates:
-        κ = boundary_concentration
-        t_star_normalized ~ Beta(α=1/κ, β=1/κ)           # Beta boundary concentration
+        t_star_normalized ~ Uniform(0.0, 1.0)             # Simple uniform prior
         t_star = T_M_star × t_star_normalized             # Scaled dimensionless time
         lambda_j ~ LogNormal(loc=0.0, scale=0.2)         # Cell capture efficiency
         
@@ -53,7 +52,7 @@ def piecewise_activation_prior_function(
         
     Returns:
         Dictionary containing all sampled parameters with appropriate shapes:
-            - Scalar: T_M_star, boundary_concentration
+            - Scalar: T_M_star
             - Cell arrays [n_cells]: t_star, lambda_j
             - Gene arrays [num_genes]: R_on, gamma_star, t_on_star, delta_star, U_0i
     """
@@ -65,36 +64,22 @@ def piecewise_activation_prior_function(
     if n_cells is None:
         raise ValueError("n_cells must be provided in prior_params for piecewise activation model")
     
-    # Global temporal structure
+    # Global temporal structure with skeptical prior
+    # Use a skeptical prior that puts mode at 0 and requires data to justify large T_M values
     T_M_star = numpyro.sample(
         "T_M_star",
         dist.Gamma(
-            concentration=prior_params.get("T_M_star_alpha", 5.0),
-            rate=prior_params.get("T_M_star_beta", 1.0)
+            concentration=prior_params.get("T_M_star_alpha", 1.0),  # Mode at 0 when alpha=1
+            rate=prior_params.get("T_M_star_beta", 0.25)  # Mean = alpha/beta = 4.0
         )
     )
     
-    boundary_concentration = numpyro.sample(
-        "boundary_concentration", 
-        dist.Gamma(
-            concentration=prior_params.get("boundary_conc_alpha", 100.0),
-            rate=prior_params.get("boundary_conc_beta", 100.0)
-        )
-    )
-    
-    kappa = 1.0 / boundary_concentration
-
-    # Cell-specific temporal coordinates with boundary concentration
+    # Cell-specific temporal coordinates with simple uniform prior
     with numpyro.plate("cells", n_cells, dim=-2):
-        # Beta distribution concentration parameter 
-        
-        # Normalized temporal coordinates using Beta boundary concentration
+        # Simple uniform prior for temporal coordinates
         t_star_normalized = numpyro.sample(
             "t_star_normalized",
-            dist.Beta(
-                concentration1=kappa,
-                concentration0=kappa  
-            )
+            dist.Uniform(0.0, 1.0)
         )
         
         # Scaled dimensionless time coordinates
@@ -159,7 +144,6 @@ def piecewise_activation_prior_function(
     return {
         # Global parameters
         "T_M_star": T_M_star,
-        "boundary_concentration": boundary_concentration,
         # Cell parameters  
         "t_star": t_star,
         "lambda_j": lambda_j,
