@@ -30,13 +30,6 @@ from pyrovelocity.plots.tensor_utils import (
 )
 from pyrovelocity.styles import configure_matplotlib_style
 
-# Try to import UMAP, fall back gracefully if not available
-try:
-    import umap
-    UMAP_AVAILABLE = True
-except ImportError:
-    UMAP_AVAILABLE = False
-
 configure_matplotlib_style()
 
 
@@ -2354,8 +2347,7 @@ def _plot_umap_time_coordinate(adata: AnnData, ax: plt.Axes, check_type: str, mo
             ax.set_title(f'{check_type.title()} UMAP (Cell Index)')
 
     else:
-        # Compute UMAP if not available and UMAP is installed
-        if UMAP_AVAILABLE and 'X_pca' in adata.obsm:
+        if 'X_pca' in adata.obsm:
             try:
                 reducer = umap.UMAP(n_neighbors=15, min_dist=0.1, random_state=42)
                 embedding = reducer.fit_transform(adata.obsm['X_pca'][:, :50])
