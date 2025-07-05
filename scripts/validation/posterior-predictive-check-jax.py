@@ -358,6 +358,18 @@ if len(all_t_star_samples) > 0:
 print("✅ Posterior predictive data generated:")
 print_anndata(posterior_predictive_adata)
 
+# Compute and store MAE for reuse across plotting functions
+print(f"\n📊 Computing MAE for parameter recovery correlation coloring...")
+from pyrovelocity.plots.predictive_checks import compute_and_store_mae
+
+mae_scores = compute_and_store_mae(
+    predicted_adata=posterior_predictive_adata,
+    observed_adata=prior_predictive_adata,
+    store_in_var=True
+)
+
+print(f"✅ MAE computed and stored: Mean={mae_scores.mean():.4f}, Std={mae_scores.std():.4f}, Range=[{mae_scores.min():.4f}, {mae_scores.max():.4f}]")
+
 # Copy UMAP coordinates for consistent visualization
 print(f"\n🗺️ Copying UMAP coordinates from prior predictive data for consistent visualization...")
 posterior_predictive_adata.obsm['X_umap'] = prior_predictive_adata.obsm['X_umap'].copy()
