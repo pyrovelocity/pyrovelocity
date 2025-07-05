@@ -2130,13 +2130,25 @@ def plot_prior_predictive_checks(
             default_fontsize=default_fontsize
         )
 
-        # Plot 13: Training loss (ELBO) - only for posterior checks when model has been trained
+        # Plot 13: Gene and cell-specific parameter recovery correlation analysis (U_0i and lambda_j)
+        if true_parameters_adata is not None:
+            plot_parameter_recovery_correlation(
+                posterior_parameters=processed_parameters,
+                true_parameters_adata=true_parameters_adata,
+                parameters_to_validate=["U_0i", "lambda_j"],
+                save_path=save_path,
+                file_prefix="13",
+                model=model,
+                default_fontsize=default_fontsize
+            )
+
+        # Plot 14: Training loss (ELBO) - only for posterior checks when model has been trained
         if check_type == "posterior":
             try:
                 plot_training_loss(
                     model=model,
                     save_path=save_path,
-                    file_prefix="13",
+                    file_prefix="14",
                     default_fontsize=default_fontsize
                 )
             except ValueError as e:
