@@ -2102,7 +2102,10 @@ def plot_prior_predictive_checks(
                 save_path=save_path,
                 file_prefix="07",
                 model=model,
-                default_fontsize=default_fontsize
+                default_fontsize=default_fontsize,
+                observed_adata=observed_adata,
+                color_by_spliced_count=True,
+                spliced_count_statistic="median"
             )
 
         # Shifted plots (previously 07-10, now 08-11)
@@ -2132,16 +2135,30 @@ def plot_prior_predictive_checks(
                 save_path=save_path,
                 file_prefix="13",
                 model=model,
-                default_fontsize=default_fontsize
+                default_fontsize=default_fontsize,
+                observed_adata=observed_adata,
+                color_by_spliced_count=True,
+                spliced_count_statistic="median"
             )
 
-        # Plot 14: Training loss (ELBO) - only for posterior checks when model has been trained
+        # Plot 14: MAE vs Spliced Count Analysis - NEW
+        if observed_adata is not None:
+            plot_mae_vs_spliced_count(
+                predicted_adata=prior_adata,
+                observed_adata=observed_adata,
+                save_path=save_path,
+                file_prefix="14",
+                default_fontsize=default_fontsize,
+                check_type=check_type
+            )
+        
+        # Plot 15: Training loss (ELBO) - only for posterior checks when model has been trained
         if check_type == "posterior":
             try:
                 plot_training_loss(
                     model=model,
                     save_path=save_path,
-                    file_prefix="14",
+                    file_prefix="15",
                     default_fontsize=default_fontsize
                 )
             except ValueError as e:
@@ -3935,6 +3952,144 @@ def plot_training_loss(
 
 
 @beartype
+def plot_mae_vs_spliced_count(
+    predicted_adata: AnnData,
+    observed_adata: Optional[AnnData] = None,
+    figsize: Optional[Tuple[Union[int, float], Union[int, float]]] = None,
+    save_path: Optional[str] = None,
+    file_prefix: str = "",
+    default_fontsize: int = 8,
+    check_type: str = "posterior"
+) -> plt.Figure:
+    """
+    Plot relationship between MAE and maximum/median spliced count per gene.
+    
+    This function creates scatter plots showing the relationship between gene-specific
+    Mean Absolute Error (MAE) and the maximum or median spliced count for each gene,
+    helping identify whether expression level correlates with model fitting accuracy.
+    
+    Args:
+        predicted_adata: AnnData object with predicted data containing MAE scores
+        observed_adata: Optional AnnData object with observed data. If None, uses predicted_adata
+        figsize: Optional figure size (auto-calculated if None)
+        save_path: Optional directory path to save figures
+        file_prefix: Prefix for saved file names
+        default_fontsize: Default font size for all text elements
+        check_type: Type of check ("prior" or "posterior")
+    
+    Returns:
+        matplotlib Figure object
+    
+    Example:
+        >>> fig = plot_mae_vs_spliced_count(
+        ...     predicted_adata=posterior_adata,
+        ...     observed_adata=original_adata,
+        ...     save_path="reports/docs/posterior_predictive",
+        ...     file_prefix="15"
+        ... )
+    """
+    from pyrovelocity.analysis.analyze import mae_per_gene
+    
+    # Use observed_adata if provided, otherwise use predicted_adata
+    data_adata = observed_adata if observed_adata is not None else predicted_adata
+    
+    # Get spliced counts
+    spliced_counts = data_adata.layers['spliced']
+    if hasattr(spliced_counts, 'toarray'):
+        spliced_counts = spliced_counts.toarray()
+    
+    # Compute max and median spliced counts per gene
+    max_spliced = np.max(spliced_counts, axis=0)
+    median_spliced = np.median(spliced_counts, axis=0)
+    
+    # Get MAE scores - check if already computed in predicted_adata
+    if 'mae_combined' in predicted_adata.var.columns:
+        mae_scores = predicted_adata.var['mae_combined'].values
+    elif 'mae_score' in predicted_adata.var.columns:
+        mae_scores = predicted_adata.var['mae_score'].values
+    else:
+        # Compute MAE if not already available
+        if observed_adata is None:
+            raise ValueError("Cannot compute MAE without observed_adata when MAE scores not pre-computed")
+        
+        observed_u = observed_adata.layers["unspliced"]
+        observed_s = observed_adata.layers["spliced"]
+        predicted_u = predicted_adata.layers["unspliced"]
+        predicted_s = predicted_adata.layers["spliced"]
+        
+        # Handle sparse matrices
+        for arr_name, arr in [("observed_u", observed_u), ("observed_s", observed_s), 
+                              ("predicted_u", predicted_u), ("predicted_s", predicted_s)]:
+            if hasattr(arr, 'toarray'):
+                locals()[arr_name] = arr.toarray()
+        
+        # Compute MAE
+        mae_u = mae_per_gene(predicted_u, observed_u)
+        mae_s = mae_per_gene(predicted_s, observed_s)
+        mae_scores = (mae_u + mae_s) / 2
+    
+    # Convert negative MAE to positive for easier interpretation
+    mae_scores_positive = -mae_scores
+    
+    # Create figure with two subplots
+    if figsize is None:
+        figsize = (10, 4)
+    
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+    
+    # Plot 1: MAE vs Maximum Spliced Count
+    ax1.scatter(max_spliced, mae_scores_positive, alpha=0.6, s=20, color='steelblue')
+    ax1.set_xlabel('Maximum Spliced Count', fontsize=default_fontsize)
+    ax1.set_ylabel('Mean Absolute Error', fontsize=default_fontsize)
+    ax1.set_title(f'{check_type.title()}: MAE vs Maximum Spliced Count', fontsize=default_fontsize)
+    ax1.grid(True, alpha=0.3)
+    ax1.tick_params(labelsize=default_fontsize * 0.8)
+    
+    # Add correlation coefficient
+    corr_max, p_val_max = pearsonr(max_spliced[~np.isnan(mae_scores_positive)], 
+                                    mae_scores_positive[~np.isnan(mae_scores_positive)])
+    ax1.text(0.02, 0.98, f'$r = {corr_max:.3f}$\n$p = {p_val_max:.3e}$', 
+             transform=ax1.transAxes, fontsize=default_fontsize * 0.9,
+             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
+    # Plot 2: MAE vs Median Spliced Count
+    ax2.scatter(median_spliced, mae_scores_positive, alpha=0.6, s=20, color='darkorange')
+    ax2.set_xlabel('Median Spliced Count', fontsize=default_fontsize)
+    ax2.set_ylabel('Mean Absolute Error', fontsize=default_fontsize)
+    ax2.set_title(f'{check_type.title()}: MAE vs Median Spliced Count', fontsize=default_fontsize)
+    ax2.grid(True, alpha=0.3)
+    ax2.tick_params(labelsize=default_fontsize * 0.8)
+    
+    # Add correlation coefficient
+    corr_median, p_val_median = pearsonr(median_spliced[~np.isnan(mae_scores_positive)], 
+                                         mae_scores_positive[~np.isnan(mae_scores_positive)])
+    ax2.text(0.02, 0.98, f'$r = {corr_median:.3f}$\n$p = {p_val_median:.3e}$', 
+             transform=ax2.transAxes, fontsize=default_fontsize * 0.9,
+             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
+    # Log scale for x-axis if values span multiple orders of magnitude
+    if max_spliced.max() / (max_spliced[max_spliced > 0].min() + 1e-10) > 100:
+        ax1.set_xscale('log')
+        ax1.set_xlabel('Maximum Spliced Count (log scale)', fontsize=default_fontsize)
+    
+    if median_spliced.max() / (median_spliced[median_spliced > 0].min() + 1e-10) > 100:
+        ax2.set_xscale('log')
+        ax2.set_xlabel('Median Spliced Count (log scale)', fontsize=default_fontsize)
+    
+    plt.tight_layout()
+    
+    # Save figure if path provided
+    if save_path is not None:
+        if file_prefix:
+            figure_name = f"{file_prefix}_{check_type}_mae_vs_spliced_count"
+        else:
+            figure_name = f"{check_type}_mae_vs_spliced_count"
+        _save_figure(fig, save_path, figure_name)
+    
+    return fig
+
+
+@beartype
 def plot_parameter_recovery_correlation(
     posterior_parameters: Dict[str, ArrayLike],
     true_parameters_adata: AnnData,
@@ -3944,7 +4099,10 @@ def plot_parameter_recovery_correlation(
     file_prefix: str = "",
     model: Optional[Any] = None,
     default_fontsize: int = 8,
-    summary_statistic: str = "median"
+    summary_statistic: str = "median",
+    observed_adata: Optional[AnnData] = None,
+    color_by_spliced_count: bool = True,
+    spliced_count_statistic: str = "median"
 ) -> Tuple[plt.Figure, Dict[str, Dict[str, float]]]:
     """
     Plot parameter recovery correlation analysis comparing posterior estimates to true values.
@@ -3962,6 +4120,9 @@ def plot_parameter_recovery_correlation(
         model: Optional PyroVelocity model instance for parameter metadata
         default_fontsize: Default font size for all text elements
         summary_statistic: Statistic to compute from posterior samples ("median" or "mean")
+        observed_adata: Optional AnnData object with observed data for spliced count coloring
+        color_by_spliced_count: Whether to color points by spliced count statistics (default: True)
+        spliced_count_statistic: Statistic to use for spliced count coloring ("median" or "max")
 
     Returns:
         Tuple of (matplotlib Figure object, recovery metrics dictionary)
@@ -4014,6 +4175,25 @@ def plot_parameter_recovery_correlation(
 
     if not available_params:
         raise ValueError("No valid parameters found for correlation analysis")
+
+    # Compute spliced count statistics for coloring if requested
+    spliced_count_values = None
+    if color_by_spliced_count and observed_adata is not None:
+        try:
+            spliced_counts = observed_adata.layers['spliced']
+            if hasattr(spliced_counts, 'toarray'):
+                spliced_counts = spliced_counts.toarray()
+            
+            if spliced_count_statistic == "median":
+                spliced_count_values = np.median(spliced_counts, axis=0)
+            elif spliced_count_statistic == "max":
+                spliced_count_values = np.max(spliced_counts, axis=0)
+            else:
+                print(f"Warning: Unknown spliced_count_statistic '{spliced_count_statistic}', using median")
+                spliced_count_values = np.median(spliced_counts, axis=0)
+        except Exception as e:
+            print(f"Warning: Could not compute spliced count statistics: {e}")
+            color_by_spliced_count = False
 
     # Parameter analysis info available in returned metrics dictionary
 
@@ -4108,10 +4288,61 @@ def plot_parameter_recovery_correlation(
             'n_genes': int(n_genes)
         }
 
-        # Create scatter plot with error bars
-        ax.errorbar(true_values, estimated_values, yerr=estimated_std,
-                   fmt='o', alpha=0.6, markersize=4, color='steelblue',
-                   ecolor='steelblue', elinewidth=0.5, capsize=2)
+        # Create scatter plot with optional color mapping by spliced count
+        if color_by_spliced_count and spliced_count_values is not None:
+            # Get spliced count values for this parameter's genes
+            gene_spliced_counts = spliced_count_values[:n_genes]
+            
+            # Ensure color values are numpy array and handle NaN/inf values
+            gene_spliced_counts = np.asarray(gene_spliced_counts)
+            gene_spliced_counts = np.nan_to_num(gene_spliced_counts, nan=0.0, posinf=np.nanmax(gene_spliced_counts[np.isfinite(gene_spliced_counts)]))
+            
+            # Ensure all arrays are 1D and same length
+            true_values = np.asarray(true_values).flatten()
+            estimated_values = np.asarray(estimated_values).flatten()
+            gene_spliced_counts = gene_spliced_counts.flatten()
+            
+            # Ensure arrays have same length
+            min_len = min(len(true_values), len(estimated_values), len(gene_spliced_counts))
+            true_values = true_values[:min_len]
+            estimated_values = estimated_values[:min_len]
+            gene_spliced_counts = gene_spliced_counts[:min_len]
+            
+            # Check if we have valid color data and multiple values
+            if len(gene_spliced_counts) > 1 and np.std(gene_spliced_counts) > 0:
+                # Create scatter plot with color mapping
+                try:
+                    scatter = ax.scatter(true_values, estimated_values, 
+                                       c=gene_spliced_counts, cmap='viridis', 
+                                       alpha=0.7, s=25, edgecolors='none')
+                    
+                    # Add colorbar for the first subplot only
+                    if i == 0:
+                        cbar = plt.colorbar(scatter, ax=ax, fraction=0.046, pad=0.04)
+                        cbar.set_label(f'{spliced_count_statistic.title()} Spliced Count', 
+                                      fontsize=default_fontsize * 0.8)
+                        cbar.ax.tick_params(labelsize=default_fontsize * 0.7)
+                except Exception as e:
+                    # Fall back to default coloring on any error
+                    ax.scatter(true_values, estimated_values, 
+                              alpha=0.7, s=25, color='steelblue', 
+                              edgecolors='none')
+            else:
+                # Fall back to default coloring if insufficient color variation
+                ax.scatter(true_values, estimated_values, 
+                          alpha=0.7, s=25, color='steelblue', 
+                          edgecolors='none')
+            
+            # Add error bars separately (without markers)
+            estimated_std = np.asarray(estimated_std).flatten()[:min_len]
+            ax.errorbar(true_values, estimated_values, yerr=estimated_std,
+                       fmt='none', alpha=0.3, ecolor='gray', 
+                       elinewidth=0.5, capsize=1)
+        else:
+            # Default scatter plot without color mapping
+            ax.errorbar(true_values, estimated_values, yerr=estimated_std,
+                       fmt='o', alpha=0.6, markersize=4, color='steelblue',
+                       ecolor='steelblue', elinewidth=0.5, capsize=2)
 
         # Add perfect recovery line (y=x)
         min_val = min(np.min(true_values), np.min(estimated_values - estimated_std))
