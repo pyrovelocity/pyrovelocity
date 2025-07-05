@@ -40,10 +40,6 @@ num_cells = 100      # Reduced from 200 for efficiency
 num_genes = 25       # Reduced from 50 for efficiency
 num_samples = 400    # Increased from 100 for convergence
 
-# Generate dummy observations for the model
-u_obs = jnp.ones((1, num_cells, num_genes))
-s_obs = jnp.ones((1, num_cells, num_genes))
-
 # Use NumPyro's Predictive class to generate prior samples
 from numpyro.infer import Predictive
 
@@ -51,8 +47,9 @@ from numpyro.infer import Predictive
 prior_predictive = Predictive(model, num_samples=num_samples)
 key, subkey = jax.random.split(key)
 
-# Generate prior samples
-prior_samples = prior_predictive(subkey, u_obs=u_obs, s_obs=s_obs)
+# Generate prior samples - pass None for observations to generate from prior
+prior_samples = prior_predictive(subkey, u_obs=None, s_obs=None, 
+                                num_cells=num_cells, num_genes=num_genes)
 
 print(f"Generated prior samples with keys: {list(prior_samples.keys())}")
 
@@ -65,24 +62,36 @@ for key_name, value in prior_samples.items():
         prior_parameter_samples[key_name] = value
 
 # Create AnnData object from generated data
-# Use the expected counts from the last sample for visualization
-u_expected = prior_samples["u_expected"][-1, 0, :, :]  # [cells, genes]
-s_expected = prior_samples["s_expected"][-1, 0, :, :]  # [cells, genes]
+# Use the generated observations from the first sample for visualization
+u_obs_generated = prior_samples["u_obs"][0, 0, :, :]  # [cells, genes]
+s_obs_generated = prior_samples["s_obs"][0, 0, :, :]  # [cells, genes]
 
 # Create AnnData object
 import anndata as adata_module
 prior_predictive_adata = adata_module.AnnData(
-    X=np.array(s_expected),  # Use spliced as main expression
+    X=np.array(s_obs_generated),  # Use spliced as main expression
     layers={
-        "unspliced": np.array(u_expected),
-        "spliced": np.array(s_expected)
+        "unspliced": np.array(u_obs_generated),
+        "spliced": np.array(s_obs_generated)
     }
 )
+
+# Store t_star for temporal coordinate validation
+if "t_star" in prior_samples:
+    t_star_shape = prior_samples["t_star"].shape
+    if len(t_star_shape) == 3:
+        t_star_values = prior_samples["t_star"][0, :, 0]
+    elif len(t_star_shape) == 2:
+        t_star_values = prior_samples["t_star"][0, :]
+    else:
+        t_star_values = prior_samples["t_star"]
+    
+    prior_predictive_adata.obs["t_star"] = np.array(t_star_values)
 
 # Store true parameters in AnnData uns
 prior_predictive_adata.uns["true_parameters"] = {}
 for key_name, value in prior_parameter_samples.items():
-    if key_name not in ["u_expected", "s_expected"]:
+    if key_name not in ["u_obs", "s_obs"]:
         # For multi-sample parameters, take the mean or last sample
         if hasattr(value, "shape") and len(value.shape) > 0 and value.shape[0] == num_samples:
             # Take mean across samples for parameter storage
@@ -137,19 +146,19 @@ for param_name, samples in plot_parameter_samples.items():
     if param_name.startswith(('R_on', 't_on_star', 'delta_star', 'gamma_star', 'T_M_star')):
         # Convert to tensor if needed and handle different shapes
         if isinstance(samples, np.ndarray):
-            samples_tensor = torch.tensor(samples)
+            samples_array = samples
         else:
-            samples_tensor = samples
+            samples_array = np.array(samples)
 
         # Handle different parameter shapes (scalar vs vector)
-        if samples_tensor.numel() == 1:
+        if samples_array.size == 1:
             # Scalar parameter
-            print(f"{param_name}: {samples_tensor.item():.3f}")
+            print(f"{param_name}: {samples_array.item():.3f}")
         else:
             # Vector parameter (gene-specific or cell-specific)
-            print(f"{param_name} (n={samples_tensor.numel()}):")
-            print(f"  Range: [{samples_tensor.min():.3f}, {samples_tensor.max():.3f}]")
-            print(f"  Mean ± Std: {samples_tensor.mean():.3f} ± {samples_tensor.std():.3f}")
+            print(f"{param_name} (n={samples_array.size}):")
+            print(f"  Range: [{samples_array.min():.3f}, {samples_array.max():.3f}]")
+            print(f"  Mean ± Std: {samples_array.mean():.3f} ± {samples_array.std():.3f}")
 
 # Print information about the dataset
 print(f"\nDataset information:")
