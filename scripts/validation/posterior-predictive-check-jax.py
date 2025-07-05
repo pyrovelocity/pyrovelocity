@@ -18,9 +18,11 @@ from pyrovelocity.plots.predictive_checks import (
 )
 from pyrovelocity.utils import print_anndata
 from numpyro.infer import Predictive
+from numpyro.handlers import condition
 
 
 RANDOM_SEED = int(os.environ.get("RANDOM_SEED", 42))
+MAX_TIME = float(os.environ.get("MAX_TIME", 7.0))
 REPORTS_SAVE_PATH = "reports/docs/posterior_predictive_jax"
 num_samples = 1000
 num_cells = 200
@@ -115,9 +117,14 @@ dummy_s_obs = jnp.zeros((1, num_cells, num_genes))
 print("  Running prior predictive sampling...")
 rng_key, rng_key_prior = jax.random.split(rng_key)
 
-predictive = Predictive(model, num_samples=1)
+# Create synthetic data where T_M_star=MAX_TIME
+conditioned_model = condition(model, {"T_M_star": jnp.array(MAX_TIME)})
+
+predictive = Predictive(conditioned_model, num_samples=1)
 prior_samples = predictive(rng_key_prior, u_obs=None, s_obs=None, 
                           num_cells=num_cells, num_genes=num_genes)
+
+print(f"  ✅ Fixed T_M_star = {prior_samples['T_M_star'][0]:.1f} for consistent synthetic data generation")
 
 prior_predictive_adata = anndata.AnnData(
     X=np.array(prior_samples["s_obs"][0, 0, :, :]),
@@ -129,7 +136,7 @@ prior_predictive_adata = anndata.AnnData(
 
 # Store parameters in consistent format
 prior_parameter_samples = {}
-for key in ["U_0i", "lambda_j", "T_M_star", "boundary_concentration", 
+for key in ["U_0i", "lambda_j", "T_M_star", 
             "R_on", "gamma_star", "t_on_star", "delta_star", "t_star"]:
     if key in prior_samples:
         prior_parameter_samples[key] = prior_samples[key]
