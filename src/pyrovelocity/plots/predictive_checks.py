@@ -34,6 +34,56 @@ configure_matplotlib_style()
 
 
 @beartype
+def compute_and_store_mae(
+    predicted_adata: AnnData,
+    observed_adata: AnnData,
+    store_in_var: bool = True
+) -> np.ndarray:
+    """
+    Compute MAE and store in predicted_adata.var for reuse across plotting functions.
+    
+    Args:
+        predicted_adata: AnnData with predicted counts
+        observed_adata: AnnData with observed counts
+        store_in_var: Whether to store MAE in predicted_adata.var
+    
+    Returns:
+        mae_scores: Combined MAE scores (positive values, higher = worse)
+    """
+    from pyrovelocity.analysis.analyze import mae_per_gene
+    
+    # Get data arrays
+    observed_u = observed_adata.layers["unspliced"]
+    observed_s = observed_adata.layers["spliced"]
+    predicted_u = predicted_adata.layers["unspliced"]
+    predicted_s = predicted_adata.layers["spliced"]
+    
+    # Handle sparse matrices
+    for arr_name, arr in [("observed_u", observed_u), ("observed_s", observed_s), 
+                          ("predicted_u", predicted_u), ("predicted_s", predicted_s)]:
+        if hasattr(arr, 'toarray'):
+            locals()[arr_name] = arr.toarray()
+    
+    # Compute MAE for both spliced and unspliced
+    mae_u = mae_per_gene(predicted_u, observed_u)
+    mae_s = mae_per_gene(predicted_s, observed_s)
+    mae_combined = (mae_u + mae_s) / 2
+    
+    # Convert to positive values (higher = worse performance)
+    mae_scores_positive = -mae_combined
+    
+    if store_in_var:
+        predicted_adata.var['mae_combined'] = mae_scores_positive
+        predicted_adata.uns['mae_summary'] = {
+            'mean_mae': float(mae_scores_positive.mean()),
+            'std_mae': float(mae_scores_positive.std()),
+            'median_mae': float(np.median(mae_scores_positive))
+        }
+    
+    return mae_scores_positive
+
+
+@beartype
 def cleanup_numbered_files(output_dir: str, patterns: Optional[List[str]] = None) -> None:
     """
     Remove numbered PDF and PNG files from previous executions.
@@ -672,42 +722,17 @@ def _select_genes_by_mae(
     Returns:
         Tuple of (gene_indices, gene_names) for selected genes, sorted from lowest to highest error
     """
-    from pyrovelocity.analysis.analyze import mae_per_gene
-
-    # Get unspliced and spliced data (assuming both layers always exist)
-    observed_u = observed_adata.layers["unspliced"]
-    predicted_u = predicted_adata.layers["unspliced"]
-    observed_s = observed_adata.layers["spliced"]
-    predicted_s = predicted_adata.layers["spliced"]
-    
-    # Convert sparse matrices to dense if needed
-    if hasattr(observed_u, 'toarray'):
-        observed_u = observed_u.toarray()
-    if hasattr(predicted_u, 'toarray'):
-        predicted_u = predicted_u.toarray()
-    if hasattr(observed_s, 'toarray'):
-        observed_s = observed_s.toarray()
-    if hasattr(predicted_s, 'toarray'):
-        predicted_s = predicted_s.toarray()
-        
-    # Compute MAE per gene for both layers
-    mae_u = mae_per_gene(predicted_u, observed_u)
-    mae_s = mae_per_gene(predicted_s, observed_s)
-    
-    # Combine MAE scores (average of unspliced and spliced)
-    mae_scores = (mae_u + mae_s) / 2
-    
-    # Store MAE scores in predicted_adata for transparency
-    predicted_adata.var['mae_unspliced'] = mae_u
-    predicted_adata.var['mae_spliced'] = mae_s
-    predicted_adata.var['mae_combined'] = mae_scores
-    # Keep mae_score for backward compatibility (used in phase space plots)
-    predicted_adata.var['mae_score'] = mae_scores
+    # Check if MAE scores are already computed, if not compute them
+    if 'mae_combined' in predicted_adata.var.columns:
+        # Use pre-computed positive MAE values
+        mae_scores_positive = predicted_adata.var['mae_combined'].values
+    else:
+        # Compute MAE scores if not available
+        mae_scores_positive = compute_and_store_mae(predicted_adata, observed_adata, store_in_var=True)
 
     # Sort all genes by MAE (lowest error to highest error)
-    # Since mae_per_gene returns negative values, we sort in descending order
-    # to get lowest error (highest negative value) to highest error (lowest negative value)
-    sorted_indices = np.argsort(mae_scores)[::-1]
+    # Use positive MAE values - sort in ascending order for lowest to highest error
+    sorted_indices = np.argsort(mae_scores_positive)
 
     if select_highest_error:
         # Select genes with highest error (from the end of the sorted list)
@@ -718,9 +743,9 @@ def _select_genes_by_mae(
         selected_indices = sorted_indices[:num_genes]
 
     # Ensure the selected genes are ordered from lowest to highest error
-    # by sorting the selected indices by their MAE scores (descending order for negative values)
-    selected_mae_scores = mae_scores[selected_indices]
-    reorder_indices = np.argsort(selected_mae_scores)[::-1]
+    # by sorting the selected indices by their MAE scores (ascending order for positive values)
+    selected_mae_scores = mae_scores_positive[selected_indices]
+    reorder_indices = np.argsort(selected_mae_scores)
     final_gene_indices = selected_indices[reorder_indices]
     final_gene_names = [predicted_adata.var_names[i] for i in final_gene_indices]
 
@@ -2104,7 +2129,9 @@ def plot_prior_predictive_checks(
                 model=model,
                 default_fontsize=default_fontsize,
                 observed_adata=observed_adata,
-                color_by_spliced_count=True,
+                predicted_adata=prior_adata,
+                color_by_mae=True,
+                color_by_spliced_count=False,
                 spliced_count_statistic="median"
             )
 
@@ -2137,7 +2164,9 @@ def plot_prior_predictive_checks(
                 model=model,
                 default_fontsize=default_fontsize,
                 observed_adata=observed_adata,
-                color_by_spliced_count=True,
+                predicted_adata=prior_adata,
+                color_by_mae=True,
+                color_by_spliced_count=False,
                 spliced_count_statistic="median"
             )
 
@@ -3122,14 +3151,14 @@ def _plot_gene_phase_portrait_rainbow(
 
         # Add MAE display using stored values from gene selection
         if (observed_adata is not None and
-            'mae_score' in adata.var and
-            gene_idx < len(adata.var['mae_score'])):
+            'mae_combined' in adata.var and
+            gene_idx < len(adata.var['mae_combined'])):
 
-            # Get the stored MAE score (negative value from mae_per_gene)
-            mae_score = adata.var['mae_score'].iloc[gene_idx]
+            # Get the stored MAE score (positive value)
+            mae_score = adata.var['mae_combined'].iloc[gene_idx]
 
-            # Convert to positive value for display (lower = better)
-            display_mae = -mae_score
+            # Use positive value directly for display (higher = worse)
+            display_mae = mae_score
 
             # Display MAE in top-left corner
             axes_dict[f"phase_{n}"].text(
@@ -3385,31 +3414,16 @@ def _plot_gene_marginal_histogram_rainbow(
             obs_median, color='gray', linestyle='--', alpha=0.8, linewidth=1
         )
 
-        # Compute and display Wasserstein distance as a simple error metric
-        try:
-            from scipy.stats import wasserstein_distance
-            wd = wasserstein_distance(predicted_log, observed_log)
-            axes_dict[f"marginal_{n}"].text(
-                0.02, 0.98, f'WD: {wd:.2f}',
-                transform=axes_dict[f"marginal_{n}"].transAxes,
-                fontsize=default_fontsize * 0.7, va='top', ha='left',
-                color='black', weight='bold',
-                bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.8, edgecolor='none')
-            )
-        except ImportError:
-            # Fallback to simple MAE if scipy not available
-            mae = np.mean(np.abs(predicted_log - np.interp(
-                np.linspace(0, 1, len(predicted_log)),
-                np.linspace(0, 1, len(observed_log)),
-                np.sort(observed_log)
-            )))
-            axes_dict[f"marginal_{n}"].text(
-                0.02, 0.98, f'MAE: {mae:.2f}',
-                transform=axes_dict[f"marginal_{n}"].transAxes,
-                fontsize=default_fontsize * 0.7, va='top', ha='left',
-                color='black', weight='bold',
-                bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.8, edgecolor='none')
-            )
+        # Compute and display Wasserstein distance as error metric
+        from scipy.stats import wasserstein_distance
+        wd = wasserstein_distance(predicted_log, observed_log)
+        axes_dict[f"marginal_{n}"].text(
+            0.02, 0.98, f'WD: {wd:.2f}',
+            transform=axes_dict[f"marginal_{n}"].transAxes,
+            fontsize=default_fontsize * 0.7, va='top', ha='left',
+            color='black', weight='bold',
+            bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.8, edgecolor='none')
+        )
 
         # Add legend only for first row to save space
         if n == 0:
@@ -3988,8 +4002,6 @@ def plot_mae_vs_spliced_count(
         ...     file_prefix="15"
         ... )
     """
-    from pyrovelocity.analysis.analyze import mae_per_gene
-    
     # Use observed_adata if provided, otherwise use predicted_adata
     data_adata = observed_adata if observed_adata is not None else predicted_adata
     
@@ -4004,32 +4016,16 @@ def plot_mae_vs_spliced_count(
     
     # Get MAE scores - check if already computed in predicted_adata
     if 'mae_combined' in predicted_adata.var.columns:
-        mae_scores = predicted_adata.var['mae_combined'].values
+        mae_scores_positive = predicted_adata.var['mae_combined'].values
     elif 'mae_score' in predicted_adata.var.columns:
-        mae_scores = predicted_adata.var['mae_score'].values
+        mae_scores_positive = predicted_adata.var['mae_score'].values
     else:
         # Compute MAE if not already available
         if observed_adata is None:
             raise ValueError("Cannot compute MAE without observed_adata when MAE scores not pre-computed")
         
-        observed_u = observed_adata.layers["unspliced"]
-        observed_s = observed_adata.layers["spliced"]
-        predicted_u = predicted_adata.layers["unspliced"]
-        predicted_s = predicted_adata.layers["spliced"]
-        
-        # Handle sparse matrices
-        for arr_name, arr in [("observed_u", observed_u), ("observed_s", observed_s), 
-                              ("predicted_u", predicted_u), ("predicted_s", predicted_s)]:
-            if hasattr(arr, 'toarray'):
-                locals()[arr_name] = arr.toarray()
-        
-        # Compute MAE
-        mae_u = mae_per_gene(predicted_u, observed_u)
-        mae_s = mae_per_gene(predicted_s, observed_s)
-        mae_scores = (mae_u + mae_s) / 2
-    
-    # Convert negative MAE to positive for easier interpretation
-    mae_scores_positive = -mae_scores
+        # Use our centralized MAE computation function
+        mae_scores_positive = compute_and_store_mae(predicted_adata, observed_adata, store_in_var=True)
     
     # Create figure with two subplots
     if figsize is None:
@@ -4102,7 +4098,9 @@ def plot_parameter_recovery_correlation(
     summary_statistic: str = "median",
     observed_adata: Optional[AnnData] = None,
     color_by_spliced_count: bool = True,
-    spliced_count_statistic: str = "median"
+    spliced_count_statistic: str = "median",
+    predicted_adata: Optional[AnnData] = None,
+    color_by_mae: bool = False
 ) -> Tuple[plt.Figure, Dict[str, Dict[str, float]]]:
     """
     Plot parameter recovery correlation analysis comparing posterior estimates to true values.
@@ -4123,6 +4121,8 @@ def plot_parameter_recovery_correlation(
         observed_adata: Optional AnnData object with observed data for spliced count coloring
         color_by_spliced_count: Whether to color points by spliced count statistics (default: True)
         spliced_count_statistic: Statistic to use for spliced count coloring ("median" or "max")
+        predicted_adata: Optional AnnData object with predicted data for MAE coloring
+        color_by_mae: Whether to color points by MAE values (overrides color_by_spliced_count)
 
     Returns:
         Tuple of (matplotlib Figure object, recovery metrics dictionary)
@@ -4176,21 +4176,46 @@ def plot_parameter_recovery_correlation(
     if not available_params:
         raise ValueError("No valid parameters found for correlation analysis")
 
-    # Compute spliced count statistics for coloring if requested
-    spliced_count_values = None
-    if color_by_spliced_count and observed_adata is not None:
+    # Determine color mapping source
+    color_values = None
+    color_label = None
+    
+    if color_by_mae and predicted_adata is not None:
+        # Use MAE for coloring (highest priority)
+        try:
+            if 'mae_combined' in predicted_adata.var.columns:
+                color_values = predicted_adata.var['mae_combined'].values
+                color_label = 'Mean Absolute Error'
+            else:
+                # Compute MAE if not available
+                if observed_adata is not None:
+                    mae_scores = compute_and_store_mae(predicted_adata, observed_adata, store_in_var=True)
+                    color_values = mae_scores
+                    color_label = 'Mean Absolute Error'
+                else:
+                    print("Warning: Cannot compute MAE without observed_adata")
+                    color_by_mae = False
+        except Exception as e:
+            print(f"Warning: Could not compute MAE for coloring: {e}")
+            color_by_mae = False
+    
+    # Fall back to spliced count coloring if MAE not available
+    if not color_by_mae and color_by_spliced_count and observed_adata is not None:
         try:
             spliced_counts = observed_adata.layers['spliced']
             if hasattr(spliced_counts, 'toarray'):
                 spliced_counts = spliced_counts.toarray()
             
             if spliced_count_statistic == "median":
-                spliced_count_values = np.median(spliced_counts, axis=0)
+                color_values = np.median(spliced_counts, axis=0)
+                color_label = 'Median Spliced Count'
             elif spliced_count_statistic == "max":
-                spliced_count_values = np.max(spliced_counts, axis=0)
+                color_values = np.max(spliced_counts, axis=0)
+                color_label = 'Maximum Spliced Count'
             else:
                 print(f"Warning: Unknown spliced_count_statistic '{spliced_count_statistic}', using median")
-                spliced_count_values = np.median(spliced_counts, axis=0)
+                color_values = np.median(spliced_counts, axis=0)
+                color_label = 'Median Spliced Count'
         except Exception as e:
             print(f"Warning: Could not compute spliced count statistics: {e}")
             color_by_spliced_count = False
@@ -4288,39 +4313,38 @@ def plot_parameter_recovery_correlation(
             'n_genes': int(n_genes)
         }
 
-        # Create scatter plot with optional color mapping by spliced count
-        if color_by_spliced_count and spliced_count_values is not None:
-            # Get spliced count values for this parameter's genes
-            gene_spliced_counts = spliced_count_values[:n_genes]
+        # Create scatter plot with optional color mapping
+        if color_values is not None:
+            # Get color values for this parameter's genes
+            gene_color_values = color_values[:n_genes]
             
             # Ensure color values are numpy array and handle NaN/inf values
-            gene_spliced_counts = np.asarray(gene_spliced_counts)
-            gene_spliced_counts = np.nan_to_num(gene_spliced_counts, nan=0.0, posinf=np.nanmax(gene_spliced_counts[np.isfinite(gene_spliced_counts)]))
+            gene_color_values = np.asarray(gene_color_values)
+            gene_color_values = np.nan_to_num(gene_color_values, nan=0.0, posinf=np.nanmax(gene_color_values[np.isfinite(gene_color_values)]))
             
             # Ensure all arrays are 1D and same length
             true_values = np.asarray(true_values).flatten()
             estimated_values = np.asarray(estimated_values).flatten()
-            gene_spliced_counts = gene_spliced_counts.flatten()
+            gene_color_values = gene_color_values.flatten()
             
             # Ensure arrays have same length
-            min_len = min(len(true_values), len(estimated_values), len(gene_spliced_counts))
+            min_len = min(len(true_values), len(estimated_values), len(gene_color_values))
             true_values = true_values[:min_len]
             estimated_values = estimated_values[:min_len]
-            gene_spliced_counts = gene_spliced_counts[:min_len]
+            gene_color_values = gene_color_values[:min_len]
             
             # Check if we have valid color data and multiple values
-            if len(gene_spliced_counts) > 1 and np.std(gene_spliced_counts) > 0:
+            if len(gene_color_values) > 1 and np.std(gene_color_values) > 0:
                 # Create scatter plot with color mapping
                 try:
                     scatter = ax.scatter(true_values, estimated_values, 
-                                       c=gene_spliced_counts, cmap='viridis', 
+                                       c=gene_color_values, cmap='viridis', 
                                        alpha=0.7, s=25, edgecolors='none')
                     
                     # Add colorbar for the first subplot only
-                    if i == 0:
+                    if i == 0 and color_label is not None:
                         cbar = plt.colorbar(scatter, ax=ax, fraction=0.046, pad=0.04)
-                        cbar.set_label(f'{spliced_count_statistic.title()} Spliced Count', 
-                                      fontsize=default_fontsize * 0.8)
+                        cbar.set_label(color_label, fontsize=default_fontsize * 0.8)
                         cbar.ax.tick_params(labelsize=default_fontsize * 0.7)
                 except Exception as e:
                     # Fall back to default coloring on any error
