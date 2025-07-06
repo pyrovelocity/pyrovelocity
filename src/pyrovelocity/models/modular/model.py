@@ -58,6 +58,7 @@ import pyro
 import torch
 from anndata import AnnData
 from beartype import beartype
+from einops import rearrange, repeat
 from jaxtyping import Float
 
 from pyrovelocity.models.modular.components.guides import (
@@ -883,6 +884,40 @@ class PyroVelocityModel:
                             else:
                                 single_sample[key] = value
 
+                        # Log parameter shapes for debugging
+                        if sample_idx == 0:
+                            print(f"\n📊 Posterior sample shapes (sample {sample_idx}):")
+                            for key, value in single_sample.items():
+                                if hasattr(value, 'shape'):
+                                    print(f"  {key}: {value.shape}")
+
+                        # CRITICAL FIX: Extract t_star from posterior samples (matching JAX pattern)
+                        # t_star is a latent variable we've already inferred, not something to predict
+                        t_star_from_posterior = None
+                        if "t_star" in single_sample:
+                            t_star_tensor = single_sample["t_star"]
+                            # Handle various tensor shapes to extract [n_cells,] dimension
+                            if hasattr(t_star_tensor, 'shape') and len(t_star_tensor.shape) > 0:
+                                # Find the dimension that matches num_cells
+                                for dim_idx in range(len(t_star_tensor.shape)):
+                                    if t_star_tensor.shape[dim_idx] == num_cells:
+                                        # Extract the cell dimension
+                                        if len(t_star_tensor.shape) == 4:  # [batch, 1, 1, cells]
+                                            t_star_from_posterior = t_star_tensor[0, 0, 0, :]
+                                        elif len(t_star_tensor.shape) == 3:  # [batch, 1, cells]
+                                            t_star_from_posterior = t_star_tensor[0, 0, :]
+                                        elif len(t_star_tensor.shape) == 2:  # [batch, cells]
+                                            t_star_from_posterior = t_star_tensor[0, :]
+                                        elif len(t_star_tensor.shape) == 1:  # [cells]
+                                            t_star_from_posterior = t_star_tensor
+                                        break
+                                
+                                # If we still don't have t_star, try flattening and taking first num_cells
+                                if t_star_from_posterior is None:
+                                    flat_tensor = t_star_tensor.flatten()
+                                    if len(flat_tensor) >= num_cells:
+                                        t_star_from_posterior = flat_tensor[:num_cells]
+
                         # Generate ONE observation from this parameter vector
                         def single_posterior_predictive_model():
                             """Model with fixed parameters for single posterior sample."""
@@ -900,8 +935,24 @@ class PyroVelocityModel:
                             if observed_times is not None:
                                 context["observed_times"] = observed_times
 
+                            # CRITICAL: Use t_star from posterior samples if available
+                            if t_star_from_posterior is not None:
+                                context["t_star"] = t_star_from_posterior
+
                             # Use single parameter vector (NO AVERAGING)
-                            context.update(self._process_single_parameter_sample(single_sample, num_cells, num_genes))
+                            processed_params = self._process_single_parameter_sample(single_sample, num_cells, num_genes)
+                            
+                            # Log processed parameter shapes for debugging
+                            if sample_idx == 0:
+                                print(f"\n📐 Processed parameter shapes:")
+                                for key, value in processed_params.items():
+                                    if hasattr(value, 'shape'):
+                                        print(f"  {key}: {value.shape}")
+                            
+                            # Don't overwrite t_star if we already have it from posterior
+                            if t_star_from_posterior is not None and "t_star" in processed_params:
+                                processed_params["t_star"] = t_star_from_posterior
+                            context.update(processed_params)
 
                             # Run dynamics and likelihood model components
                             dynamics_context = self.dynamics_model.forward(context)
@@ -910,8 +961,15 @@ class PyroVelocityModel:
                             return likelihood_context
 
                         # Generate single observation from this parameter sample
-                        unconditioned_model = pyro.poutine.uncondition(single_posterior_predictive_model)
-                        predictive = Predictive(unconditioned_model, num_samples=1, return_sites=None)
+                        # Use condition instead of uncondition to preserve t_star
+                        if t_star_from_posterior is not None:
+                            # Condition on t_star from posterior samples
+                            conditioned_model = pyro.poutine.condition(single_posterior_predictive_model, data={"t_star": t_star_from_posterior})
+                            predictive = Predictive(conditioned_model, num_samples=1, return_sites=None)
+                        else:
+                            # Fallback to unconditioned model if no t_star available
+                            unconditioned_model = pyro.poutine.uncondition(single_posterior_predictive_model)
+                            predictive = Predictive(unconditioned_model, num_samples=1, return_sites=None)
                         single_predictive_sample = predictive()
 
                         all_predictive_samples.append(single_predictive_sample)
@@ -980,11 +1038,11 @@ class PyroVelocityModel:
     @beartype
     def _process_parameter_samples(
         self,
-        samples: Dict[str, torch.Tensor],
+        samples: Dict[str, Float[torch.Tensor, "..."]],
         num_cells: int,
         num_genes: int,
         single_sample: bool = False
-    ) -> Dict[str, torch.Tensor]:
+    ) -> Dict[str, Float[torch.Tensor, "..."]]:
         """
         Unified parameter processing for both single and multiple samples.
 
@@ -1006,35 +1064,112 @@ class PyroVelocityModel:
 
         for key, value in samples.items():
             if isinstance(value, torch.Tensor):
+                # Log shape information for debugging
+                print(f"  Processing {key}: shape={value.shape}, single_sample={single_sample}")
+                
                 # Extract value based on sample type
                 if single_sample:
-                    # Single sample: precise extraction with squeeze
-                    if value.shape[0] == 1:
-                        processed_value = value.squeeze()
+                    # Single sample: keep batch dimension for consistency with JAX
+                    if value.ndim >= 1 and value.shape[0] == 1:
+                        # Keep the first element but maintain structure
+                        processed_value = value[0:1]  # Keep batch dim of 1
                     else:
-                        processed_value = value[0].squeeze()
+                        # If no batch dim or batch > 1, take first element
+                        processed_value = value[0:1] if value.ndim > 0 else value.unsqueeze(0)
                 else:
-                    # Parameter set: backward compatibility handling
-                    if value.ndim == 3:
-                        processed_value = value[0].squeeze(0)
-                    elif value.ndim == 2:
-                        if value.shape[0] == 1:
-                            processed_value = value.squeeze(0)
-                        else:
-                            processed_value = value[0]
-                    elif value.ndim >= 1:
-                        processed_value = value.squeeze()
+                    # Parameter set: simplified handling - maintain batch dimension
+                    if value.ndim >= 1:
+                        # Take first element if available
+                        processed_value = value[0:1] if value.shape[0] > 0 else value
                     else:
-                        processed_value = value
+                        processed_value = value.unsqueeze(0)
 
-                # Apply parameter-specific reshaping
-                processed[key] = self._reshape_parameter(
+                # Apply parameter-specific reshaping only if absolutely necessary
+                # Let the model components handle their own shape requirements
+                processed[key] = self._reshape_parameter_minimal(
                     key, processed_value, num_cells, num_genes, single_sample
                 )
             else:
                 processed[key] = value
 
         return processed
+
+    @beartype
+    def _reshape_parameter_minimal(
+        self,
+        key: str,
+        value: Float[torch.Tensor, "..."],
+        num_cells: int,
+        num_genes: int,
+        single_sample: bool
+    ) -> Float[torch.Tensor, "..."]:
+        """
+        Minimal parameter reshaping to match JAX implementation.
+        
+        Only reshape when absolutely necessary, and preserve batch dimensions
+        to maintain consistency with JAX's approach.
+
+        Args:
+            key: Parameter name
+            value: Parameter tensor value
+            num_cells: Target number of cells
+            num_genes: Target number of genes  
+            single_sample: Whether this is from a single sample
+
+        Returns:
+            Minimally reshaped parameter tensor
+        """
+        # Special handling for t_star which has complex nested dimensions
+        if key == "t_star":
+            # Find the dimension that matches num_cells and extract it
+            shape = value.shape
+            for dim_idx in range(len(shape)):
+                if shape[dim_idx] == num_cells:
+                    # Extract the cells dimension, removing other nested dims
+                    if len(shape) == 4:  # [1, 1, 1, cells]
+                        return value[0, 0, 0, :]  # Extract cells dimension directly
+                    elif len(shape) == 3:  # [1, 1, cells] or [1, cells, 1]
+                        if dim_idx == 1:
+                            return value[0, :, 0]  # [1, cells, 1] -> [cells]
+                        else:
+                            return value[0, 0, :]  # [1, 1, cells] -> [cells]
+                    elif len(shape) == 2:  # [1, cells]
+                        return value[0, :]
+                    elif len(shape) == 1:  # [cells]
+                        return value
+                    break
+            
+            # If we can't find the cells dimension, flatten and take first num_cells
+            flat = value.flatten()
+            if len(flat) >= num_cells:
+                return flat[:num_cells]
+            else:
+                # Fallback: return as-is
+                return value
+        
+        # Cell-specific parameters that need minimal reshaping
+        elif key in ["cell_time", "lambda_j", "t_star_normalized"]:
+            # These should be reshaped to [cells] if they have extra dimensions
+            if value.numel() == num_cells:
+                return rearrange(value.flatten(), "(cells) -> cells", cells=num_cells)
+            elif value.numel() == 1:
+                return repeat(value.flatten(), "1 -> cells", cells=num_cells)
+            else:
+                return value
+                
+        # Gene-specific parameters that need minimal reshaping  
+        elif key in ["R_on", "alpha_on", "alpha_off", "gamma_star", "t_on_star", "delta_star", "U_0i"]:
+            # These should be reshaped to [genes] if they have extra dimensions
+            if value.numel() == num_genes:
+                return rearrange(value.flatten(), "(genes) -> genes", genes=num_genes)
+            elif value.numel() == 1:
+                return repeat(value.flatten(), "1 -> genes", genes=num_genes)
+            else:
+                return value
+        
+        # For most parameters, return as-is and let model components handle shapes
+        # This matches JAX's approach of passing parameters directly
+        return value
 
     def _reshape_parameter(
         self,
@@ -1045,17 +1180,8 @@ class PyroVelocityModel:
         single_sample: bool
     ) -> torch.Tensor:
         """
-        Reshape a single parameter tensor based on its type and target dimensions.
-
-        Args:
-            key: Parameter name
-            value: Parameter tensor value
-            num_cells: Target number of cells
-            num_genes: Target number of genes  
-            single_sample: Whether this is from a single sample
-
-        Returns:
-            Reshaped parameter tensor
+        Legacy reshape method - kept for backward compatibility.
+        New code should use _reshape_parameter_minimal.
         """
         # Cell-specific parameters
         if key in ["t_star", "cell_time"]:
@@ -1073,39 +1199,77 @@ class PyroVelocityModel:
         # Other parameters: return as-is
         return value
 
-    def _reshape_cell_parameter(self, value: torch.Tensor, num_cells: int) -> torch.Tensor:
-        """Reshape parameter to match number of cells."""
+    @beartype
+    def _reshape_cell_parameter(
+        self, 
+        value: Float[torch.Tensor, "..."], 
+        num_cells: int
+    ) -> Float[torch.Tensor, "cell"]:
+        """
+        Reshape parameter to match number of cells using einops.
+        
+        Args:
+            value: Input tensor of any shape
+            num_cells: Target number of cells
+            
+        Returns:
+            Tensor with shape [num_cells]
+        """
         if value.numel() == 1:
-            return value.expand(num_cells)
+            # Expand scalar to all cells
+            return repeat(value.flatten(), "1 -> cell", cell=num_cells)
         elif value.numel() == num_cells:
-            return value.reshape(num_cells)
+            # Reshape to ensure correct dimensions
+            return rearrange(value.flatten(), "(cell) -> cell", cell=num_cells)
         elif value.numel() > num_cells:
+            # Truncate excess values
             return value.flatten()[:num_cells]
         else:
-            repeat_factor = (num_cells + value.numel() - 1) // value.numel()
-            repeated = value.repeat(repeat_factor)
-            return repeated.flatten()[:num_cells]
+            # Repeat pattern to fill cells
+            pattern = value.flatten()
+            repeat_factor = (num_cells + pattern.numel() - 1) // pattern.numel()
+            repeated = repeat(pattern, "pattern -> (repeat pattern)", repeat=repeat_factor)
+            return repeated[:num_cells]
 
-    def _reshape_gene_parameter(self, value: torch.Tensor, num_genes: int, single_sample: bool) -> torch.Tensor:
-        """Reshape parameter to match number of genes."""
+    @beartype
+    def _reshape_gene_parameter(
+        self, 
+        value: Float[torch.Tensor, "..."], 
+        num_genes: int, 
+        single_sample: bool
+    ) -> Float[torch.Tensor, "gene"]:
+        """
+        Reshape parameter to match number of genes using einops.
+        
+        Args:
+            value: Input tensor of any shape
+            num_genes: Target number of genes
+            single_sample: Whether processing a single sample
+            
+        Returns:
+            Tensor with shape [num_genes]
+        """
         if single_sample:
             # Enhanced logic for single samples
             if value.numel() == num_genes:
-                return value.reshape(num_genes)
+                # Reshape to ensure correct dimensions
+                return rearrange(value.flatten(), "(gene) -> gene", gene=num_genes)
             elif value.numel() == 1:
-                return value.expand(num_genes)
+                # Expand scalar to all genes
+                return repeat(value.flatten(), "1 -> gene", gene=num_genes)
             else:
                 flattened = value.flatten()
                 if flattened.numel() >= num_genes:
                     return flattened[:num_genes]
                 else:
+                    # Repeat pattern to fill genes
                     repeat_factor = (num_genes + flattened.numel() - 1) // flattened.numel()
-                    repeated = flattened.repeat(repeat_factor)
+                    repeated = repeat(flattened, "pattern -> (repeat pattern)", repeat=repeat_factor)
                     return repeated[:num_genes]
         else:
             # Legacy logic for parameter sets
             if value.numel() == num_genes:
-                return value.reshape(num_genes)
+                return rearrange(value.flatten(), "(gene) -> gene", gene=num_genes)
             else:
                 return value
 
