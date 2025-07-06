@@ -102,7 +102,6 @@ class TestPiecewiseActivationPriorModel:
 
         # Check hierarchical time parameters (scalars)
         assert params["T_M_star"].shape == torch.Size([])
-        assert params["boundary_concentration"].shape == torch.Size([])
         assert params["t_star_normalized"].shape == torch.Size([n_cells])
 
         # Check cell-specific time (n_cells,)
@@ -128,7 +127,7 @@ class TestPiecewiseActivationPriorModel:
 
         # Check that all expected parameters are in the result
         expected_params = [
-            "T_M_star", "boundary_concentration", "t_star", "t_star_normalized",
+            "T_M_star", "t_star", "t_star_normalized",
             "alpha_off", "alpha_on", "R_on", "gamma_star", "t_on_star", "delta_star",
             "lambda_j"
         ]
@@ -145,7 +144,7 @@ class TestPiecewiseActivationPriorModel:
 
         # For PiecewiseActivationPriorModel, t_star is computed deterministically
         expected_trace_params = [
-            "T_M_star", "boundary_concentration", "t_star_normalized",
+            "T_M_star", "t_star_normalized",
             "R_on", "gamma_star", "t_on_star", "delta_star",
             "lambda_j"
         ]
