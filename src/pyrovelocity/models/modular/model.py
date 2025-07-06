@@ -782,6 +782,7 @@ class PyroVelocityModel:
         num_samples: Optional[int] = None,
         return_format: str = "dict",
         observed_times: Optional[torch.Tensor] = None,
+        condition_values: Optional[Dict[str, Union[float, torch.Tensor]]] = None,
         **kwargs
     ) -> Union[Dict[str, torch.Tensor], AnnData]:
         """
@@ -799,6 +800,7 @@ class PyroVelocityModel:
             num_samples: Number of predictive samples (only used if samples=None)
             return_format: Format for returned data ("dict", "anndata")
             observed_times: Optional tensor of observed times for coherent trajectory sampling
+            condition_values: Optional dictionary of parameter values to condition on
             **kwargs: Additional arguments passed to the model
 
         Returns:
@@ -839,8 +841,22 @@ class PyroVelocityModel:
 
             return likelihood_context
 
-        # Use pyro.poutine.uncondition to remove observation conditioning
+        # First uncondition observations, then apply conditioning if specified
         unconditioned_model = pyro.poutine.uncondition(create_predictive_model)
+        
+        if condition_values is not None:
+            # Convert condition_values to tensors if needed
+            condition_data = {}
+            for key, value in condition_values.items():
+                if isinstance(value, (int, float)):
+                    condition_data[key] = torch.tensor(value)
+                else:
+                    condition_data[key] = value
+            
+            # Apply conditioning to the unconditioned model
+            final_model = pyro.poutine.condition(unconditioned_model, data=condition_data)
+        else:
+            final_model = unconditioned_model
 
         # Handle prior vs posterior predictive sampling
         if samples is None:
@@ -850,7 +866,7 @@ class PyroVelocityModel:
 
             # Generate prior predictive samples
             predictive = Predictive(
-                unconditioned_model,
+                final_model,
                 num_samples=num_samples,
                 return_sites=None,
             )
