@@ -12,7 +12,7 @@ from pathlib import Path
 from pyrovelocity.models.jax.factory.factory import create_piecewise_activation_model
 from pyrovelocity.models.jax.inference.config import create_inference_config
 from pyrovelocity.models.jax.inference.unified import run_inference
-from pyrovelocity.plots.predictive_checks import (
+from pyrovelocity.plots.predictive import (
     plot_prior_predictive_checks,
     plot_posterior_predictive_checks,
 )
@@ -184,8 +184,10 @@ else:
         prior_adata=prior_predictive_adata,
         prior_parameters=prior_parameter_samples,
         figsize=(7.5, 5.0),
+        check_type="prior",
         save_path=f"{REPORTS_SAVE_PATH}/{RANDOM_SEED}/sample_data",
         figure_name=f"posterior_predictive_check_sample_data_jax_{RANDOM_SEED}",
+        create_individual_plots=True,
         combine_individual_pdfs=True,
         default_fontsize=5,
         num_genes=10,
@@ -360,7 +362,7 @@ print_anndata(posterior_predictive_adata)
 
 # Compute and store MAE for reuse across plotting functions
 print(f"\n📊 Computing MAE for parameter recovery correlation coloring...")
-from pyrovelocity.plots.predictive_checks import compute_and_store_mae
+from pyrovelocity.plots.predictive.core import compute_and_store_mae
 
 mae_scores = compute_and_store_mae(
     predicted_adata=posterior_predictive_adata,
@@ -390,14 +392,15 @@ plot_posterior_predictive_checks(
     model=model_with_state,
     posterior_adata=posterior_predictive_adata,
     posterior_parameters=posterior_samples,
-    true_parameters_adata=prior_predictive_adata,
-    observed_adata=prior_predictive_adata,
     figsize=(7.5, 5.0),
     save_path=method_save_path,
     figure_name=f"posterior_predictive_check_{SELECTED_METHOD}_jax_{RANDOM_SEED}",
+    create_individual_plots=True,
     combine_individual_pdfs=True,
     default_fontsize=6,
+    observed_adata=prior_predictive_adata,
     num_genes=10,
+    true_parameters_adata=prior_predictive_adata,
 )
 
 print(f"\n✅ JAX validation complete!")
