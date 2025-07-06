@@ -36,8 +36,8 @@ from pyrovelocity.models.jax.interfaces import (
 # Example implementations for testing
 @jaxtyped(typechecker=beartype)
 def example_dynamics_function(
-    tau: Float[Array, "batch_size n_cells n_genes"],
-    u0: Float[Array, "batch_size n_cells n_genes"],
+    t_star: Float[Array, "batch_size n_cells"],
+    u0_star: Float[Array, "batch_size n_cells n_genes"],
     params: Dict[str, Float[Array, "..."]],
 ) -> Tuple[
     Float[Array, "batch_size n_cells n_genes"],
@@ -49,52 +49,59 @@ def example_dynamics_function(
     gamma = params["gamma"]
 
     # Expand dimensions for broadcasting
+    # t_star is (batch_size, n_cells), need to add gene dimension
+    t_star_expanded = t_star[..., jnp.newaxis]  # (batch_size, n_cells, 1)
+    
+    # Parameters are (n_genes,), need to broadcast
     alpha_expanded = alpha.reshape((1, 1, -1))
     beta_expanded = beta.reshape((1, 1, -1))
     gamma_expanded = gamma.reshape((1, 1, -1))
 
     # Compute dynamics
-    ut = u0 * jnp.exp(-beta_expanded * tau) + (
+    ut = u0_star * jnp.exp(-beta_expanded * t_star_expanded) + (
         alpha_expanded / beta_expanded
-    ) * (1 - jnp.exp(-beta_expanded * tau))
+    ) * (1 - jnp.exp(-beta_expanded * t_star_expanded))
     
     # Compute s0 from steady state: s0 = u0 / gamma (assuming steady state)
-    s0 = u0 / gamma_expanded
+    s0 = u0_star / gamma_expanded
     
-    st = s0 * jnp.exp(-gamma_expanded * tau) + (
-        beta_expanded * u0 / (gamma_expanded - beta_expanded)
-    ) * (jnp.exp(-beta_expanded * tau) - jnp.exp(-gamma_expanded * tau))
+    st = s0 * jnp.exp(-gamma_expanded * t_star_expanded) + (
+        beta_expanded * u0_star / (gamma_expanded - beta_expanded)
+    ) * (jnp.exp(-beta_expanded * t_star_expanded) - jnp.exp(-gamma_expanded * t_star_expanded))
 
     return ut, st
 
 
 @jaxtyped(typechecker=beartype)
 def example_prior_function(
-    key: jnp.ndarray,
     num_genes: int,
     prior_params: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Float[Array, "n_genes"]]:
+) -> Dict[str, Float[Array, "..."]]:
     """Example prior function implementation for testing."""
     if prior_params is None:
         prior_params = {}
 
-    alpha_loc = prior_params.get("alpha_loc", -0.5)
-    alpha_scale = prior_params.get("alpha_scale", 1.0)
-    beta_loc = prior_params.get("beta_loc", -0.5)
-    beta_scale = prior_params.get("beta_scale", 1.0)
-    gamma_loc = prior_params.get("gamma_loc", -0.5)
-    gamma_scale = prior_params.get("gamma_scale", 1.0)
-
-    key1, key2, key3 = jax.random.split(key, 3)
-
-    alpha = jnp.exp(
-        jax.random.normal(key1, (num_genes,)) * alpha_scale + alpha_loc
+    # NumPyro handles randomness automatically
+    alpha = numpyro.sample(
+        "alpha", 
+        dist.LogNormal(
+            prior_params.get("alpha_loc", -0.5),
+            prior_params.get("alpha_scale", 1.0)
+        ).expand([num_genes]).to_event(1)
     )
-    beta = jnp.exp(
-        jax.random.normal(key2, (num_genes,)) * beta_scale + beta_loc
+    beta = numpyro.sample(
+        "beta",
+        dist.LogNormal(
+            prior_params.get("beta_loc", -0.5),
+            prior_params.get("beta_scale", 1.0)
+        ).expand([num_genes]).to_event(1)
     )
-    gamma = jnp.exp(
-        jax.random.normal(key3, (num_genes,)) * gamma_scale + gamma_loc
+    gamma = numpyro.sample(
+        "gamma",
+        dist.LogNormal(
+            prior_params.get("gamma_loc", -0.5),
+            prior_params.get("gamma_scale", 1.0)
+        ).expand([num_genes]).to_event(1)
     )
 
     return {"alpha": alpha, "beta": beta, "gamma": gamma}
@@ -136,8 +143,8 @@ def test_dynamics_function_interface():
 
     # Create test data
     batch_size, n_cells, n_genes = 2, 3, 4
-    tau = jnp.ones((batch_size, n_cells, n_genes))
-    u0 = jnp.ones((batch_size, n_cells, n_genes))
+    t_star = jnp.ones((batch_size, n_cells))  # 2D time array
+    u0_star = jnp.ones((batch_size, n_cells, n_genes))
     params = {
         "alpha": jnp.ones((n_genes,)),
         "beta": jnp.ones((n_genes,)),
@@ -145,7 +152,7 @@ def test_dynamics_function_interface():
     }
 
     # Test function execution
-    ut, st = example_dynamics_function(tau, u0, params)
+    ut, st = example_dynamics_function(t_star, u0_star, params)
 
     # Check output shapes
     assert ut.shape == (batch_size, n_cells, n_genes)
@@ -161,19 +168,27 @@ def test_prior_function_interface():
     assert validate_prior_function(example_prior_function)
 
     # Create test data
-    key = jax.random.PRNGKey(0)
     num_genes = 10
 
-    # Test function execution
-    params = example_prior_function(key, num_genes)
-
-    # Check output
-    assert "alpha" in params
-    assert "beta" in params
-    assert "gamma" in params
-    assert params["alpha"].shape == (num_genes,)
-    assert params["beta"].shape == (num_genes,)
-    assert params["gamma"].shape == (num_genes,)
+    # Test function execution within a NumPyro context
+    # Since prior functions use numpyro.sample, they need to be called within a model context
+    def test_model():
+        params = example_prior_function(num_genes)
+        return params
+    
+    # Execute with trace handler to test
+    with numpyro.handlers.seed(rng_seed=0):
+        trace = numpyro.handlers.trace(test_model).get_trace()
+    
+    # Extract sampled parameters from trace
+    alpha = trace["alpha"]["value"]
+    beta = trace["beta"]["value"]
+    gamma = trace["gamma"]["value"]
+    
+    # Check output shapes
+    assert alpha.shape == (num_genes,)
+    assert beta.shape == (num_genes,)
+    assert gamma.shape == (num_genes,)
 
     # Test validation utility
     assert validate_prior_function(example_prior_function)

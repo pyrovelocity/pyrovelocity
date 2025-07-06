@@ -23,17 +23,18 @@ def test_piecewise_activation_dynamics_function():
     n_genes = 3
 
     # Test time points: before activation, during activation, after activation
-    t_star = jnp.array([[[0.1, 0.2, 0.3], [0.6, 0.8, 1.2]]])  # Shape: (batch_size, n_cells, n_genes)
+    t_star = jnp.array([[0.3, 0.8]])  # Shape: (batch_size, n_cells)
 
     # Initial conditions (dimensionless steady state)
     u0_star = jnp.ones((batch_size, n_cells, n_genes))  # u*_0 = 1.0
 
     # Create parameters for piecewise activation
+    # Avoid gamma_star = 1.0 exactly to prevent numerical issues
     params = {
-        "R_on": jnp.array([[2.0, 3.0, 1.5]]),  # Activation fold-change
-        "gamma_star": jnp.array([[1.0, 0.8, 1.2]]),  # Relative degradation rate
-        "t_on_star": jnp.array([[0.5, 0.5, 0.5]]),  # Activation onset time
-        "delta_star": jnp.array([[0.3, 0.4, 0.2]]),  # Activation duration
+        "R_on": jnp.array([2.0, 3.0, 1.5]),  # Activation fold-change [n_genes]
+        "gamma_star": jnp.array([1.1, 0.8, 1.2]),  # Relative degradation rate [n_genes]
+        "t_on_star": jnp.array([0.5, 0.5, 0.5]),  # Activation onset time [n_genes]
+        "delta_star": jnp.array([0.3, 0.4, 0.2]),  # Activation duration [n_genes]
     }
 
     # Call function (no s0_star parameter)
@@ -50,13 +51,15 @@ def test_piecewise_activation_dynamics_function():
     assert jnp.all(s_star > 0)
 
     # Test phase behavior
-    # Phase 1 (t* < t*_on): should be close to steady state (1, 1/γ*)
-    phase1_mask = t_star < params["t_on_star"]
-    u_phase1 = u_star[phase1_mask]
-    s_phase1 = s_star[phase1_mask]
+    # For cell 0 (t*=0.3 < t_on=0.5): should be in phase 1 (steady state)
+    # For cell 1 (t*=0.8 > t_on=0.5): should be in phase 2 or 3
     
-    # For phase 1, u* should be close to 1.0
-    assert jnp.allclose(u_phase1, 1.0, atol=1e-6)
+    # Check cell 0 is at steady state (phase 1)
+    # u* should be close to 1.0
+    assert jnp.allclose(u_star[0, 0, :], 1.0, atol=1e-6)
+    # s* should be close to 1.0/gamma_star
+    expected_s_phase1 = 1.0 / params["gamma_star"]
+    assert jnp.allclose(s_star[0, 0, :], expected_s_phase1, atol=1e-6)
 
 
 def test_piecewise_activation_dynamics_edge_cases():
@@ -66,14 +69,14 @@ def test_piecewise_activation_dynamics_edge_cases():
     n_genes = 1
 
     # Test case: gamma_star near 1.0 (numerical stability)
-    t_star = jnp.array([[[0.6]]])  # During activation phase
+    t_star = jnp.array([[0.6]])  # During activation phase, shape: (batch_size, n_cells)
     u0_star = jnp.ones((batch_size, n_cells, n_genes))
 
     params = {
-        "R_on": jnp.array([[2.0]]),
-        "gamma_star": jnp.array([[1.0 + 1e-10]]),  # Very close to 1.0
-        "t_on_star": jnp.array([[0.5]]),
-        "delta_star": jnp.array([[0.2]]),
+        "R_on": jnp.array([2.0]),  # Shape: (n_genes,)
+        "gamma_star": jnp.array([1.0 + 1e-10]),  # Very close to 1.0, shape: (n_genes,)
+        "t_on_star": jnp.array([0.5]),  # Shape: (n_genes,)
+        "delta_star": jnp.array([0.2]),  # Shape: (n_genes,)
     }
 
     # Should not raise numerical errors

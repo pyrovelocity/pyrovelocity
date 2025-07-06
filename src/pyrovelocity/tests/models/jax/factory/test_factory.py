@@ -16,6 +16,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 import jax
 import jax.numpy as jnp
 import numpyro
+import numpyro.distributions as dist
 import pytest
 from jaxtyping import Array, Float
 
@@ -43,7 +44,7 @@ from pyrovelocity.models.jax.registry import (
 
 # Mock implementations for testing
 def mock_dynamics_function(
-    t_star: Float[Array, "batch_size n_cells n_genes"],
+    t_star: Float[Array, "batch_size n_cells"],
     u0_star: Float[Array, "batch_size n_cells n_genes"],
     params: Dict[str, Float[Array, "..."]],
 ) -> Tuple[
@@ -55,15 +56,46 @@ def mock_dynamics_function(
 
 
 def mock_prior_function(
-    key: jnp.ndarray,
     num_genes: int,
     prior_params: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Float[Array, "n_genes"]]:
+) -> Dict[str, Float[Array, "..."]]:
     """Mock prior function for testing."""
+    if prior_params is None:
+        prior_params = {}
+    
+    # Extract n_cells from prior_params (required for full piecewise activation model)
+    n_cells = prior_params.get("n_cells", 2)  # Default to 2 for tests
+    
+    # NumPyro handles randomness automatically
+    alpha = numpyro.sample(
+        "alpha", 
+        dist.LogNormal(0.0, 1.0).expand([num_genes]).to_event(1)
+    )
+    beta = numpyro.sample(
+        "beta",
+        dist.LogNormal(0.0, 1.0).expand([num_genes]).to_event(1)
+    )
+    gamma = numpyro.sample(
+        "gamma",
+        dist.LogNormal(0.0, 1.0).expand([num_genes]).to_event(1)
+    )
+    
+    # Add mock cell-specific parameters that the model expects
+    with numpyro.plate("cells", n_cells, dim=-2):
+        lambda_j = numpyro.sample("lambda_j", dist.LogNormal(0.0, 0.2))
+        t_star = numpyro.sample("t_star", dist.Uniform(0.0, 1.0))
+    
+    # Add mock gene-specific parameters
+    with numpyro.plate("genes", num_genes, dim=-1):
+        U_0i = numpyro.sample("U_0i", dist.LogNormal(0.0, 1.0))
+    
     return {
-        "alpha": jnp.ones(num_genes),
-        "beta": jnp.ones(num_genes),
-        "gamma": jnp.ones(num_genes),
+        "alpha": alpha,
+        "beta": beta,
+        "gamma": gamma,
+        "lambda_j": lambda_j,
+        "t_star": t_star,
+        "U_0i": U_0i,
     }
 
 

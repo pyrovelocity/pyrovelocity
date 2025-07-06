@@ -60,8 +60,8 @@ from pyrovelocity.models.jax.registry.priors import (
 # Example implementations for testing
 @jaxtyped(typechecker=beartype)
 def example_dynamics_function(
-    tau: Float[Array, "batch_size n_cells n_genes"],
-    u0: Float[Array, "batch_size n_cells n_genes"],
+    t_star: Float[Array, "batch_size n_cells"],
+    u0_star: Float[Array, "batch_size n_cells n_genes"],
     params: Dict[str, Float[Array, "..."]],
 ) -> Tuple[
     Float[Array, "batch_size n_cells n_genes"],
@@ -73,52 +73,59 @@ def example_dynamics_function(
     gamma = params["gamma"]
 
     # Expand dimensions for broadcasting
+    # t_star is (batch_size, n_cells), need to add gene dimension
+    t_star_expanded = t_star[..., jnp.newaxis]  # (batch_size, n_cells, 1)
+    
+    # Parameters are (n_genes,), need to broadcast
     alpha_expanded = alpha.reshape((1, 1, -1))
     beta_expanded = beta.reshape((1, 1, -1))
     gamma_expanded = gamma.reshape((1, 1, -1))
 
     # Compute dynamics
-    ut = u0 * jnp.exp(-beta_expanded * tau) + (
+    ut = u0_star * jnp.exp(-beta_expanded * t_star_expanded) + (
         alpha_expanded / beta_expanded
-    ) * (1 - jnp.exp(-beta_expanded * tau))
+    ) * (1 - jnp.exp(-beta_expanded * t_star_expanded))
     
     # Compute s0 from steady state: s0 = u0 / gamma (assuming steady state)
-    s0 = u0 / gamma_expanded
+    s0 = u0_star / gamma_expanded
     
-    st = s0 * jnp.exp(-gamma_expanded * tau) + (
-        beta_expanded * u0 / (gamma_expanded - beta_expanded)
-    ) * (jnp.exp(-beta_expanded * tau) - jnp.exp(-gamma_expanded * tau))
+    st = s0 * jnp.exp(-gamma_expanded * t_star_expanded) + (
+        beta_expanded * u0_star / (gamma_expanded - beta_expanded)
+    ) * (jnp.exp(-beta_expanded * t_star_expanded) - jnp.exp(-gamma_expanded * t_star_expanded))
 
     return ut, st
 
 
 @jaxtyped(typechecker=beartype)
 def example_prior_function(
-    key: jnp.ndarray,
     num_genes: int,
     prior_params: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Float[Array, "n_genes"]]:
+) -> Dict[str, Float[Array, "..."]]:
     """Example prior function implementation for registry testing."""
     if prior_params is None:
         prior_params = {}
 
-    alpha_loc = prior_params.get("alpha_loc", -0.5)
-    alpha_scale = prior_params.get("alpha_scale", 1.0)
-    beta_loc = prior_params.get("beta_loc", -0.5)
-    beta_scale = prior_params.get("beta_scale", 1.0)
-    gamma_loc = prior_params.get("gamma_loc", -0.5)
-    gamma_scale = prior_params.get("gamma_scale", 1.0)
-
-    key1, key2, key3 = jax.random.split(key, 3)
-
-    alpha = jnp.exp(
-        jax.random.normal(key1, (num_genes,)) * alpha_scale + alpha_loc
+    # NumPyro handles randomness automatically
+    alpha = numpyro.sample(
+        "alpha", 
+        dist.LogNormal(
+            prior_params.get("alpha_loc", -0.5),
+            prior_params.get("alpha_scale", 1.0)
+        ).expand([num_genes]).to_event(1)
     )
-    beta = jnp.exp(
-        jax.random.normal(key2, (num_genes,)) * beta_scale + beta_loc
+    beta = numpyro.sample(
+        "beta",
+        dist.LogNormal(
+            prior_params.get("beta_loc", -0.5),
+            prior_params.get("beta_scale", 1.0)
+        ).expand([num_genes]).to_event(1)
     )
-    gamma = jnp.exp(
-        jax.random.normal(key3, (num_genes,)) * gamma_scale + gamma_loc
+    gamma = numpyro.sample(
+        "gamma",
+        dist.LogNormal(
+            prior_params.get("gamma_loc", -0.5),
+            prior_params.get("gamma_scale", 1.0)
+        ).expand([num_genes]).to_event(1)
     )
 
     return {"alpha": alpha, "beta": beta, "gamma": gamma}
