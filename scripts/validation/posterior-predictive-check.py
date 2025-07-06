@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pyrovelocity.models.modular.factory import create_piecewise_activation_model
 from pyrovelocity.models.modular.inference.config import InferenceConfig
-from pyrovelocity.plots.predictive_checks import (
+from pyrovelocity.plots.predictive import (
     plot_prior_predictive_checks,
     plot_posterior_predictive_checks,
 )
