@@ -14,7 +14,8 @@ from pyrovelocity.plots.predictive import (
 from pyrovelocity.utils import print_anndata
 
 
-RANDOM_SEED = 42
+RANDOM_SEED = int(os.environ.get("RANDOM_SEED", 42))
+MAX_TIME = float(os.environ.get("MAX_TIME", 7.0))
 REPORTS_SAVE_PATH = "reports/docs/posterior_predictive"
 
 # ============================================================================
@@ -109,13 +110,16 @@ print(f"\n📊 Step 1: Generating prior predictive data (seed: {RANDOM_SEED})...
 # Create model for sample data generation
 model = create_piecewise_activation_model()
 
-# Generate synthetic data with known true parameters from prior
+# Generate synthetic data with known true parameters from prior, conditioning T_M_star=MAX_TIME
 prior_predictive_adata = model.generate_predictive_samples(
     num_cells=200,
     num_genes=100,
     num_samples=1,
-    return_format="anndata"
+    return_format="anndata",
+    condition_values={"T_M_star": MAX_TIME}
 )
+
+print(f"✅ Fixed T_M_star = {MAX_TIME} for consistent synthetic data generation")
 
 print(f"\n🗺️ Computing UMAP and clustering for prior predictive data...")
 sc.pp.pca(prior_predictive_adata, random_state=RANDOM_SEED)
