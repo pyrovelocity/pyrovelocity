@@ -241,52 +241,62 @@ def _compute_velocity_piecewise(
         # Multiple cells case
         num_cells = time_param.shape[1]
 
-    # Reshape parameters for dynamics function: Shape (num_samples, num_cells, num_genes)
-    # Time needs to be [batch_size, n_cells, n_genes] for dynamics function
-    t_star_expanded = time_param[:, :, jnp.newaxis] * jnp.ones((1, 1, num_genes))  # Shape: (num_samples, num_cells, num_genes)
+    # Reshape parameters for dynamics function
+    # The dynamics function expects t_star with shape (batch_size, n_cells)
+    # and parameters with shape (n_genes,) that will be broadcast internally
     
-    # Parameters need to be shaped for broadcasting in dynamics function
-    # The dynamics function expects parameters with shape compatible with (batch_size, n_cells, n_genes)
-    # Since parameters are gene-specific, we need (num_samples, 1, num_genes) to broadcast across cells
-    R_on_expanded = R_on[:, jnp.newaxis, :]  # Shape: (num_samples, 1, num_genes)
-    gamma_star_expanded = gamma_star[:, jnp.newaxis, :]  # Shape: (num_samples, 1, num_genes)
-    t_on_star_expanded = t_on_star[:, jnp.newaxis, :]  # Shape: (num_samples, 1, num_genes)
-    delta_star_expanded = delta_star[:, jnp.newaxis, :]  # Shape: (num_samples, 1, num_genes)
-
-    # Create parameters dictionary for dynamics function
-    dynamics_params = {
-        "R_on": R_on_expanded,
-        "gamma_star": gamma_star_expanded,
-        "t_on_star": t_on_star_expanded,
-        "delta_star": delta_star_expanded,
-    }
-
-    # Initial conditions for piecewise activation (fixed steady state)
-    u0_expanded = jnp.ones((num_samples, num_cells, num_genes))  # u*_0 = 1.0
-    s0_expanded = jnp.ones((num_samples, num_cells, num_genes))  # s*_0 = 1.0/γ* (handled by dynamics function)
-
-    # Apply dynamics model to get expected counts
-    u_expected, s_expected = dynamics_fn(
-        t_star_expanded, u0_expanded, dynamics_params
+    # Keep time as (num_samples, num_cells) for dynamics function
+    t_star = time_param  # Shape: (num_samples, num_cells)
+    
+    # For parameters, the dynamics function expects them as 1D arrays (n_genes,)
+    # but we have (num_samples, n_genes). We'll need to process each sample separately
+    # or vectorize over the sample dimension
+    
+    # Vectorized approach: use vmap to apply dynamics function to each sample
+    def single_sample_dynamics(R_on_i, gamma_star_i, t_on_star_i, delta_star_i, t_star_i):
+        params_i = {
+            "R_on": R_on_i,  # Shape: (n_genes,)
+            "gamma_star": gamma_star_i,  # Shape: (n_genes,)
+            "t_on_star": t_on_star_i,  # Shape: (n_genes,)
+            "delta_star": delta_star_i,  # Shape: (n_genes,)
+        }
+        # Initial conditions for single sample
+        u0_i = jnp.ones((1, num_cells, num_genes))  # Shape: (1, n_cells, n_genes)
+        t_star_i_batch = t_star_i[jnp.newaxis, :]  # Shape: (1, n_cells)
+        
+        return dynamics_fn(t_star_i_batch, u0_i, params_i)
+    
+    # Apply to all samples using vmap
+    u_expected, s_expected = jax.vmap(single_sample_dynamics, in_axes=(0, 0, 0, 0, 0))(
+        R_on, gamma_star, t_on_star, delta_star, t_star
     )
+    
+    # u_expected and s_expected now have shape (num_samples, 1, num_cells, num_genes)
+    # Remove the extra batch dimension
+    u_expected = u_expected.squeeze(axis=1)  # Shape: (num_samples, num_cells, num_genes)
+    s_expected = s_expected.squeeze(axis=1)  # Shape: (num_samples, num_cells, num_genes)
 
     # Compute velocity as time derivative of spliced counts
     # For piecewise activation: ds*/dt* = u* - γ*s*
-    velocity = u_expected - gamma_star_expanded * s_expected
+    # Need to broadcast gamma_star correctly: (num_samples, num_genes) -> (num_samples, num_cells, num_genes)
+    gamma_star_bc = gamma_star[:, jnp.newaxis, :]  # Shape: (num_samples, 1, num_genes)
+    velocity = u_expected - gamma_star_bc * s_expected
 
     # Compute acceleration as second time derivative
     # For piecewise activation: d²s*/dt*² = du*/dt* - γ*ds*/dt*
-    # du*/dt* = α*(t*) - u* where α*(t*) is piecewise constant
-    # This requires evaluating the piecewise function at the current time
-    # For simplicity, approximate using finite differences or analytical derivatives
+    # Use finite differences to approximate du*/dt*
     dt = 1e-4
-    t_plus_dt = t_star_expanded + dt
-    u_plus_dt, s_plus_dt = dynamics_fn(
-        t_plus_dt, u0_expanded, dynamics_params
+    t_star_plus_dt = t_star + dt  # Shape: (num_samples, num_cells)
+    
+    # Apply dynamics at t + dt
+    u_plus_dt, s_plus_dt = jax.vmap(single_sample_dynamics, in_axes=(0, 0, 0, 0, 0))(
+        R_on, gamma_star, t_on_star, delta_star, t_star_plus_dt
     )
+    u_plus_dt = u_plus_dt.squeeze(axis=1)  # Shape: (num_samples, num_cells, num_genes)
+    s_plus_dt = s_plus_dt.squeeze(axis=1)
     
     du_dt = (u_plus_dt - u_expected) / dt
-    acceleration = du_dt - gamma_star_expanded * velocity
+    acceleration = du_dt - gamma_star_bc * velocity
 
     # Return results
     return {
