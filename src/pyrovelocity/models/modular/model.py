@@ -1399,21 +1399,14 @@ class PyroVelocityModel:
                 u_counts = np.moveaxis(u_counts, [cell_dim_idx, gene_dim_idx], [-2, -1])
                 s_counts = np.moveaxis(s_counts, [cell_dim_idx, gene_dim_idx], [-2, -1])
 
-                # Squeeze out any singleton dimensions except the last two (cells, genes)
-                while u_counts.ndim > 3:
-                    # Find singleton dimensions (excluding last two)
-                    singleton_dims = [i for i in range(u_counts.ndim - 2) if u_counts.shape[i] == 1]
-                    if singleton_dims:
-                        u_counts = np.squeeze(u_counts, axis=singleton_dims[0])
-                        s_counts = np.squeeze(s_counts, axis=singleton_dims[0])
-                    else:
-                        # If no singleton dimensions, flatten the first dimensions
-                        new_shape = (-1,) + u_counts.shape[-2:]
-                        u_counts = u_counts.reshape(new_shape)
-                        s_counts = s_counts.reshape(new_shape)
-                        break
+                # Properly reshape to [num_samples, num_cells, num_genes] without while loops
+                if u_counts.ndim > 3:
+                    # Flatten all dimensions except the last two (cells, genes)
+                    new_shape = (-1,) + u_counts.shape[-2:]
+                    u_counts = u_counts.reshape(new_shape)
+                    s_counts = s_counts.reshape(new_shape)
 
-                if u_counts.ndim == 3:  # [num_samples, num_cells, num_genes]
+                if u_counts.ndim == 3 and u_counts.shape[0] > 1:  # [num_samples, num_cells, num_genes] with multiple samples
                     # CRITICAL FIX: Preserve samples instead of averaging them
                     # The JAX implementation preserves all samples to maintain posterior predictive variability
                     # This is essential for parameter recovery analysis and uncertainty quantification
@@ -1442,6 +1435,11 @@ class PyroVelocityModel:
                     
                     # Flag that we have multiple samples for later storage
                     has_multiple_samples = True
+                elif u_counts.ndim == 3 and u_counts.shape[0] == 1:
+                    # Single sample with batch dimension - squeeze it out
+                    u_counts = u_counts[0]
+                    s_counts = s_counts[0]
+                    has_multiple_samples = False
                 else:
                     # Fallback: take first sample
                     u_counts = u_counts[0] if u_counts.ndim > 2 else u_counts
@@ -1488,12 +1486,12 @@ class PyroVelocityModel:
             adata.layers["unspliced_q025"] = summary_stats['u_counts_q025']
             adata.layers["unspliced_q975"] = summary_stats['u_counts_q975']
             
-            # CRITICAL: Store full samples in uns for parameter recovery analysis
-            # This preserves the sample-wise variability that's essential for validation
-            adata.uns["posterior_predictive_samples"] = {
-                "spliced": s_counts,  # [num_samples, num_cells, num_genes]
-                "unspliced": u_counts,  # [num_samples, num_cells, num_genes]
-                "num_samples": u_counts.shape[0]
+            # MEMORY FIX: Don't store full samples - they're too large and not needed
+            # JAX implementation doesn't store these, only summary statistics
+            # If needed for specific analysis, can be regenerated on demand
+            adata.uns["posterior_predictive_info"] = {
+                "num_samples": u_counts.shape[0],
+                "generation_method": "sample_wise"
             }
         else:
             # Single sample case - ensure correct shape [num_cells, num_genes]

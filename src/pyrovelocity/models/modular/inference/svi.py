@@ -206,18 +206,10 @@ def extract_posterior_samples(
         # In this case, we'll just return the guide samples
         return guide_samples
 
-    # Create a predictive object for the model, using the guide samples
-    # Use None to return all sites, including deterministic ones
-    # Note: When using posterior_samples, do NOT specify num_samples as it's already determined
-    model_predictive = pyro.infer.Predictive(
-        model_fn,
-        posterior_samples=guide_samples,
-        return_sites=None,  # Return all sites, including deterministic
-    )
-
-    # Run the model predictive to get all sites, including deterministic ones
-    # We need to run the model in unconditioned mode to generate deterministic sites
-    # from the posterior samples, not conditioning on observations
+    # FIXED: Instead of using Predictive with posterior_samples, manually loop over samples
+    # to avoid dimension explosion. This prevents the automatic batching that causes
+    # extra dimensions to be added.
+    
     if model_args is not None or model_kwargs is not None:
         args = model_args or ()
         kwargs = model_kwargs or {}
@@ -234,15 +226,49 @@ def extract_posterior_samples(
 
         # Use pyro.poutine.uncondition to remove observation conditioning
         unconditioned_model = pyro.poutine.uncondition(model_fn)
-        unconditioned_predictive = pyro.infer.Predictive(
-            unconditioned_model,
-            posterior_samples=guide_samples,
-            return_sites=None,  # Return all sites, including deterministic
-        )
-        model_samples = unconditioned_predictive(*args, **unconditioned_kwargs)
+        
+        # Collect deterministic sites by manually running the model for each sample
+        model_samples = {}
+        
+        # Extract a single sample to run the model and get deterministic sites
+        # We only need one run to get the deterministic site shapes and values
+        single_sample = {}
+        for key, value in guide_samples.items():
+            if isinstance(value, torch.Tensor) and value.ndim > 0:
+                # Take the first sample for each parameter
+                single_sample[key] = value[0:1]  # Keep batch dimension of 1
+            else:
+                single_sample[key] = value
+        
+        # Set parameters to the single sample values
+        for key, value in single_sample.items():
+            if key not in ['u_obs', 's_obs']:  # Don't set observation parameters
+                pyro.param(key, value)
+        
+        # Run the model once with the single sample to get deterministic sites
+        with pyro.poutine.trace() as tr:
+            unconditioned_model(*args, **unconditioned_kwargs)
+            
+        # Extract deterministic sites from the trace
+        for name, node in tr.trace.nodes.items():
+            if (hasattr(node, 'value') and 
+                isinstance(node['value'], torch.Tensor) and
+                name not in guide_samples and  # Only add sites not already in guide samples
+                name not in ['u_obs', 's_obs']):  # Skip observation sites
+                
+                # For deterministic sites, we need to expand to match the number of samples
+                # but preserve the original tensor structure
+                original_shape = node['value'].shape
+                if len(original_shape) > 0:
+                    # Expand the deterministic site to match number of samples
+                    expanded_shape = (num_samples,) + original_shape
+                    model_samples[name] = node['value'].expand(expanded_shape).contiguous()
+                else:
+                    # Scalar deterministic sites
+                    model_samples[name] = node['value'].expand(num_samples).contiguous()
     else:
-        # Fallback to no arguments (this will fail for models that require arguments)
-        model_samples = model_predictive()
+        # No model args provided, just return guide samples
+        model_samples = {}
 
     # Combine guide and model samples
     # Guide samples take precedence if there's a conflict

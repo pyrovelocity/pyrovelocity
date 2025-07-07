@@ -424,85 +424,62 @@ class PiecewiseActivationPriorModel:
         set_id: Optional[int] = None,
         n_genes: Optional[int] = None,
         n_cells: Optional[int] = None,
-        max_attempts: int = 10000,
         **kwargs
     ) -> Dict[str, torch.Tensor]:
         """
-        Sample system parameters with optional pattern constraints.
+        Sample system parameters directly without rejection sampling.
 
-        This method generates parameter sets for validation studies, with support
-        for constraining parameters to specific gene expression patterns.
+        This method generates parameter sets for validation studies using direct
+        sampling from the calibrated priors, following the JAX implementation pattern.
+        Pattern constraints are achieved through prior hyperparameter calibration,
+        not rejection sampling.
 
         Args:
             num_samples: Number of parameter sets to generate
-            constrain_to_pattern: Whether to apply pattern constraints
-            pattern: Expression pattern to constrain to ('activation', 'decay', 'transient', 'sustained')
+            constrain_to_pattern: Deprecated - patterns are handled by prior calibration
+            pattern: Deprecated - patterns are handled by prior calibration
             set_id: Identifier for parameter set (for reproducibility)
             n_genes: Number of genes (default: 2)
             n_cells: Number of cells (default: 50)
-            max_attempts: Maximum attempts to find valid parameters when constraining
             **kwargs: Additional arguments
 
         Returns:
             Dictionary of parameter tensors with shape [num_samples, ...]
-
-        Raises:
-            ValueError: If pattern is invalid or constraints cannot be satisfied
         """
         if n_genes is None:
             n_genes = 2
         if n_cells is None:
             n_cells = 50
 
-        # Validate pattern if provided
-        valid_patterns = ['pre_activation', 'transient', 'sustained']
-        if constrain_to_pattern and pattern not in valid_patterns:
-            raise ValueError(f"Pattern must be one of {valid_patterns}, got {pattern}")
+        # Warn about deprecated pattern constraints
+        if constrain_to_pattern:
+            import warnings
+            warnings.warn(
+                "Pattern constraints via rejection sampling are deprecated. "
+                "Use prior hyperparameter calibration instead.",
+                DeprecationWarning,
+                stacklevel=2
+            )
 
         # Set random seed if set_id is provided for reproducibility
         if set_id is not None:
             torch.manual_seed(42 + set_id)
 
-        # Initialize storage for parameter samples
-        parameter_samples = {
-            'T_M_star': [],
-            't_star': [],
-            't_star_normalized': [],  # Store normalized temporal coordinates
-            'alpha_off': [],  # Fixed at 1.0
-            'alpha_on': [],   # Computed from R_on
-            'R_on': [],       # New fold-change parameter
-            'gamma_star': [],
-            't_on_star': [],        # Independent absolute temporal parameters
-            'delta_star': [],
-            'U_0i': [],
-            'lambda_j': []
-        }
-
-        samples_collected = 0
-        attempts = 0
-
-        while samples_collected < num_samples and attempts < max_attempts:
-            attempts += 1
-
-            # Sample one parameter set
+        # Direct sampling without rejection - following JAX implementation pattern
+        parameter_samples = {}
+        
+        # Sample all parameters at once for efficiency
+        for i in range(num_samples):
             params = self.sample_parameters(n_genes=n_genes, n_cells=n_cells)
-
-            # Apply pattern constraints if requested
-            if constrain_to_pattern and pattern is not None:
-                if not self._satisfies_pattern_constraints(params, pattern):
-                    continue  # Try again
-
-            # Store the valid parameter set
+            
+            # Initialize storage on first iteration
+            if i == 0:
+                for key in params.keys():
+                    parameter_samples[key] = []
+            
+            # Store the parameter set
             for key, value in params.items():
                 parameter_samples[key].append(value)
-
-            samples_collected += 1
-
-        if samples_collected < num_samples:
-            raise ValueError(
-                f"Could not generate {num_samples} valid parameter sets for pattern '{pattern}' "
-                f"after {max_attempts} attempts. Only generated {samples_collected} sets."
-            )
 
         # Stack samples into tensors
         stacked_samples = {}
@@ -523,73 +500,3 @@ class PiecewiseActivationPriorModel:
             create_piecewise_activation_prior_metadata,
         )
         return create_piecewise_activation_prior_metadata()
-
-    @beartype
-    def _satisfies_pattern_constraints(
-        self,
-        params: Dict[str, torch.Tensor],
-        pattern: str
-    ) -> bool:
-        """
-        Check if parameters satisfy constraints for a specific expression pattern.
-
-        Updated to use soft scoring approach with relative temporal parameters
-        to match the working logic in prior-predictive-check.py and
-        prior-hyperparameter-calibration.py.
-
-        Uses the simplified 3-pattern classification system:
-        - pre_activation: Genes activated before observation window (negative tilde_t_on)
-        - transient: Complete activation-decay cycles within observation window
-        - sustained: Net increase over observation window (includes late activation)
-
-        Args:
-            params: Dictionary of sampled parameters
-            pattern: Expression pattern to check
-
-        Returns:
-            True if parameters satisfy pattern constraints, False otherwise
-        """
-        # Use R_on directly (fold-change parameter)
-        R_on = params.get('R_on', params.get('alpha_on', torch.tensor(1.0)))
-
-        # Use independent absolute temporal parameters
-        t_on_star = params['t_on_star']
-        delta_star = params['delta_star']
-
-        # Soft scoring function for more flexible pattern matching
-        def sigmoid_score(value: torch.Tensor, threshold: float, direction: str, steepness: float = 5.0) -> float:
-            """Compute soft score using sigmoid function."""
-            if direction == '>':
-                return torch.sigmoid(steepness * (value - threshold)).mean().item()
-            else:  # direction == '<'
-                return torch.sigmoid(steepness * (threshold - value)).mean().item()
-
-        # Use independent absolute temporal parameters with mathematical specification thresholds
-        if pattern == 'pre_activation':
-            scores = [
-                sigmoid_score(R_on, 2.0, '>'),
-                sigmoid_score(t_on_star, 0.0, '<')
-            ]
-        elif pattern == 'transient':
-            scores = [
-                sigmoid_score(R_on, 2.0, '>'),
-                sigmoid_score(t_on_star, 0.0, '>'),
-                sigmoid_score(t_on_star, 1.5, '<'),  # Absolute early onset
-                sigmoid_score(delta_star, 2.0, '<')  # Absolute short duration
-            ]
-        elif pattern == 'sustained':
-            scores = [
-                sigmoid_score(R_on, 2.0, '>'),
-                sigmoid_score(t_on_star, 0.0, '>'),
-                sigmoid_score(t_on_star, 1.5, '<'),  # Absolute early onset
-                sigmoid_score(delta_star, 2.5, '>')  # Absolute long duration
-            ]
-        else:
-            return False
-
-        # Compute geometric mean of scores and use threshold for acceptance
-        if scores:
-            geometric_mean = torch.prod(torch.tensor(scores)) ** (1.0 / len(scores))
-            return geometric_mean.item() > 0.3  # Relaxed threshold for better success rate
-        else:
-            return False

@@ -301,45 +301,21 @@ class PiecewiseActivationDynamicsModel:
                            alpha_off.shape[0] if alpha_off.dim() > 1 else 1)
             target_shape = (batch_size, num_cells, num_genes)
         
-        # Prepare tensors for broadcasting - handle all dimension cases correctly
-        if t_star.dim() == 1:
-            # Training case: t_star [cells], params [genes] → [cells, genes]
-            t_star_bc = t_star.unsqueeze(1)  # [cells, 1]
-            # Gene parameters might be 1D or 2D
-            if alpha_off.dim() == 1:
-                alpha_off_bc = alpha_off.unsqueeze(0)  # [1, genes]
-                alpha_on_bc = alpha_on.unsqueeze(0)  # [1, genes]
-                gamma_star_bc = gamma_star.unsqueeze(0)  # [1, genes]
-                t_on_star_bc = t_on_star.unsqueeze(0)  # [1, genes]
-                delta_star_bc = delta_star.unsqueeze(0)  # [1, genes]
-            else:
-                # Parameters have batch dimension [1, genes]
-                alpha_off_bc = alpha_off  # [1, genes]
-                alpha_on_bc = alpha_on  # [1, genes]
-                gamma_star_bc = gamma_star  # [1, genes]
-                t_on_star_bc = t_on_star  # [1, genes]
-                delta_star_bc = delta_star  # [1, genes]
-        elif t_star.dim() == 2:
-            # Posterior sampling case: t_star [samples, cells]
-            t_star_bc = t_star.unsqueeze(2)  # [samples, cells, 1]
-            # Gene parameters might be 1D or 2D
-            if alpha_off.dim() == 1:
-                # Parameters are 1D, need to add batch dimension
-                alpha_off_bc = alpha_off.unsqueeze(0).unsqueeze(0)  # [1, 1, genes]
-                alpha_on_bc = alpha_on.unsqueeze(0).unsqueeze(0)  # [1, 1, genes]
-                gamma_star_bc = gamma_star.unsqueeze(0).unsqueeze(0)  # [1, 1, genes]
-                t_on_star_bc = t_on_star.unsqueeze(0).unsqueeze(0)  # [1, 1, genes]
-                delta_star_bc = delta_star.unsqueeze(0).unsqueeze(0)  # [1, 1, genes]
-            else:
-                # Parameters have batch dimension [samples, genes]
-                alpha_off_bc = alpha_off.unsqueeze(1)  # [samples, 1, genes]
-                alpha_on_bc = alpha_on.unsqueeze(1)  # [samples, 1, genes]
-                gamma_star_bc = gamma_star.unsqueeze(1)  # [samples, 1, genes]
-                t_on_star_bc = t_on_star.unsqueeze(1)  # [samples, 1, genes]
-                delta_star_bc = delta_star.unsqueeze(1)  # [samples, 1, genes]
+        # Prepare tensors for broadcasting - follow JAX pattern
+        # Add gene dimension for broadcasting: [..., cells] → [..., cells, genes]
+        t_star_bc = t_star.unsqueeze(-1)  # Add gene dimension at the end
+        
+        # Gene parameters need proper shape for broadcasting with t_star_bc
+        # If gene params have batch dimension, add cell dimension in the middle
+        if alpha_off.dim() > 1:
+            # Parameters have batch: [batch, genes] → [batch, 1, genes]
+            alpha_off_bc = alpha_off.unsqueeze(-2)  # Add cell dimension
+            alpha_on_bc = alpha_on.unsqueeze(-2)
+            gamma_star_bc = gamma_star.unsqueeze(-2)
+            t_on_star_bc = t_on_star.unsqueeze(-2)
+            delta_star_bc = delta_star.unsqueeze(-2)
         else:
-            # More complex cases - use as-is and let broadcasting handle it
-            t_star_bc = t_star
+            # Parameters are 1D: [genes] → broadcast naturally
             alpha_off_bc = alpha_off
             alpha_on_bc = alpha_on
             gamma_star_bc = gamma_star
@@ -364,16 +340,7 @@ class PiecewiseActivationDynamicsModel:
         s0 = 1.0 / gamma_star_bc
         
         # Phase 1 mask: t < t_on
-        # Ensure proper broadcasting by expanding dimensions if needed
-        if t_star_bc.dim() < t_switch_on.dim():
-            # t_star_bc needs more dimensions
-            while t_star_bc.dim() < t_switch_on.dim():
-                t_star_bc = t_star_bc.unsqueeze(0)
-        elif t_switch_on.dim() < t_star_bc.dim():
-            # t_switch_on needs more dimensions
-            while t_switch_on.dim() < t_star_bc.dim():
-                t_switch_on = t_switch_on.unsqueeze(0)
-                
+        # Use proper broadcasting without while loops (following JAX implementation)
         mask_phase1 = t_star_bc < t_switch_on
         
         # Phase 1 solutions  
