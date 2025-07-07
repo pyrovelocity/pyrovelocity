@@ -930,15 +930,11 @@ class PyroVelocityModel:
                                 if hasattr(value, 'shape'):
                                     print(f"  {key}: {value.shape}")
 
-                        # FIXED: Use Pyro's Predictive with the original model (matching JAX pattern)
+                        # FIXED: Use Pyro's Predictive with the original model (matching JAX pattern exactly)
                         # This preserves the full model's stochastic structure and likelihood sampling
                         
-                        # Create dummy observations with correct shape for the model
-                        dummy_u_obs = torch.zeros(num_cells, num_genes)
-                        dummy_s_obs = torch.zeros(num_cells, num_genes)
-                        
                         # Generate single observation from this parameter sample using Pyro's Predictive
-                        # This matches the JAX approach: Predictive(model, posterior_samples=single_sample, num_samples=1)
+                        # Match JAX approach exactly: Predictive(model, posterior_samples=single_sample, num_samples=1)
                         predictive = Predictive(
                             model=self.forward,
                             posterior_samples=single_sample,
@@ -946,10 +942,13 @@ class PyroVelocityModel:
                             return_sites=None
                         )
                         
-                        # Call with dummy observations (which will be unconditioned for generation)
+                        # Call with None observations to signal predictive generation (matching JAX)
+                        # JAX calls: predictive(key, u_obs=None, s_obs=None, num_cells=num_cells, num_genes=num_genes)
                         single_predictive_sample = predictive(
-                            u_obs=dummy_u_obs,
-                            s_obs=dummy_s_obs
+                            u_obs=None,
+                            s_obs=None,
+                            num_cells=num_cells,
+                            num_genes=num_genes
                         )
 
                         all_predictive_samples.append(single_predictive_sample)
@@ -961,10 +960,6 @@ class PyroVelocityModel:
                     # Single parameter set: use same Predictive approach for consistency
                     print(f"  🔄 Generating single posterior predictive sample...")
                     
-                    # Create dummy observations with correct shape for the model
-                    dummy_u_obs = torch.zeros(num_cells, num_genes)
-                    dummy_s_obs = torch.zeros(num_cells, num_genes)
-                    
                     # Use Pyro's Predictive with the original model and posterior samples
                     # This ensures consistency with the multi-sample path and JAX implementation
                     predictive = Predictive(
@@ -974,10 +969,12 @@ class PyroVelocityModel:
                         return_sites=None
                     )
                     
-                    # Call with dummy observations (which will be unconditioned for generation)
+                    # Call with None observations to signal predictive generation (matching JAX)
                     predictive_samples = predictive(
-                        u_obs=dummy_u_obs,
-                        s_obs=dummy_s_obs
+                        u_obs=None,
+                        s_obs=None,
+                        num_cells=num_cells,
+                        num_genes=num_genes
                     )
             else:
                 raise ValueError("samples must be a dictionary of parameter values")
@@ -1295,7 +1292,16 @@ class PyroVelocityModel:
             if values:
                 # Stack along new batch dimension
                 if isinstance(values[0], torch.Tensor):
-                    combined[key] = torch.stack(values, dim=0)
+                    # CRITICAL FIX: Remove extra batch dimension from individual samples before stacking
+                    # Each value has shape [1, ...] from Pyro's Predictive, we need to squeeze the first dim
+                    squeezed_values = []
+                    for value in values:
+                        if value.dim() > 0 and value.shape[0] == 1:
+                            # Remove the batch dimension added by Pyro's Predictive
+                            squeezed_values.append(value.squeeze(0))
+                        else:
+                            squeezed_values.append(value)
+                    combined[key] = torch.stack(squeezed_values, dim=0)
                 else:
                     # For non-tensor values, just take the first one
                     combined[key] = values[0]
@@ -1408,25 +1414,32 @@ class PyroVelocityModel:
                         break
 
                 if u_counts.ndim == 3:  # [num_samples, num_cells, num_genes]
-                    # For posterior predictive checks, we want to store summary statistics
-                    # Store mean as primary data and std/quantiles as additional layers
+                    # CRITICAL FIX: Preserve samples instead of averaging them
+                    # The JAX implementation preserves all samples to maintain posterior predictive variability
+                    # This is essential for parameter recovery analysis and uncertainty quantification
+                    
+                    # Compute summary statistics but keep all samples
                     u_counts_mean = u_counts.mean(axis=0)
                     s_counts_mean = s_counts.mean(axis=0)
-
-                    # Store full samples for uncertainty computation
                     u_counts_std = u_counts.std(axis=0)
                     s_counts_std = s_counts.std(axis=0)
-
-                    # Store quantiles for credible intervals
                     u_counts_q025 = np.quantile(u_counts, 0.025, axis=0)
                     u_counts_q975 = np.quantile(u_counts, 0.975, axis=0)
                     s_counts_q025 = np.quantile(s_counts, 0.025, axis=0)
                     s_counts_q975 = np.quantile(s_counts, 0.975, axis=0)
 
-                    # Use mean for primary data
-                    u_counts = u_counts_mean
-                    s_counts = s_counts_mean
-
+                    # Store statistics for later use but preserve original samples
+                    summary_stats = {
+                        'u_counts_mean': u_counts_mean,
+                        's_counts_mean': s_counts_mean,
+                        'u_counts_std': u_counts_std,
+                        's_counts_std': s_counts_std,
+                        'u_counts_q025': u_counts_q025,
+                        'u_counts_q975': u_counts_q975,
+                        's_counts_q025': s_counts_q025,
+                        's_counts_q975': s_counts_q975
+                    }
+                    
                     # Flag that we have multiple samples for later storage
                     has_multiple_samples = True
                 else:
@@ -1442,33 +1455,65 @@ class PyroVelocityModel:
         else:
             has_multiple_samples = False
 
-        # Ensure correct shape [num_cells, num_genes]
-        if u_counts.shape != (num_cells, num_genes):
-            raise ValueError(
-                f"Unspliced counts shape {u_counts.shape} does not match expected "
-                f"({num_cells}, {num_genes})"
-            )
-        if s_counts.shape != (num_cells, num_genes):
-            raise ValueError(
-                f"Spliced counts shape {s_counts.shape} does not match expected "
-                f"({num_cells}, {num_genes})"
-            )
-
-        # Create AnnData object with spliced counts as main matrix
-        adata = AnnData(X=s_counts.copy())
-
-        # Add layers for both count types
-        adata.layers["spliced"] = s_counts
-        adata.layers["unspliced"] = u_counts
-
-        # Add uncertainty layers if we have multiple samples
+        # Handle shape checking and AnnData creation based on sample preservation
         if has_multiple_samples:
-            adata.layers["spliced_std"] = s_counts_std
-            adata.layers["unspliced_std"] = u_counts_std
-            adata.layers["spliced_q025"] = s_counts_q025
-            adata.layers["spliced_q975"] = s_counts_q975
-            adata.layers["unspliced_q025"] = u_counts_q025
-            adata.layers["unspliced_q975"] = u_counts_q975
+            # For multiple samples, we need to store both raw samples and summary statistics
+            # Expected shape: [num_samples, num_cells, num_genes]
+            if u_counts.shape != (u_counts.shape[0], num_cells, num_genes):
+                raise ValueError(
+                    f"Unspliced counts shape {u_counts.shape} does not match expected "
+                    f"({u_counts.shape[0]}, {num_cells}, {num_genes})"
+                )
+            if s_counts.shape != (s_counts.shape[0], num_cells, num_genes):
+                raise ValueError(
+                    f"Spliced counts shape {s_counts.shape} does not match expected "
+                    f"({s_counts.shape[0]}, {num_cells}, {num_genes})"
+                )
+
+            # CRITICAL FIX: Use median values (like JAX) instead of mean values for better count data preservation
+            # JAX implementation uses: s_median = np.median(all_s_samples, axis=0).astype(np.int32)
+            u_counts_median = np.median(u_counts, axis=0).astype(np.int32)
+            s_counts_median = np.median(s_counts, axis=0).astype(np.int32)
+            
+            # Create AnnData object with median counts as primary data (matching JAX implementation)
+            adata = AnnData(X=s_counts_median.copy())
+
+            # Add layers using median values for primary count data (matching JAX approach)
+            adata.layers["spliced"] = s_counts_median
+            adata.layers["unspliced"] = u_counts_median
+            adata.layers["spliced_std"] = summary_stats['s_counts_std']
+            adata.layers["unspliced_std"] = summary_stats['u_counts_std']
+            adata.layers["spliced_q025"] = summary_stats['s_counts_q025']
+            adata.layers["spliced_q975"] = summary_stats['s_counts_q975']
+            adata.layers["unspliced_q025"] = summary_stats['u_counts_q025']
+            adata.layers["unspliced_q975"] = summary_stats['u_counts_q975']
+            
+            # CRITICAL: Store full samples in uns for parameter recovery analysis
+            # This preserves the sample-wise variability that's essential for validation
+            adata.uns["posterior_predictive_samples"] = {
+                "spliced": s_counts,  # [num_samples, num_cells, num_genes]
+                "unspliced": u_counts,  # [num_samples, num_cells, num_genes]
+                "num_samples": u_counts.shape[0]
+            }
+        else:
+            # Single sample case - ensure correct shape [num_cells, num_genes]
+            if u_counts.shape != (num_cells, num_genes):
+                raise ValueError(
+                    f"Unspliced counts shape {u_counts.shape} does not match expected "
+                    f"({num_cells}, {num_genes})"
+                )
+            if s_counts.shape != (num_cells, num_genes):
+                raise ValueError(
+                    f"Spliced counts shape {s_counts.shape} does not match expected "
+                    f"({num_cells}, {num_genes})"
+                )
+
+            # Create AnnData object with spliced counts as main matrix
+            adata = AnnData(X=s_counts.copy())
+
+            # Add layers for both count types
+            adata.layers["spliced"] = s_counts
+            adata.layers["unspliced"] = u_counts
 
         # Add cell and gene names
         adata.obs_names = [f"cell_{i}" for i in range(num_cells)]
@@ -1529,19 +1574,34 @@ class PyroVelocityModel:
             if key not in adata.uns:
                 adata.uns[key] = value
 
-        # Add library size information
-        adata.obs["total_unspliced"] = u_counts.sum(axis=1)
-        adata.obs["total_spliced"] = s_counts.sum(axis=1)
-        adata.obs["total_counts"] = adata.obs["total_unspliced"] + adata.obs["total_spliced"]
+        # Add library size information - handle multiple samples case
+        if has_multiple_samples:
+            # For multiple samples, compute library size using median counts (matching JAX)
+            # u_counts and s_counts are [num_samples, num_cells, num_genes]
+            # adata.layers has median counts with shape [num_cells, num_genes]
+            adata.obs["total_unspliced"] = adata.layers["unspliced"].sum(axis=1)
+            adata.obs["total_spliced"] = adata.layers["spliced"].sum(axis=1)
+            adata.obs["total_counts"] = adata.obs["total_unspliced"] + adata.obs["total_spliced"]
+
+            # Add gene-level statistics using median counts
+            adata.var["mean_unspliced"] = adata.layers["unspliced"].mean(axis=0)
+            adata.var["mean_spliced"] = adata.layers["spliced"].mean(axis=0)
+            adata.var["total_unspliced"] = adata.layers["unspliced"].sum(axis=0)
+            adata.var["total_spliced"] = adata.layers["spliced"].sum(axis=0)
+        else:
+            # Single sample case - u_counts and s_counts are [num_cells, num_genes]
+            adata.obs["total_unspliced"] = u_counts.sum(axis=1)
+            adata.obs["total_spliced"] = s_counts.sum(axis=1)
+            adata.obs["total_counts"] = adata.obs["total_unspliced"] + adata.obs["total_spliced"]
+
+            # Add gene-level statistics
+            adata.var["mean_unspliced"] = u_counts.mean(axis=0)
+            adata.var["mean_spliced"] = s_counts.mean(axis=0)
+            adata.var["total_unspliced"] = u_counts.sum(axis=0)
+            adata.var["total_spliced"] = s_counts.sum(axis=0)
 
         # Extract and store temporal coordinates for UMAP visualization
         self._store_temporal_coordinates(adata, predictive_samples, samples, num_cells)
-
-        # Add gene-level statistics
-        adata.var["mean_unspliced"] = u_counts.mean(axis=0)
-        adata.var["mean_spliced"] = s_counts.mean(axis=0)
-        adata.var["total_unspliced"] = u_counts.sum(axis=0)
-        adata.var["total_spliced"] = s_counts.sum(axis=0)
 
         # Add dimensionality reduction for UMAP visualization
         # This ensures posterior predictive check plots can display UMAP embeddings

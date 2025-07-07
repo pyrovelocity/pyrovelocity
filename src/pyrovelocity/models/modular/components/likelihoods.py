@@ -74,96 +74,102 @@ class PiecewiseActivationPoissonLikelihoodModel:
         Returns:
             Updated context dictionary with likelihood information
         """
-        # Validate context
-        validation_result = validate_context(
-            self.__class__.__name__,
-            context,
-            required_keys=["u_obs", "s_obs", "u_expected", "s_expected"],
-            tensor_keys=["u_obs", "s_obs", "u_expected", "s_expected"],
-        )
+        # Extract expected values from context (always required)
+        u_expected = context["u_expected"]  # SCALED u_expected from model
+        s_expected = context["s_expected"]  # SCALED s_expected from model
+        
+        # Extract observations from context (may be None for posterior predictive sampling)
+        u_obs = context.get("u_obs")
+        s_obs = context.get("s_obs")
 
-        if validation_result:
-            # Extract required values from context
-            u_obs = context["u_obs"]
-            s_obs = context["s_obs"]
-            u_expected = context["u_expected"]  # SCALED u_expected from model
-            s_expected = context["s_expected"]  # SCALED s_expected from model
+        # NOTE: Scaling is now applied in the model before likelihood
+        # The u_expected and s_expected values are already scaled
+        # Handle the case where u_expected/s_expected have shape [N, 1, G] from dynamics model
+        if u_expected.dim() == 3 and u_expected.shape[1] == 1:
+            # Remove the middle dimension: [N, 1, G] -> [N, G]
+            u_expected = u_expected.squeeze(1)
+            s_expected = s_expected.squeeze(1)
 
-            # NOTE: Scaling is now applied in the model before likelihood
-            # The u_expected and s_expected values are already scaled
-            # Handle the case where u_expected/s_expected have shape [N, 1, G] from dynamics model
-            if u_expected.dim() == 3 and u_expected.shape[1] == 1:
-                # Remove the middle dimension: [N, 1, G] -> [N, G]
-                u_expected = u_expected.squeeze(1)
-                s_expected = s_expected.squeeze(1)
+        u_rate = u_expected
+        s_rate = s_expected
 
-            u_rate = u_expected
-            s_rate = s_expected
+        # Ensure all rate values are positive (required for Poisson distribution)
+        epsilon = 1e-6
+        u_rate = torch.maximum(u_rate, torch.tensor(epsilon))
+        s_rate = torch.maximum(s_rate, torch.tensor(epsilon))
 
-            # Ensure all rate values are positive (required for Poisson distribution)
-            epsilon = 1e-6
-            u_rate = torch.maximum(u_rate, torch.tensor(epsilon))
-            s_rate = torch.maximum(s_rate, torch.tensor(epsilon))
+        # Handle different tensor dimensions for training vs posterior sampling
+        if u_rate.dim() == 2:  # [N, G] - standard training case
+            n_cells, n_genes = u_rate.shape
+        elif u_rate.dim() == 4:  # [1, 1, N, G] - SVI posterior sampling case
+            # Extract the actual dimensions and reshape
+            n_cells, n_genes = u_rate.shape[-2], u_rate.shape[-1]
+            u_rate = u_rate.squeeze(0).squeeze(0)  # [N, G]
+            s_rate = s_rate.squeeze(0).squeeze(0)  # [N, G]
+        elif u_rate.dim() == 3:  # [1, N, G] or [B, N, G] - other posterior sampling cases
+            if u_rate.shape[0] == 1:
+                # [1, N, G] case - squeeze the batch dimension
+                n_cells, n_genes = u_rate.shape[1], u_rate.shape[2]
+                u_rate = u_rate.squeeze(0)  # [N, G]
+                s_rate = s_rate.squeeze(0)  # [N, G]
+            else:
+                # [B, N, G] case with B > 1 - handle batch dimension for prior predictive sampling
+                n_cells, n_genes = u_rate.shape[1], u_rate.shape[2]
+                # Use only the first sample from the batch for likelihood evaluation
+                u_rate = u_rate[0]  # [N, G]
+                s_rate = s_rate[0]  # [N, G]
+        else:
+            raise ValueError(f"PiecewiseActivationPoissonLikelihoodModel expects 2D, 3D, or 4D tensors, got {u_rate.shape}")
 
+        # Create Poisson distributions
+        u_dist = pyro.distributions.Poisson(rate=u_rate)
+        s_dist = pyro.distributions.Poisson(rate=s_rate)
+
+        # Handle observations: if None (posterior predictive), sample; if provided, observe
+        if u_obs is not None and s_obs is not None:
+            # Training/inference case: observe the provided data
             # Ensure observations are integers for Poisson distribution
             u_obs_int = u_obs.round().long()
             s_obs_int = s_obs.round().long()
-
-            # Handle different tensor dimensions for training vs posterior sampling
-            if u_rate.dim() == 2:  # [N, G] - standard training case
-                n_cells, n_genes = u_rate.shape
-            elif u_rate.dim() == 4:  # [1, 1, N, G] - SVI posterior sampling case
-                # Extract the actual dimensions and reshape
-                n_cells, n_genes = u_rate.shape[-2], u_rate.shape[-1]
-                u_rate = u_rate.squeeze(0).squeeze(0)  # [N, G]
-                s_rate = s_rate.squeeze(0).squeeze(0)  # [N, G]
-                u_obs_int = u_obs_int.squeeze(0).squeeze(0) if u_obs_int.dim() > 2 else u_obs_int
-                s_obs_int = s_obs_int.squeeze(0).squeeze(0) if s_obs_int.dim() > 2 else s_obs_int
-            elif u_rate.dim() == 3:  # [1, N, G] or [B, N, G] - other posterior sampling cases
-                if u_rate.shape[0] == 1:
-                    # [1, N, G] case - squeeze the batch dimension
-                    n_cells, n_genes = u_rate.shape[1], u_rate.shape[2]
-                    u_rate = u_rate.squeeze(0)  # [N, G]
-                    s_rate = s_rate.squeeze(0)  # [N, G]
-                    u_obs_int = u_obs_int.squeeze(0) if u_obs_int.dim() > 2 else u_obs_int
-                    s_obs_int = s_obs_int.squeeze(0) if s_obs_int.dim() > 2 else s_obs_int
-                else:
-                    # [B, N, G] case with B > 1 - handle batch dimension for prior predictive sampling
-                    n_cells, n_genes = u_rate.shape[1], u_rate.shape[2]
-                    # Use only the first sample from the batch for likelihood evaluation
-                    u_rate = u_rate[0]  # [N, G]
-                    s_rate = s_rate[0]  # [N, G]
-                    u_obs_int = u_obs_int[0] if u_obs_int.dim() > 2 else u_obs_int
-                    s_obs_int = s_obs_int[0] if s_obs_int.dim() > 2 else s_obs_int
-            else:
-                raise ValueError(f"PiecewiseActivationPoissonLikelihoodModel expects 2D, 3D, or 4D tensors, got {u_rate.shape}")
-
-            # Create Poisson distributions
-            u_dist = pyro.distributions.Poisson(rate=u_rate)
-            s_dist = pyro.distributions.Poisson(rate=s_rate)
-
+            
+            # Handle tensor dimensions for observations
+            if u_obs_int.dim() > 2:
+                u_obs_int = u_obs_int.squeeze()
+                s_obs_int = s_obs_int.squeeze()
+            
             # Use context-specific plate names to avoid conflicts with prior plates
-            # while maintaining the same mathematical structure and dimensions
             with pyro.plate("obs_cells", n_cells, dim=-2):
                 with pyro.plate("obs_genes", n_genes, dim=-1):
                     # Observe data
-                    pyro.sample("u_obs", u_dist, obs=u_obs_int)
-                    pyro.sample("s_obs", s_dist, obs=s_obs_int)
-
+                    u_obs_sampled = pyro.sample("u_obs", u_dist, obs=u_obs_int)
+                    s_obs_sampled = pyro.sample("s_obs", s_dist, obs=s_obs_int)
+        else:
+            # Posterior predictive case: generate new observations
+            with pyro.plate("obs_cells", n_cells, dim=-2):
+                with pyro.plate("obs_genes", n_genes, dim=-1):
+                    # Sample new observations from the distributions
+                    u_obs_sampled = pyro.sample("u_obs", u_dist)
+                    s_obs_sampled = pyro.sample("s_obs", s_dist)
+            
+            # Update context with generated observations
+            context["u_obs"] = u_obs_sampled
+            context["s_obs"] = s_obs_sampled
+            
             # Compute and store log probabilities for debugging and validation
+            log_prob_u = u_dist.log_prob(u_obs_sampled.long())
+            log_prob_s = s_dist.log_prob(s_obs_sampled.long())
+        
+        # Add distributions and log probabilities to context (for both cases)
+        context["u_dist"] = u_dist
+        context["s_dist"] = s_dist
+        if 'log_prob_u' not in locals():
+            # Compute log probabilities for training case
             log_prob_u = u_dist.log_prob(u_obs_int)
             log_prob_s = s_dist.log_prob(s_obs_int)
+        context["log_prob_u"] = log_prob_u
+        context["log_prob_s"] = log_prob_s
 
-            # Add distributions and log probabilities to context
-            context["u_dist"] = u_dist
-            context["s_dist"] = s_dist
-            context["log_prob_u"] = log_prob_u
-            context["log_prob_s"] = log_prob_s
-
-            return context
-        else:
-            # If validation failed, raise an error
-            raise ValueError(f"Error in piecewise activation likelihood model forward pass: validation failed")
+        return context
 
     def __call__(
         self,

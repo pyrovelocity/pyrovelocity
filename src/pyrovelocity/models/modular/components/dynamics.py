@@ -114,41 +114,52 @@ class PiecewiseActivationDynamicsModel:
             Updated context dictionary with the same outputs as original forward method
         """
         import pyro
-        # Validate context (same validation as original method)
+        # Validate context - dynamics only needs parameters, not observations
+        # u_obs and s_obs are never needed by dynamics (only by likelihood)
         validation_result = validate_context(
             self.__class__.__name__,
             context,
             required_keys=[
-                "u_obs", "s_obs", "R_on", "gamma_star",
-                "t_on_star", "delta_star", "t_star"
+                "R_on", "gamma_star", "t_on_star", "delta_star", "t_star"
             ],
             tensor_keys=[
-                "u_obs", "s_obs", "R_on", "gamma_star",
-                "t_on_star", "delta_star", "t_star"
+                "R_on", "gamma_star", "t_on_star", "delta_star", "t_star"
             ],
         )
 
         if validation_result:
             # Extract required values from context
-            u_obs = context["u_obs"]
-            s_obs = context["s_obs"]
             R_on = context["R_on"]
             gamma_star = context["gamma_star"]
             t_on_star = context["t_on_star"]
             delta_star = context["delta_star"]
             t_star = context["t_star"]
             
-            # Determine dimensions first
-            if u_obs.dim() == 3:
-                # Has batch dimension
-                n_batch = u_obs.shape[0]
-                n_cells = u_obs.shape[1]
-                n_genes = u_obs.shape[2]
-            else:
-                # No batch dimension
+            # Get dimensions - handle predictive sampling case where observations are None
+            u_obs = context.get("u_obs")
+            s_obs = context.get("s_obs")
+            
+            if u_obs is not None and s_obs is not None:
+                # Normal case: get dimensions from observations
+                if u_obs.dim() == 3:
+                    # Has batch dimension
+                    n_batch = u_obs.shape[0]
+                    n_cells = u_obs.shape[1]
+                    n_genes = u_obs.shape[2]
+                else:
+                    # No batch dimension
+                    n_batch = None
+                    n_cells = u_obs.shape[0]
+                    n_genes = u_obs.shape[1]
+            elif "num_cells" in context and "num_genes" in context:
+                # Predictive sampling case: get dimensions from context
+                n_cells = context["num_cells"]
+                n_genes = context["num_genes"]
                 n_batch = None
-                n_cells = u_obs.shape[0]
-                n_genes = u_obs.shape[1]
+            else:
+                raise ValueError(
+                    "Either both u_obs and s_obs must be provided, or num_cells and num_genes must be specified in context"
+                )
 
             # Ensure gene parameters have shape [n_genes]
             n_genes_expected = n_genes

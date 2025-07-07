@@ -192,17 +192,22 @@ class PiecewiseActivationPriorModel:
         u_obs = context.get("u_obs")
         s_obs = context.get("s_obs")
 
-        if u_obs is None or s_obs is None:
+        # Get dimensions - handle predictive sampling case where observations are None
+        if u_obs is not None and s_obs is not None:
+            # Normal case: get dimensions from observations
+            n_cells = u_obs.shape[0]
+            n_genes = u_obs.shape[1]
+        elif "num_cells" in context and "num_genes" in context:
+            # Predictive sampling case: get dimensions from context
+            n_cells = context["num_cells"]
+            n_genes = context["num_genes"]
+        else:
             raise ValueError(
-                "Both u_obs and s_obs must be provided in the context"
+                "Either both u_obs and s_obs must be provided, or num_cells and num_genes must be specified in context"
             )
 
         # Extract any additional parameters from context
         include_prior = context.get("include_prior", True)
-
-        # Get dimensions
-        n_cells = u_obs.shape[0]
-        n_genes = u_obs.shape[1]
 
         # Create a dictionary to store sampled parameters
         params = {}
