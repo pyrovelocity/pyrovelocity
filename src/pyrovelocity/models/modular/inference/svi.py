@@ -181,9 +181,8 @@ def extract_posterior_samples(
     Returns:
         Dictionary of posterior samples with properly constrained parameters
     """
-    # Set seed if provided
-    if seed is not None:
-        pyro.set_rng_seed(seed)
+    # Let the global RNG state continue from top-level script setting
+    # Don't reset seed here as it would reset RNG state and cause identical samples
 
     # For all guide types, create a predictive object
     # First, get samples from the guide (latent variables)
@@ -215,14 +214,30 @@ def extract_posterior_samples(
         kwargs = model_kwargs or {}
 
         # Create unconditioned version of the model arguments
-        # Remove observation conditioning by creating dummy observations with the right shape
+        # Remove observation conditioning by excluding observation sites entirely
+        # This ensures they are None when passed to the model, triggering sample generation
         unconditioned_kwargs = {}
+        u_obs_shape = None
+        s_obs_shape = None
+        
         for key, value in kwargs.items():
-            if key in ['u_obs', 's_obs'] and isinstance(value, torch.Tensor):
-                # Create dummy observations with the same shape but don't condition on them
-                unconditioned_kwargs[key] = torch.zeros_like(value)
+            if key in ['u_obs', 's_obs']:
+                # Store the observation shapes for dimension inference
+                if key == 'u_obs' and isinstance(value, torch.Tensor):
+                    u_obs_shape = value.shape
+                elif key == 's_obs' and isinstance(value, torch.Tensor):
+                    s_obs_shape = value.shape
+                # Skip observation sites entirely - they should be None for predictive sampling
+                continue
             else:
                 unconditioned_kwargs[key] = value
+        
+        # Add num_cells and num_genes if we removed observations
+        if u_obs_shape is not None and s_obs_shape is not None:
+            # Use the observation shapes to infer dimensions
+            if len(u_obs_shape) >= 2 and len(s_obs_shape) >= 2:
+                unconditioned_kwargs["num_cells"] = u_obs_shape[-2]
+                unconditioned_kwargs["num_genes"] = u_obs_shape[-1]
 
         # Use pyro.poutine.uncondition to remove observation conditioning
         unconditioned_model = pyro.poutine.uncondition(model_fn)
@@ -362,11 +377,8 @@ def run_svi_inference(
     if config is None:
         config = InferenceConfig()
 
-    # Set seed if provided
-    if seed is not None:
-        pyro.set_rng_seed(seed)
-    elif config.seed is not None:
-        pyro.set_rng_seed(config.seed)
+    # Let the global RNG state continue from top-level script setting
+    # Don't reset seed here as it would reset RNG state and cause identical samples
 
     # Create SVI object
     svi = create_svi(
@@ -382,7 +394,16 @@ def run_svi_inference(
     state = TrainingState(step=0)
 
     # Run SVI for the specified number of epochs
-    for _ in range(config.num_epochs):
+    print(f"🚀 Starting SVI training for {config.num_epochs} epochs...")
+    
+    try:
+        from tqdm import tqdm
+        epoch_iterator = tqdm(range(config.num_epochs), desc="SVI Training")
+    except ImportError:
+        epoch_iterator = range(config.num_epochs)
+        print("📊 Training progress (tqdm not available):")
+    
+    for epoch in epoch_iterator:
 
 
         # Perform a single SVI step

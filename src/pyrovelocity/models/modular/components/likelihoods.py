@@ -145,6 +145,7 @@ class PiecewiseActivationPoissonLikelihoodModel:
                     s_obs_sampled = pyro.sample("s_obs", s_dist, obs=s_obs_int)
         else:
             # Posterior predictive case: generate new observations
+            
             with pyro.plate("obs_cells", n_cells, dim=-2):
                 with pyro.plate("obs_genes", n_genes, dim=-1):
                     # Sample new observations from the distributions
@@ -334,6 +335,5 @@ class PiecewiseActivationPoissonLikelihoodModel:
 
         # Create Poisson distribution and sample
         distribution = torch.distributions.Poisson(rate=rate)
-        # Set a fixed seed for reproducibility
-        torch.manual_seed(0)
+        # Let PyTorch use the global RNG state set at the top level
         return distribution.sample()

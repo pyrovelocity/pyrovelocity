@@ -123,11 +123,8 @@ def run_inference(
     if config is None:
         config = InferenceConfig()
 
-    # Set seed if provided
-    if seed is not None:
-        pyro.set_rng_seed(seed)
-    elif config.seed is not None:
-        pyro.set_rng_seed(config.seed)
+    # Let the global RNG state continue from top-level script setting
+    # Don't reset seed here as it would reset RNG state and cause identical samples
 
     # Run inference based on method
     if config.method == "svi":
@@ -247,9 +244,8 @@ def posterior_predictive(
     if kwargs is None:
         kwargs = {}
 
-    # Set seed if provided
-    if seed is not None:
-        pyro.set_rng_seed(seed)
+    # Let the global RNG state continue from top-level script setting
+    # Don't reset seed here as it would reset RNG state and cause identical samples
 
     # Determine number of samples
     if num_samples is None:

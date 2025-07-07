@@ -94,11 +94,8 @@ def run_mcmc_inference(
     if config is None:
         config = InferenceConfig(method="mcmc")
 
-    # Set seed if provided
-    if seed is not None:
-        pyro.set_rng_seed(seed)
-    elif config.seed is not None:
-        pyro.set_rng_seed(config.seed)
+    # Let the global RNG state continue from top-level script setting
+    # Don't reset seed here as it would reset RNG state and cause identical samples
 
     # Create kernel based on config
     if config.kernel.lower() == "nuts":

@@ -753,11 +753,22 @@ class PyroVelocityModel:
         # Run predictive to get deterministic sites (ut, st) automatically
         model_samples = predictive(**observations)
 
-        # 4. Combine posterior samples with deterministic sites
-        # Deterministic sites from model take precedence
-        posterior_samples = {**posterior_samples, **model_samples}
+        # 4. Filter model_samples to only include actual parameters, not observations or derived quantities
+        # This ensures posterior_samples only contains parameters for proper predictive sampling
+        observation_sites = {"u_obs", "s_obs"}  # Observation sites to exclude
+        derived_sites = {"u_expected", "s_expected"}  # Derived quantities to exclude
+        sites_to_exclude = observation_sites | derived_sites
+        
+        filtered_model_samples = {
+            k: v for k, v in model_samples.items() 
+            if k not in sites_to_exclude
+        }
+        
+        # 5. Combine posterior samples with filtered deterministic sites
+        # Filtered deterministic sites from model take precedence
+        posterior_samples = {**posterior_samples, **filtered_model_samples}
 
-        # 5. Return in requested format
+        # 6. Return in requested format
         if return_tensors:
             return posterior_samples
         else:
@@ -907,6 +918,15 @@ class PyroVelocityModel:
                     # Multiple posterior samples - CORRECTED APPROACH: Sample-wise generation
                     num_posterior_samples = max(sample_sizes)
                     print(f"  🔄 Generating {num_posterior_samples} posterior predictive samples (sample-wise generation)...")
+                    
+                    # DEBUG: Check if posterior parameters vary
+                    print("\n🔍 Checking posterior parameter variability:")
+                    for key, value in samples.items():
+                        if isinstance(value, torch.Tensor) and value.shape[0] >= 2:
+                            if value.numel() > 0:  # Check tensor has elements
+                                diff = (value[0].float() - value[1].float()).abs().mean().item()
+                                print(f"  {key}: diff between samples 0 and 1 = {diff:.6f}")
+
 
                     # Limit samples for computational efficiency
                     max_samples_to_use = min(num_posterior_samples, 30)
@@ -929,27 +949,27 @@ class PyroVelocityModel:
                             for key, value in single_sample.items():
                                 if hasattr(value, 'shape'):
                                     print(f"  {key}: {value.shape}")
-
-                        # FIXED: Use Pyro's Predictive with the original model (matching JAX pattern exactly)
-                        # This preserves the full model's stochastic structure and likelihood sampling
                         
-                        # Generate single observation from this parameter sample using Pyro's Predictive
-                        # Match JAX approach exactly: Predictive(model, posterior_samples=single_sample, num_samples=1)
+                        # Use Pyro's Predictive with the original model 
+                        # This preserves the full model's stochastic structure and likelihood sampling
+                        print(f"  🔄 Generating sample {sample_idx}/{max_samples_to_use}...")
+                        
+                        # CRITICAL FIX: Don't specify num_samples when posterior_samples are provided
+                        # Predictive will infer num_samples from the batch size of posterior_samples
                         predictive = Predictive(
                             model=self.forward,
                             posterior_samples=single_sample,
-                            num_samples=1,
                             return_sites=None
                         )
                         
-                        # Call with None observations to signal predictive generation (matching JAX)
-                        # JAX calls: predictive(key, u_obs=None, s_obs=None, num_cells=num_cells, num_genes=num_genes)
+                        # Call with None observations to signal predictive generation
                         single_predictive_sample = predictive(
                             u_obs=None,
                             s_obs=None,
                             num_cells=num_cells,
                             num_genes=num_genes
                         )
+                        
 
                         all_predictive_samples.append(single_predictive_sample)
 
@@ -1472,6 +1492,16 @@ class PyroVelocityModel:
             # JAX implementation uses: s_median = np.median(all_s_samples, axis=0).astype(np.int32)
             u_counts_median = np.median(u_counts, axis=0).astype(np.int32)
             s_counts_median = np.median(s_counts, axis=0).astype(np.int32)
+            
+            # DEBUG: Check posterior sample variability
+            print(f"\n🔍 Debugging posterior predictive samples:")
+            print(f"  Samples shape: {u_counts.shape}")
+            print(f"  Spliced std across samples: {np.std(s_counts, axis=0).mean():.4f}")
+            print(f"  Unspliced std across samples: {np.std(u_counts, axis=0).mean():.4f}")
+            print(f"  Spliced median: {s_counts_median.mean():.4f}")
+            print(f"  Sample 0 spliced mean: {s_counts[0].mean():.4f}")
+            print(f"  Sample 1 spliced mean: {s_counts[1].mean():.4f}")
+            print(f"  Are all samples identical? {np.allclose(s_counts[0], s_counts[1])}")
             
             # Create AnnData object with median counts as primary data (matching JAX implementation)
             adata = AnnData(X=s_counts_median.copy())

@@ -461,9 +461,7 @@ class PiecewiseActivationPriorModel:
                 stacklevel=2
             )
 
-        # Set random seed if set_id is provided for reproducibility
-        if set_id is not None:
-            torch.manual_seed(42 + set_id)
+        # Use the global RNG state set at the top level - no need to reset seed here
 
         # Direct sampling without rejection - following JAX implementation pattern
         parameter_samples = {}
