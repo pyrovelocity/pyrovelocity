@@ -930,86 +930,27 @@ class PyroVelocityModel:
                                 if hasattr(value, 'shape'):
                                     print(f"  {key}: {value.shape}")
 
-                        # CRITICAL FIX: Extract t_star from posterior samples (matching JAX pattern)
-                        # t_star is a latent variable we've already inferred, not something to predict
-                        t_star_from_posterior = None
-                        if "t_star" in single_sample:
-                            t_star_tensor = single_sample["t_star"]
-                            # Handle various tensor shapes to extract [n_cells,] dimension
-                            if hasattr(t_star_tensor, 'shape') and len(t_star_tensor.shape) > 0:
-                                # Find the dimension that matches num_cells
-                                for dim_idx in range(len(t_star_tensor.shape)):
-                                    if t_star_tensor.shape[dim_idx] == num_cells:
-                                        # Extract the cell dimension
-                                        if len(t_star_tensor.shape) == 4:  # [batch, 1, 1, cells]
-                                            t_star_from_posterior = t_star_tensor[0, 0, 0, :]
-                                        elif len(t_star_tensor.shape) == 3:  # [batch, 1, cells]
-                                            t_star_from_posterior = t_star_tensor[0, 0, :]
-                                        elif len(t_star_tensor.shape) == 2:  # [batch, cells]
-                                            t_star_from_posterior = t_star_tensor[0, :]
-                                        elif len(t_star_tensor.shape) == 1:  # [cells]
-                                            t_star_from_posterior = t_star_tensor
-                                        break
-                                
-                                # If we still don't have t_star, try flattening and taking first num_cells
-                                if t_star_from_posterior is None:
-                                    flat_tensor = t_star_tensor.flatten()
-                                    if len(flat_tensor) >= num_cells:
-                                        t_star_from_posterior = flat_tensor[:num_cells]
-
-                        # Generate ONE observation from this parameter vector
-                        def single_posterior_predictive_model():
-                            """Model with fixed parameters for single posterior sample."""
-                            # Create dummy observations with the right shape
-                            dummy_u_obs = torch.zeros(num_cells, num_genes)
-                            dummy_s_obs = torch.zeros(num_cells, num_genes)
-
-                            # Create context with observations
-                            context = {
-                                "u_obs": dummy_u_obs,
-                                "s_obs": dummy_s_obs,
-                            }
-
-                            # Add observed times to context if provided
-                            if observed_times is not None:
-                                context["observed_times"] = observed_times
-
-                            # CRITICAL: Use t_star from posterior samples if available
-                            if t_star_from_posterior is not None:
-                                context["t_star"] = t_star_from_posterior
-
-                            # Use single parameter vector (NO AVERAGING)
-                            processed_params = self._process_single_parameter_sample(single_sample, num_cells, num_genes)
-                            
-                            # Log processed parameter shapes for debugging
-                            if sample_idx == 0:
-                                print(f"\n📐 Processed parameter shapes:")
-                                for key, value in processed_params.items():
-                                    if hasattr(value, 'shape'):
-                                        print(f"  {key}: {value.shape}")
-                            
-                            # Don't overwrite t_star if we already have it from posterior
-                            if t_star_from_posterior is not None and "t_star" in processed_params:
-                                processed_params["t_star"] = t_star_from_posterior
-                            context.update(processed_params)
-
-                            # Run dynamics and likelihood model components
-                            dynamics_context = self.dynamics_model.forward(context)
-                            likelihood_context = self.likelihood_model.forward(dynamics_context)
-
-                            return likelihood_context
-
-                        # Generate single observation from this parameter sample
-                        # Use condition instead of uncondition to preserve t_star
-                        if t_star_from_posterior is not None:
-                            # Condition on t_star from posterior samples
-                            conditioned_model = pyro.poutine.condition(single_posterior_predictive_model, data={"t_star": t_star_from_posterior})
-                            predictive = Predictive(conditioned_model, num_samples=1, return_sites=None)
-                        else:
-                            # Fallback to unconditioned model if no t_star available
-                            unconditioned_model = pyro.poutine.uncondition(single_posterior_predictive_model)
-                            predictive = Predictive(unconditioned_model, num_samples=1, return_sites=None)
-                        single_predictive_sample = predictive()
+                        # FIXED: Use Pyro's Predictive with the original model (matching JAX pattern)
+                        # This preserves the full model's stochastic structure and likelihood sampling
+                        
+                        # Create dummy observations with correct shape for the model
+                        dummy_u_obs = torch.zeros(num_cells, num_genes)
+                        dummy_s_obs = torch.zeros(num_cells, num_genes)
+                        
+                        # Generate single observation from this parameter sample using Pyro's Predictive
+                        # This matches the JAX approach: Predictive(model, posterior_samples=single_sample, num_samples=1)
+                        predictive = Predictive(
+                            model=self.forward,
+                            posterior_samples=single_sample,
+                            num_samples=1,
+                            return_sites=None
+                        )
+                        
+                        # Call with dummy observations (which will be unconditioned for generation)
+                        single_predictive_sample = predictive(
+                            u_obs=dummy_u_obs,
+                            s_obs=dummy_s_obs
+                        )
 
                         all_predictive_samples.append(single_predictive_sample)
 
@@ -1017,43 +958,27 @@ class PyroVelocityModel:
                     predictive_samples = self._combine_predictive_samples(all_predictive_samples)
 
                 else:
-                    # Single parameter set (backward compatibility): use existing logic
-                    def posterior_predictive_model():
-                        """Model with fixed parameters for posterior predictive sampling."""
-                        # Create dummy observations with the right shape
-                        dummy_u_obs = torch.zeros(num_cells, num_genes)
-                        dummy_s_obs = torch.zeros(num_cells, num_genes)
-
-                        # Create context with observations
-                        context = {
-                            "u_obs": dummy_u_obs,
-                            "s_obs": dummy_s_obs,
-                        }
-
-                        # Add observed times to context if provided
-                        if observed_times is not None:
-                            context["observed_times"] = observed_times
-
-                        # Add fixed parameter values to context with simplified processing
-                        context.update(self._process_parameter_samples(samples, num_cells, num_genes))
-
-                        # Skip prior sampling and go directly to dynamics and likelihood
-                        dynamics_context = self.dynamics_model.forward(context)
-                        likelihood_context = self.likelihood_model.forward(dynamics_context)
-
-                        return likelihood_context
-
-                    # Use unconditioned version to generate observations
-                    unconditioned_posterior_model = pyro.poutine.uncondition(posterior_predictive_model)
-
-                    # Generate samples
+                    # Single parameter set: use same Predictive approach for consistency
+                    print(f"  🔄 Generating single posterior predictive sample...")
+                    
+                    # Create dummy observations with correct shape for the model
+                    dummy_u_obs = torch.zeros(num_cells, num_genes)
+                    dummy_s_obs = torch.zeros(num_cells, num_genes)
+                    
+                    # Use Pyro's Predictive with the original model and posterior samples
+                    # This ensures consistency with the multi-sample path and JAX implementation
                     predictive = Predictive(
-                        unconditioned_posterior_model,
-                        num_samples=1,  # Generate one sample with fixed parameters
-                        return_sites=None,
+                        model=self.forward,
+                        posterior_samples=samples,
+                        num_samples=1,
+                        return_sites=None
                     )
-
-                    predictive_samples = predictive()
+                    
+                    # Call with dummy observations (which will be unconditioned for generation)
+                    predictive_samples = predictive(
+                        u_obs=dummy_u_obs,
+                        s_obs=dummy_s_obs
+                    )
             else:
                 raise ValueError("samples must be a dictionary of parameter values")
 
