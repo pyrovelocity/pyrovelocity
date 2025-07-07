@@ -222,7 +222,7 @@ class PiecewiseActivationPriorModel:
         observed_times = context.get("observed_times")
 
         # Sample cell-specific parameters (time and capture efficiency)
-        with pyro.plate(f"{self.name}_cells_plate", n_cells):
+        with pyro.plate("cells", n_cells, dim=-2):
             if observed_times is not None:
                 # Use observed times directly for coherent trajectory sampling
                 # Convert to normalized coordinates to maintain consistency
@@ -234,7 +234,7 @@ class PiecewiseActivationPriorModel:
                 # Simple uniform prior for temporal coordinates (matching JAX implementation)
                 t_star_normalized = pyro.sample(
                     "t_star_normalized",
-                    dist.Uniform(0.0, 1.0).expand([n_cells]).mask(include_prior),
+                    dist.Uniform(0.0, 1.0).mask(include_prior),
                 )
 
             # Sample capture efficiency parameters (per cell)
@@ -261,7 +261,7 @@ class PiecewiseActivationPriorModel:
         params["t_star_normalized"] = t_star_normalized
 
         # Sample piecewise activation parameters (per gene)
-        with pyro.plate(f"{self.name}_genes_plate", n_genes):
+        with pyro.plate("genes", n_genes, dim=-1):
             # Fixed basal transcription rate (reference state)
             alpha_off = torch.ones(n_genes)  # Fixed at 1.0, not inferred
             params["alpha_off"] = alpha_off
@@ -309,8 +309,6 @@ class PiecewiseActivationPriorModel:
             )
             params["delta_star"] = delta_star
 
-        # Sample remaining gene-specific parameters
-        with pyro.plate(f"{self.name}_genes_plate_2", n_genes):
             # Characteristic concentration scale
             U_0i = pyro.sample(
                 "U_0i",

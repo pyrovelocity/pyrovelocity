@@ -366,6 +366,34 @@ class PyroVelocityModel:
 
         # Process through the dynamics model with the parameters from the prior model
         dynamics_context = self.dynamics_model.forward(prior_context)
+        
+        # Apply scaling to dynamics outputs before likelihood (matching JAX implementation)
+        if "u_expected" in dynamics_context and "s_expected" in dynamics_context:
+            u_expected = dynamics_context["u_expected"]
+            s_expected = dynamics_context["s_expected"]
+            
+            # Extract scaling parameters
+            lambda_j = dynamics_context.get("lambda_j")
+            U_0i = dynamics_context.get("U_0i")
+            
+            if lambda_j is not None and U_0i is not None:
+                # Apply scaling: rate = lambda_j * U_0i * expected
+                lambda_j_expanded = lambda_j.unsqueeze(-1)  # [N, 1]
+                U_0i_expanded = U_0i.unsqueeze(0)  # [1, G]
+                u_expected_scaled = lambda_j_expanded * U_0i_expanded * u_expected
+                s_expected_scaled = lambda_j_expanded * U_0i_expanded * s_expected
+                
+            else:
+                u_expected_scaled = u_expected
+                s_expected_scaled = s_expected
+            
+            # Register scaled values as deterministic (matching JAX)
+            pyro.deterministic("u_expected", u_expected_scaled)
+            pyro.deterministic("s_expected", s_expected_scaled)
+            
+            # Update context with scaled values
+            dynamics_context["u_expected"] = u_expected_scaled
+            dynamics_context["s_expected"] = s_expected_scaled
 
         # Apply likelihood model (which now handles data preprocessing)
         likelihood_context = self.likelihood_model.forward(dynamics_context)
@@ -824,22 +852,17 @@ class PyroVelocityModel:
             dummy_u_obs = torch.zeros(num_cells, num_genes)
             dummy_s_obs = torch.zeros(num_cells, num_genes)
 
-            # Create context with observations
-            context = {
-                "u_obs": dummy_u_obs,
-                "s_obs": dummy_s_obs,
-            }
-
-            # Add observed times to context if provided
+            # Add observed times if provided
+            kwargs = {}
             if observed_times is not None:
-                context["observed_times"] = observed_times
+                kwargs["observed_times"] = observed_times
 
-            # Run the full model pipeline with context
-            prior_context = self.prior_model.forward(context)
-            dynamics_context = self.dynamics_model.forward(prior_context)
-            likelihood_context = self.likelihood_model.forward(dynamics_context)
-
-            return likelihood_context
+            # Use the main forward method which now handles scaling correctly
+            return self.forward(
+                u_obs=dummy_u_obs,
+                s_obs=dummy_s_obs,
+                **kwargs
+            )
 
         # First uncondition observations, then apply conditioning if specified
         unconditioned_model = pyro.poutine.uncondition(create_predictive_model)

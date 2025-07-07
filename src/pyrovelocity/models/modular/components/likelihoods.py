@@ -78,52 +78,27 @@ class PiecewiseActivationPoissonLikelihoodModel:
         validation_result = validate_context(
             self.__class__.__name__,
             context,
-            required_keys=["u_obs", "s_obs", "ut", "st"],
-            tensor_keys=["u_obs", "s_obs", "ut", "st"],
+            required_keys=["u_obs", "s_obs", "u_expected", "s_expected"],
+            tensor_keys=["u_obs", "s_obs", "u_expected", "s_expected"],
         )
 
         if validation_result:
             # Extract required values from context
             u_obs = context["u_obs"]
             s_obs = context["s_obs"]
-            ut = context["ut"]  # u*_{ij} - latent dimensionless unspliced
-            st = context["st"]  # s*_{ij} - latent dimensionless spliced
+            u_expected = context["u_expected"]  # SCALED u_expected from model
+            s_expected = context["s_expected"]  # SCALED s_expected from model
 
-            # Extract scaling parameters
-            lambda_j = context.get("lambda_j")  # Cell-specific capture efficiency
-            U_0i = context.get("U_0i")  # Gene-specific concentration scale
+            # NOTE: Scaling is now applied in the model before likelihood
+            # The u_expected and s_expected values are already scaled
+            # Handle the case where u_expected/s_expected have shape [N, 1, G] from dynamics model
+            if u_expected.dim() == 3 and u_expected.shape[1] == 1:
+                # Remove the middle dimension: [N, 1, G] -> [N, G]
+                u_expected = u_expected.squeeze(1)
+                s_expected = s_expected.squeeze(1)
 
-            # Calculate rate parameters according to mathematical specification
-            # u_{ij} ∼ Poisson(λ_j · U_{0i} · u*_{ij})
-            # s_{ij} ∼ Poisson(λ_j · U_{0i} · s*_{ij})
-
-            if lambda_j is not None and U_0i is not None:
-                # Handle the case where ut/st have shape [N, 1, G] from dynamics model
-                if ut.dim() == 3 and ut.shape[1] == 1:
-                    # Remove the middle dimension: [N, 1, G] -> [N, G]
-                    ut = ut.squeeze(1)
-                    st = st.squeeze(1)
-
-                # Now ut, st should be [N, G]
-                # lambda_j should be [N], U_0i should be [G]
-
-                # Reshape for broadcasting: lambda_j [N] -> [N, 1], U_0i [G] -> [1, G]
-                lambda_j_expanded = lambda_j.unsqueeze(-1)  # [N, 1]
-                U_0i_expanded = U_0i.unsqueeze(0)  # [1, G]
-
-                # Compute rates with proper broadcasting: [N, 1] * [1, G] * [N, G] = [N, G]
-                u_rate = lambda_j_expanded * U_0i_expanded * ut
-                s_rate = lambda_j_expanded * U_0i_expanded * st
-            else:
-                # Fallback: use latent concentrations directly as rates
-                # Handle the case where ut/st have shape [N, 1, G] from dynamics model
-                if ut.dim() == 3 and ut.shape[1] == 1:
-                    # Remove the middle dimension: [N, 1, G] -> [N, G]
-                    ut = ut.squeeze(1)
-                    st = st.squeeze(1)
-
-                u_rate = ut
-                s_rate = st
+            u_rate = u_expected
+            s_rate = s_expected
 
             # Ensure all rate values are positive (required for Poisson distribution)
             epsilon = 1e-6
@@ -153,7 +128,13 @@ class PiecewiseActivationPoissonLikelihoodModel:
                     u_obs_int = u_obs_int.squeeze(0) if u_obs_int.dim() > 2 else u_obs_int
                     s_obs_int = s_obs_int.squeeze(0) if s_obs_int.dim() > 2 else s_obs_int
                 else:
-                    raise ValueError(f"PiecewiseActivationPoissonLikelihoodModel cannot handle batch dimension > 1, got {u_rate.shape}")
+                    # [B, N, G] case with B > 1 - handle batch dimension for prior predictive sampling
+                    n_cells, n_genes = u_rate.shape[1], u_rate.shape[2]
+                    # Use only the first sample from the batch for likelihood evaluation
+                    u_rate = u_rate[0]  # [N, G]
+                    s_rate = s_rate[0]  # [N, G]
+                    u_obs_int = u_obs_int[0] if u_obs_int.dim() > 2 else u_obs_int
+                    s_obs_int = s_obs_int[0] if s_obs_int.dim() > 2 else s_obs_int
             else:
                 raise ValueError(f"PiecewiseActivationPoissonLikelihoodModel expects 2D, 3D, or 4D tensors, got {u_rate.shape}")
 
@@ -161,9 +142,10 @@ class PiecewiseActivationPoissonLikelihoodModel:
             u_dist = pyro.distributions.Poisson(rate=u_rate)
             s_dist = pyro.distributions.Poisson(rate=s_rate)
 
-            # Use standard plates without batch dimension
-            with pyro.plate("cells_likelihood", n_cells, dim=-2):
-                with pyro.plate("genes_likelihood", n_genes, dim=-1):
+            # Use context-specific plate names to avoid conflicts with prior plates
+            # while maintaining the same mathematical structure and dimensions
+            with pyro.plate("obs_cells", n_cells, dim=-2):
+                with pyro.plate("obs_genes", n_genes, dim=-1):
                     # Observe data
                     pyro.sample("u_obs", u_dist, obs=u_obs_int)
                     pyro.sample("s_obs", s_dist, obs=s_obs_int)

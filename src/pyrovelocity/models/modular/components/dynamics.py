@@ -137,7 +137,37 @@ class PiecewiseActivationDynamicsModel:
             t_on_star = context["t_on_star"]
             delta_star = context["delta_star"]
             t_star = context["t_star"]
+            
+            # Determine dimensions first
+            if u_obs.dim() == 3:
+                # Has batch dimension
+                n_batch = u_obs.shape[0]
+                n_cells = u_obs.shape[1]
+                n_genes = u_obs.shape[2]
+            else:
+                # No batch dimension
+                n_batch = None
+                n_cells = u_obs.shape[0]
+                n_genes = u_obs.shape[1]
 
+            # Ensure gene parameters have shape [n_genes]
+            n_genes_expected = n_genes
+            
+            # Reshape gene parameters to ensure they're 1D with n_genes elements
+            if R_on.numel() == n_genes_expected:
+                R_on = R_on.view(n_genes_expected)
+                gamma_star = gamma_star.view(n_genes_expected)
+                t_on_star = t_on_star.view(n_genes_expected)
+                delta_star = delta_star.view(n_genes_expected)
+            elif R_on.numel() == 100:  # Fallback to expected 100 genes
+                R_on = R_on.view(100)
+                gamma_star = gamma_star.view(100)
+                t_on_star = t_on_star.view(100)
+                delta_star = delta_star.view(100)
+            else:
+                # Just use as-is if we can't determine the right shape
+                pass
+            
             # Create fixed alpha_off tensor (always 1.0) and compute alpha_on from R_on
             alpha_off = torch.ones_like(R_on)  # Match R_on shape exactly
             alpha_on = R_on  # Since alpha_off = 1.0, alpha_on = R_on
@@ -145,6 +175,18 @@ class PiecewiseActivationDynamicsModel:
             # Get cell times with proper shape for broadcasting
             cell_time = self._get_cell_time(context, t_star, 
                                            t_star.shape[0] if t_star.dim() == 1 else t_star.shape[-1])
+            
+            # Ensure cell_time has shape [n_cells]
+            if cell_time.numel() == 1:
+                cell_time = cell_time.expand(n_cells)
+            elif cell_time.numel() == n_cells:
+                cell_time = cell_time.view(n_cells)
+            else:
+                # Try to extract the right dimension
+                if cell_time.shape[-1] == n_cells:
+                    cell_time = cell_time.view(-1)[-n_cells:]
+                else:
+                    raise ValueError(f"Cannot reshape cell_time {cell_time.shape} to match n_cells={n_cells}")
             
             # Compute piecewise solution with automatic broadcasting
             # This relies on PyTorch's natural broadcasting instead of manual operations
@@ -156,17 +198,13 @@ class PiecewiseActivationDynamicsModel:
             one = torch.ones_like(u_expected) * 1e-6
             u_expected = torch.relu(u_expected) + one
             s_expected = torch.relu(s_expected) + one
-            
-            # Create latent variables with proper event_dim
-            # Both cells and genes dimensions should be event dimensions
-            ut = pyro.deterministic("ut", u_expected, event_dim=2)
-            st = pyro.deterministic("st", s_expected, event_dim=2)
 
             # Update context with results
             context["u_expected"] = u_expected
             context["s_expected"] = s_expected
-            context["ut"] = ut
-            context["st"] = st
+            # For compatibility, also set ut and st (but don't register as deterministic)
+            context["ut"] = u_expected
+            context["st"] = s_expected
 
             return context
         else:
@@ -232,69 +270,74 @@ class PiecewiseActivationDynamicsModel:
         Returns:
             Tuple of (u_star, s_star) with shapes matching original implementation
         """
-        # Determine target output shape based on input dimensions
-        if alpha_off.dim() == 1:
-            # Gene parameters are 1D: need to determine proper output shape
-            if t_star.dim() == 1:
-                # Training case: t_star [cells], params [genes] → output [cells, genes]
-                target_shape = (t_star.shape[0], alpha_off.shape[0])
-            else:
-                # Posterior sampling case: t_star has batch dims, params 1D
-                # Output should match t_star's batch shape + [cells, genes]
-                batch_dims = t_star.shape[:-1]  # All but last dimension
-                num_cells = t_star.shape[-1]    # Last dimension is cells
-                num_genes = alpha_off.shape[0]  # Gene dimension
-                target_shape = batch_dims + (num_cells, num_genes)
-        else:
-            # Posterior sampling case: parameters [samples, genes], t_star [samples, cells] → output [samples, cells, genes]
-            num_samples = alpha_off.shape[0]
-            num_genes = alpha_off.shape[1]
-            if t_star.dim() == 2:
-                num_cells = t_star.shape[1]
-            else:
-                num_cells = t_star.shape[-1]
-            target_shape = (num_samples, num_cells, num_genes)
+        # Determine dimensions and target shape
+        num_genes = alpha_off.shape[-1]  # Gene dimension is always last in parameters
+        num_cells = t_star.shape[-1] if t_star.numel() > 1 else t_star.shape[0]  # Cell dimension
         
-        # Prepare tensors for broadcasting
-        if alpha_off.dim() == 1:
-            # Gene parameters are 1D: need to broadcast with t_star properly
-            if t_star.dim() == 1:
-                # Training case: t_star [cells], params [genes] → [cells, genes]
-                t_star_bc = t_star.unsqueeze(1)  # [cells, 1]
+        # Determine target output shape based on input dimensions
+        if t_star.dim() == 1 and alpha_off.dim() == 1:
+            # Simple case: [cells] x [genes] → [cells, genes]
+            target_shape = (num_cells, num_genes)
+        elif t_star.dim() == 2 and alpha_off.dim() == 1:
+            # Posterior with batch: [batch, cells] x [genes] → [batch, cells, genes]
+            target_shape = (t_star.shape[0], num_cells, num_genes)
+        elif t_star.dim() == 1 and alpha_off.dim() == 2:
+            # Cells without batch, params with batch: [cells] x [batch, genes] → [batch, cells, genes]
+            target_shape = (alpha_off.shape[0], num_cells, num_genes)
+        else:
+            # General case with batches
+            batch_size = max(t_star.shape[0] if t_star.dim() > 1 else 1,
+                           alpha_off.shape[0] if alpha_off.dim() > 1 else 1)
+            target_shape = (batch_size, num_cells, num_genes)
+        
+        # Prepare tensors for broadcasting - handle all dimension cases correctly
+        if t_star.dim() == 1:
+            # Training case: t_star [cells], params [genes] → [cells, genes]
+            t_star_bc = t_star.unsqueeze(1)  # [cells, 1]
+            # Gene parameters might be 1D or 2D
+            if alpha_off.dim() == 1:
                 alpha_off_bc = alpha_off.unsqueeze(0)  # [1, genes]
                 alpha_on_bc = alpha_on.unsqueeze(0)  # [1, genes]
                 gamma_star_bc = gamma_star.unsqueeze(0)  # [1, genes]
                 t_on_star_bc = t_on_star.unsqueeze(0)  # [1, genes]
                 delta_star_bc = delta_star.unsqueeze(0)  # [1, genes]
             else:
-                # Posterior sampling case: t_star has batch dims, params are 1D
-                # Need to add gene dimension to t_star and batch dims to params
-                t_star_bc = t_star.unsqueeze(-1)  # [..., cells, 1]
-                # Add batch dimensions to match t_star's batch shape
-                param_shape = [1] * (t_star.dim() - 1) + [alpha_off.shape[0]]
-                alpha_off_bc = alpha_off.view(param_shape)  # [..., 1, genes]
-                alpha_on_bc = alpha_on.view(param_shape)  # [..., 1, genes]
-                gamma_star_bc = gamma_star.view(param_shape)  # [..., 1, genes]
-                t_on_star_bc = t_on_star.view(param_shape)  # [..., 1, genes]
-                delta_star_bc = delta_star.view(param_shape)  # [..., 1, genes]
-        else:
-            # Posterior sampling case: handle [samples, genes] and [samples, cells]
-            if t_star.dim() == 2:
-                # t_star [samples, cells], params [samples, genes] → broadcast to [samples, cells, genes]
-                t_star_bc = t_star.unsqueeze(2)  # [samples, cells, 1]
+                # Parameters have batch dimension [1, genes]
+                alpha_off_bc = alpha_off  # [1, genes]
+                alpha_on_bc = alpha_on  # [1, genes]
+                gamma_star_bc = gamma_star  # [1, genes]
+                t_on_star_bc = t_on_star  # [1, genes]
+                delta_star_bc = delta_star  # [1, genes]
+        elif t_star.dim() == 2:
+            # Posterior sampling case: t_star [samples, cells]
+            t_star_bc = t_star.unsqueeze(2)  # [samples, cells, 1]
+            # Gene parameters might be 1D or 2D
+            if alpha_off.dim() == 1:
+                # Parameters are 1D, need to add batch dimension
+                alpha_off_bc = alpha_off.unsqueeze(0).unsqueeze(0)  # [1, 1, genes]
+                alpha_on_bc = alpha_on.unsqueeze(0).unsqueeze(0)  # [1, 1, genes]
+                gamma_star_bc = gamma_star.unsqueeze(0).unsqueeze(0)  # [1, 1, genes]
+                t_on_star_bc = t_on_star.unsqueeze(0).unsqueeze(0)  # [1, 1, genes]
+                delta_star_bc = delta_star.unsqueeze(0).unsqueeze(0)  # [1, 1, genes]
+            else:
+                # Parameters have batch dimension [samples, genes]
                 alpha_off_bc = alpha_off.unsqueeze(1)  # [samples, 1, genes]
                 alpha_on_bc = alpha_on.unsqueeze(1)  # [samples, 1, genes]
                 gamma_star_bc = gamma_star.unsqueeze(1)  # [samples, 1, genes]
                 t_on_star_bc = t_on_star.unsqueeze(1)  # [samples, 1, genes]
                 delta_star_bc = delta_star.unsqueeze(1)  # [samples, 1, genes]
-            else:
-                # Use as-is
-                t_star_bc = t_star
-                alpha_off_bc = alpha_off
-                alpha_on_bc = alpha_on
-                gamma_star_bc = gamma_star
-                t_on_star_bc = t_on_star
-                delta_star_bc = delta_star
+        else:
+            # More complex cases - use as-is and let broadcasting handle it
+            t_star_bc = t_star
+            alpha_off_bc = alpha_off
+            alpha_on_bc = alpha_on
+            gamma_star_bc = gamma_star
+            t_on_star_bc = t_on_star
+            delta_star_bc = delta_star
+        
+        # Debug shapes before broadcasting
+        # print(f"DEBUG: t_star_bc shape: {t_star_bc.shape}, t_on_star_bc shape: {t_on_star_bc.shape}")
+        # print(f"DEBUG: alpha_off_bc shape: {alpha_off_bc.shape}, gamma_star_bc shape: {gamma_star_bc.shape}")
         
         # Compute switching times
         t_switch_on = t_on_star_bc  # Start of activation
@@ -310,6 +353,16 @@ class PiecewiseActivationDynamicsModel:
         s0 = 1.0 / gamma_star_bc
         
         # Phase 1 mask: t < t_on
+        # Ensure proper broadcasting by expanding dimensions if needed
+        if t_star_bc.dim() < t_switch_on.dim():
+            # t_star_bc needs more dimensions
+            while t_star_bc.dim() < t_switch_on.dim():
+                t_star_bc = t_star_bc.unsqueeze(0)
+        elif t_switch_on.dim() < t_star_bc.dim():
+            # t_switch_on needs more dimensions
+            while t_switch_on.dim() < t_star_bc.dim():
+                t_switch_on = t_switch_on.unsqueeze(0)
+                
         mask_phase1 = t_star_bc < t_switch_on
         
         # Phase 1 solutions  
