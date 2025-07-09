@@ -43,6 +43,140 @@ jupyter:
 
 ## Prior hyperparameter calibration
 
+### Probabilistic graphical model
+
+```{python}
+#| label: fig-piecewise-activation-pgm
+#| code-fold: true
+#| fig-cap: Probabilistic graphical model for dimensionless analytical dynamics with independent latent time coordinates and piecewise activation.
+
+import daft
+import matplotlib.pyplot as plt
+
+plt.rcParams["font.family"] = "serif"
+plt.rcParams["font.size"] = 16
+plt.rcParams["text.usetex"] = True
+
+pgm = daft.PGM(line_width=1.2)
+
+# hyperparameters for gene-specific parameters
+pgm.add_node("mu_theta", r"$\mu_{\theta}$", 0.5, 6, fixed=True)
+pgm.add_node("sigma_theta", r"$\sigma_{\theta}^2$", 1.5, 6, fixed=True)
+pgm.add_node("mu_Delta", r"$\mu_{\Delta}$", 2.5, 6, fixed=True)
+pgm.add_node("sigma_Delta", r"$\sigma_{\Delta}^2$", 3.5, 6, fixed=True)
+pgm.add_node("mu_U0", r"$\mu_{U_0}$", 4.5, 6, fixed=True)
+pgm.add_node("sigma_U0", r"$\sigma_{U_0}^2$", 5, 6, fixed=True)
+
+# hyperparameters for independent time structure
+pgm.add_node("alpha_T", r"$\alpha_{T}$", 5.5, 6, fixed=True)
+pgm.add_node("beta_T", r"$\beta_{T}$", 6, 6, fixed=True)
+
+# hyperparameters for lambda (entering from right edge of cell plate)
+pgm.add_node("mu_lambda", r"$\mu_{\lambda}$", 6.5, 3.5, fixed=True)
+pgm.add_node("sigma_lambda", r"$\sigma_{\lambda}^2$", 6.5, 2.5, fixed=True)
+
+# latent variables for gene-specific parameters
+pgm.add_node("theta_i", r"$\theta_i$", 1, 5)
+pgm.add_node("Delta_i", r"$\Delta_i$", 3, 5)
+pgm.add_node("U_0i", r"$U_{0i}$", 4.5, 5)
+
+# independent time parameters
+pgm.add_node("T_M", r"$T_M$", 5.5, 5)
+
+# latent time coordinates and cell-specific parameters
+pgm.add_node("t_star_j", r"$t^{\ast}_j$", 5.5, 4)
+pgm.add_node("lambda_j", r"$\lambda_j$", 5.5, 3)
+
+# latent variables for cell-specific outcomes (centered between rows)
+pgm.add_node(
+    "u_star_ij",
+    r"$u^{\ast}_{ij}$",
+    2,
+    3.75,
+    scale=1.0,
+    shape="rectangle",
+)
+pgm.add_node(
+    "s_star_ij",
+    r"$s^{\ast}_{ij}$",
+    4,
+    3.75,
+    scale=1.0,
+    shape="rectangle",
+)
+
+# observed data
+pgm.add_node(
+    "u_obs_ij",
+    r"$u_{ij}$",
+    2,
+    2.25,
+    scale=1.0,
+    observed=True,
+)
+pgm.add_node(
+    "s_obs_ij",
+    r"$s_{ij}$",
+    4,
+    2.25,
+    scale=1.0,
+    observed=True,
+)
+
+# edges
+edge_params = {"head_length": 0.3, "head_width": 0.25, "lw": 0.7}
+
+# gene-specific parameter edges
+pgm.add_edge("mu_theta", "theta_i", plot_params=edge_params)
+pgm.add_edge("sigma_theta", "theta_i", plot_params=edge_params)
+pgm.add_edge("mu_Delta", "Delta_i", plot_params=edge_params)
+pgm.add_edge("sigma_Delta", "Delta_i", plot_params=edge_params)
+pgm.add_edge("mu_U0", "U_0i", plot_params=edge_params)
+pgm.add_edge("sigma_U0", "U_0i", plot_params=edge_params)
+pgm.add_edge("mu_lambda", "lambda_j", plot_params=edge_params)
+pgm.add_edge("sigma_lambda", "lambda_j", plot_params=edge_params)
+
+# independent time structure edges
+pgm.add_edge("alpha_T", "T_M", plot_params=edge_params)
+pgm.add_edge("beta_T", "T_M", plot_params=edge_params)
+
+# independent time edges (no hierarchical scaling)
+pgm.add_edge("T_M", "t_star_j", plot_params=edge_params)
+
+# dynamics edges
+pgm.add_edge("theta_i", "u_star_ij", plot_params=edge_params)
+pgm.add_edge("theta_i", "s_star_ij", plot_params=edge_params)
+pgm.add_edge("Delta_i", "u_star_ij", plot_params=edge_params)
+pgm.add_edge("Delta_i", "s_star_ij", plot_params=edge_params)
+pgm.add_edge("t_star_j", "u_star_ij", plot_params=edge_params)
+pgm.add_edge("t_star_j", "s_star_ij", plot_params=edge_params)
+
+# observation edges
+pgm.add_edge("u_star_ij", "u_obs_ij", plot_params=edge_params)
+pgm.add_edge("s_star_ij", "s_obs_ij", plot_params=edge_params)
+pgm.add_edge("U_0i", "u_obs_ij", plot_params=edge_params)
+pgm.add_edge("U_0i", "s_obs_ij", plot_params=edge_params)
+pgm.add_edge("lambda_j", "u_obs_ij", plot_params=edge_params)
+pgm.add_edge("lambda_j", "s_obs_ij", plot_params=edge_params)
+
+# plates
+pgm.add_plate(
+    [0.5, 1.25, 4.5, 4.25],
+    label=r"$i \in \{1, \ldots, G\}$",
+    shift=-0.1,
+    fontsize=12,
+)
+pgm.add_plate(
+    [1.5, 1.75, 4.5, 2.75],
+    label=r"$j \in \{1, \ldots, N\}$",
+    shift=-0.1,
+    fontsize=12,
+)
+
+pgm.render()
+```
+
+
 ### Prior distributions
 
 ::: {#fig-prior-distributions}
