@@ -20,6 +20,7 @@ from beartype import beartype
 
 from pyrovelocity.models.modular.interfaces import LikelihoodModel
 from pyrovelocity.models.modular.registry import LikelihoodModelRegistry
+from pyrovelocity.models.modular.plate_utils import component_plates
 
 
 def validate_context(component_name: str, context: Dict[str, Any], required_keys: List[str] = None, tensor_keys: List[str] = None) -> bool:
@@ -137,17 +138,17 @@ class PiecewiseActivationPoissonLikelihoodModel:
                 u_obs_int = u_obs_int.squeeze()
                 s_obs_int = s_obs_int.squeeze()
             
-            # Use context-specific plate names to avoid conflicts with prior plates
-            with pyro.plate("obs_cells", n_cells, dim=-2):
-                with pyro.plate("obs_genes", n_genes, dim=-1):
+            # Use component-specific plates to avoid conflicts with prior plates  
+            with pyro.plate("likelihood_cells", n_cells, dim=-2):
+                with pyro.plate("likelihood_genes", n_genes, dim=-1):
                     # Observe data
                     u_obs_sampled = pyro.sample("u_obs", u_dist, obs=u_obs_int)
                     s_obs_sampled = pyro.sample("s_obs", s_dist, obs=s_obs_int)
         else:
             # Posterior predictive case: generate new observations
             
-            with pyro.plate("obs_cells", n_cells, dim=-2):
-                with pyro.plate("obs_genes", n_genes, dim=-1):
+            with pyro.plate("likelihood_cells", n_cells, dim=-2):
+                with pyro.plate("likelihood_genes", n_genes, dim=-1):
                     # Sample new observations from the distributions
                     u_obs_sampled = pyro.sample("u_obs", u_dist)
                     s_obs_sampled = pyro.sample("s_obs", s_dist)
