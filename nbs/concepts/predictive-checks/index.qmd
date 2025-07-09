@@ -1,6 +1,6 @@
 ---
 title: |
-  Consistency is all you have
+  When consistency is all you have, ...
 subtitle: |
   simulation $\leftrightarrow$ inference for interpretable modeling without "ground truth"
 toc: true
@@ -52,7 +52,7 @@ jupyter:
 
 ### Dynamical system
 
-RNA velocity models the transcriptional dynamics of genes through a system of ordinary differential equations:
+RNA velocity attempts to model the independent transcriptional dynamics of genes through a population of cells via a system of ordinary differential equations:
 
 $$
 \begin{align}
@@ -63,13 +63,68 @@ $$
 
 where:
 
-- $u(t)$ = unspliced (pre-mRNA) concentration
+- $u(t)$ = unspliced (nascent, pre-mRNA) concentration
 - $s(t)$ = spliced (mature mRNA) concentration  
 - $\alpha$ = transcription rate
 - $\beta$ = splicing rate
 - $\gamma$ = degradation rate
 
-This fundamental system governs RNA processing dynamics across all genes and cells.
+[@Zeisel2011-nz;@La_Manno2018-lj;@Bergen2020-pj]
+
+### Piecewise activation model of transcription
+
+Introduce indices for a given number of genes $G$ and cells $N$:
+
+- genes ($i \in \{1, \ldots, G\}$) 
+- cells ($j \in \{1, \ldots, N\}$):
+- $u_{ij}$ = unspliced concentration of gene $i$ in cell $j$
+- $s_{ij}$ = spliced concentration of gene $i$ in cell $j$
+- $t_j$ = time coordinate of cell $j$ (unobserved)
+
+To model realistic gene expression dynamics, we extend the basic model with **time-varying transcription rates**:
+
+$$\alpha_i(t) = \begin{cases}
+\alpha_{\textrm{off},i} & \text{if } t < t_{\textrm{on},i} \quad \text{(off phase)} \\
+\alpha_{\textrm{on},i} & \text{if } t_{\textrm{on},i} \leq t < t_{\textrm{on},i} + \delta_i \quad \text{(on phase)} \\
+\alpha_{\textrm{off},i} & \text{if } t \geq t_{\textrm{on},i} + \delta_i \quad \text{(return to off)}
+\end{cases}$$
+
+**Additional parameters**:
+
+- $\alpha_{\textrm{off},i}, \alpha_{\textrm{on},i}$ = transcription rates in off/on states
+- $t_{\textrm{on},i}$ = activation onset time (when transcription increases)
+- $\delta_i$ = activation duration (how long transcription stays elevated)
+
+The system becomes:
+$$
+\begin{align}
+\frac{du_{i}}{dt} &= \alpha_i(t_j) - \beta_i u_{i} \\
+\frac{ds_{i}}{dt} &= \beta_i u_{ij} - \gamma_i s_{i}
+\end{align}
+$$
+
+Note these are all thought of as continuous variables approximating parameters of some underlying discrete process where we need to generate data associated to $u_{ij}$ and $s_{ij}$ for some $t_j$ corresponding to discrete cells that contain a copy of each gene $i \in G$.
+
+<div style="margin-top: 8rem;"></div>
+
+**How do we know what region of parameter space is biologically relevant?**
+
+<div style="margin-top: 8rem;"></div>
+
+### Numerical simulation of the dynamical system
+
+::: {#fig-pattern-time-courses}
+
+![](./figures/prior_calibration/02_pattern_time_courses_seed_42.png){width=70%}
+
+Temporal trajectories and phase portraits of reparametrized RNA velocity model
+:::
+
+<div style="margin-top: 8rem;"></div>
+
+**How can we construct a procedure to adequately sample the parameter space so that we can validate the model's ability to recover parameters from synthetic data using inference as a prerequisite to applying it to real data?**
+
+<div style="margin-top: 8rem;"></div>
 
 ### Probabilistic inference
 
@@ -96,7 +151,34 @@ $$
 (\alpha, \beta, \gamma, t) \mapsto (k\alpha, k\beta, k\gamma, t/k)
 $$
 
-This leaves the dynamics invariant but makes parameters non-identifiable from data.
+This leaves the dynamics invariant thereby making parameters non-identifiable from data.
+
+**Proof sketch:**
+
+The system possesses a scaling symmetry. Consider a solution $(u(t), s(t))$ with parameters $(\alpha, \beta, \gamma)$. 
+
+For any $k > 0$, define the scaled solution:
+$$\tilde{u}(\tau) = u(k\tau), \quad \tilde{s}(\tau) = s(k\tau), \quad \text{where } \tau = t/k$$
+
+Computing derivatives:
+$$
+\begin{align}
+\frac{d\tilde{u}}{d\tau} &= \frac{du}{dt}\bigg|_{t=k\tau} \cdot \frac{dt}{d\tau} = \frac{du}{dt}\bigg|_{t=k\tau} \cdot k \\
+\frac{d\tilde{s}}{d\tau} &= \frac{ds}{dt}\bigg|_{t=k\tau} \cdot k
+\end{align}
+$$
+
+Since $(u(t), s(t))$ satisfies the original equations at $t = k\tau$:
+$$
+\begin{align}
+\frac{d\tilde{u}}{d\tau} &= k(\alpha - \beta u(k\tau)) = k\alpha - k\beta\tilde{u}(\tau) \\
+\frac{d\tilde{s}}{d\tau} &= k(\beta u(k\tau) - \gamma s(k\tau)) = k\beta\tilde{u}(\tau) - k\gamma\tilde{s}(\tau)
+\end{align}
+$$
+
+Therefore $(\tilde{u}(\tau), \tilde{s}(\tau))$ satisfies the **same equations** with scaled parameters $(k\alpha, k\beta, k\gamma)$. 
+
+This means the observable dynamics are identical for any parameter set of the form $(k\alpha, k\beta, k\gamma)$ with appropriate time rescaling, creating a one-parameter family of indistinguishable models.
 
 **Solution: Dimensionless parameterization**
 
@@ -146,31 +228,62 @@ This parameterization achieves:
 - Clear biological interpretation
 - Support for expression patterns (pre-activation, transient, sustained) achievable by this model class
 
+### Solution of the dimensionless piecewise activation model
 
-### Probabilistic model specification
+The piecewise activation model has analytical solutions for each phase, where dimensionless time $t^*$ represents the number of characteristic timescales elapsed.
 
-**Hierarchical prior structure:**
+**Phase 1: Off state** ($t^* < t^*_{on,i}$)
 
-| Parameter | Prior | Interpretation |
-|-----------|-------|----------------|
-| $\gamma^*_i$ | $\text{LogNormal}(\mu_\gamma, \sigma^2_\gamma)$ | Relative degradation rate |
-| $R_{\text{on},i}$ | $\text{LogNormal}(\mu_R, \sigma^2_R)$ | Activation fold-change |
-| $t^*_{on,i}$ | $\text{Normal}(\mu_{on}, \sigma^2_{on})$ | Activation onset time |
-| $\delta^*_i$ | $\text{LogNormal}(\mu_\delta, \sigma^2_\delta)$ | Activation duration |
-| $U_{0i}$ | $\text{Gamma}(\alpha_U, \beta_U)$ | Characteristic concentration |
-| $\lambda_j$ | $\text{LogNormal}(\mu_\lambda, \sigma^2_\lambda)$ | Cell capture efficiency |
-| $T_M$ | $\text{Gamma}(\alpha_T, \beta_T)$ | Process duration |
-| $t^*_j$ | $\text{Uniform}(0, T_M)$ | Cell time coordinates |
+At steady state with $\alpha^* = 1$:
+$$u^*_{ij} = 1, \quad s^*_{ij} = \frac{1}{\gamma^*_i}$$
 
-**Likelihood with analytical dynamics:**
+**Phase 2: Activation** ($t^*_{on,i} \leq t^* < t^*_{on,i} + \delta^*_i$)
 
-$$p(u_{ij}, s_{ij} | \theta) = \text{NegativeBinomial}\left(\mu = \lambda_j U_{0i} \begin{pmatrix} u^*_{ij}(t^*_j; \theta_i) \\ s^*_{ij}(t^*_j; \theta_i) \end{pmatrix}, \phi \right)$$
+Let $\tau_{on} = t^* - t^*_{on,i}$ (time since activation).
 
-where $(u^*_{ij}, s^*_{ij})$ are computed from phase-specific analytical solutions:
+**Initial conditions**: Phase 1 steady-state values
+$$u^*_{on,0i} = 1, \quad s^*_{on,0i} = \frac{1}{\gamma^*_i}$$
 
-- **Phase 1 (off):** Steady state at $(1, 1/\gamma^*_i)$
-- **Phase 2 (on):** Exponential transition to on-state
-- **Phase 3 (return):** Exponential decay back to off-state
+For $\gamma^*_i \neq 1$:
+$$
+\begin{align}
+u^*_{ij} &= R_{on,i} + (1 - R_{on,i})e^{-\tau_{on}} \\
+s^*_{ij} &= \frac{R_{on,i}}{\gamma^*_i} + \left(\frac{1}{\gamma^*_i} - \xi_{on,i} - \frac{R_{on,i}}{\gamma^*_i}\right)e^{-\gamma^*_i \tau_{on}} + \xi_{on,i} e^{-\tau_{on}}
+\end{align}
+$$
+where $\xi_{on,i} = \frac{1 - R_{on,i}}{\gamma^*_i - 1}$.
+
+**Special case**: $\gamma^*_i = 1$ requires modified solutions with additional $\tau_{on} e^{-\tau_{on}}$ terms.
+
+**Phase 3: Return to off** ($t^* \geq t^*_{on,i} + \delta^*_i$)
+
+Let $\tau_{off} = t^* - (t^*_{on,i} + \delta^*_i)$ (time since deactivation).
+
+**Initial conditions**: End-of-Phase-2 values
+$$
+\begin{align}
+u^*_{off,0i} &= R_{on,i} + (1 - R_{on,i}) e^{-\delta^*_i} \\
+s^*_{off,0i} &= \frac{R_{on,i}}{\gamma^*_i} + \left(\frac{1}{\gamma^*_i} - \xi_{on,i} - \frac{R_{on,i}}{\gamma^*_i}\right) e^{-\gamma^*_i \delta^*_i} + \xi_{on,i} e^{-\delta^*_i}
+\end{align}
+$$
+
+**Analytical solutions**:
+$$
+\begin{align}
+u^*_{ij} &= 1 + (u^*_{off,0i} - 1) e^{-\tau_{off}} \\
+s^*_{ij} &= \frac{1}{\gamma^*_i} + \left(s^*_{off,0i} - \xi_{off,i} - \frac{1}{\gamma^*_i}\right) e^{-\gamma^*_i \tau_{off}} + \xi_{off,i} e^{-\tau_{off}}
+\end{align}
+$$
+where $\xi_{off,i} = \frac{u^*_{off,0i} - 1}{\gamma^*_i - 1}$.
+
+**Dimensionless time measures approach to steady state**:
+
+- $t^* = 1$: $(1 - e^{-1}) = 63\%$ of transient decay complete
+- $t^* = 3$: $(1 - e^{-3}) = 95\%$ of transient decay complete  
+- $t^* = 5$: $(1 - e^{-5}) = 99\%$ of transient decay complete
+
+This makes $t^*$ a process-intrinsic measure of "dynamical completeness" independent of arbitrary time units.
+
 
 ### Probabilistic graphical model
 
@@ -307,6 +420,41 @@ pgm.add_plate(
 pgm.render()
 ```
 
+### Probabilistic model specification
+
+**Hierarchical prior structure:**
+
+| Parameter | Prior | Interpretation |
+|-----------|-------|----------------|
+| $\gamma^*_i$ | $\text{LogNormal}(\mu_\gamma, \sigma^2_\gamma)$ | Relative degradation rate |
+| $R_{\text{on},i}$ | $\text{LogNormal}(\mu_R, \sigma^2_R)$ | Activation fold-change |
+| $t^*_{on,i}$ | $\text{Normal}(\mu_{on}, \sigma^2_{on})$ | Activation onset time |
+| $\delta^*_i$ | $\text{LogNormal}(\mu_\delta, \sigma^2_\delta)$ | Activation duration |
+| $U_{0i}$ | $\text{Gamma}(\alpha_U, \beta_U)$ | Characteristic concentration |
+| $\lambda_j$ | $\text{LogNormal}(\mu_\lambda, \sigma^2_\lambda)$ | Cell capture efficiency |
+| $T_M$ | $\text{Gamma}(\alpha_T, \beta_T)$ | Process duration |
+| $t^*_j$ | $\text{Uniform}(0, T_M)$ | Cell time coordinates |
+
+### Likelihood with analytical dynamics
+
+Poisson model (single parameter):
+$$p(u_{ij}, s_{ij} | \theta) = \text{Poisson}\left(\mu = \lambda_j U_{0i} \begin{pmatrix} u^*_{ij}(t^*_j; \theta_i) \\ s^*_{ij}(t^*_j; \theta_i) \end{pmatrix} \right)$$
+
+Negative Binomial model (additional overdispersion parameter):
+$$p(u_{ij}, s_{ij} | \theta) = \text{NegativeBinomial}\left(\mu = \lambda_j U_{0i} \begin{pmatrix} u^*_{ij}(t^*_j; \theta_i) \\ s^*_{ij}(t^*_j; \theta_i) \end{pmatrix}, \phi \right)$$
+
+where $\theta_i = \{\gamma^*_i, R_{on,i}, t^*_{on,i}, \delta^*_i\}$ contains all gene-specific parameters required by the differential equation solutions, and $(u^*_{ij}, s^*_{ij})$ are computed from phase-specific analytical solutions:
+
+- **Phase 1 (off):** Steady state at $(1, 1/\gamma^*_i)$
+- **Phase 2 (on):** Exponential transition to on-state
+- **Phase 3 (return):** Exponential decay back to off-state
+
+<div style="margin-top: 8rem;"></div>
+
+**How do we choose prior hyperparameters such that the prior predictive distribution generates biologically relevant expression patterns?**
+
+<div style="margin-top: 8rem;"></div>
+
 ## Prior hyperparameter calibration
 
 
@@ -359,22 +507,40 @@ Distribution of genes across the three activation patterns generated by the prio
 
 ## Posterior predictive checks
 
+### One complete sample from the hierarchical prior
+
+::: {#fig-synthetic-data-prior-sample}
+
+![](./figures/posterior_predictive_jax/42/sample_data/02_prior_parameter_marginals.png){width=70%}
+
+Generate one sample from the prior
+:::
+
+### Single synthetic data set for validation experiments
+
+::: {#fig-synthetic-data-overview}
+
+![](./figures/posterior_predictive_jax/42/sample_data/01_posterior_predictive_check_sample_data_jax_42.png){width=70%}
+
+Sample one complete predictive data set from the prior
+:::
+
+### Prior temporal trajectories
+
+::: {#fig-prior-predictive-temporal-trajectories}
+
+![](./figures/posterior_predictive_jax/42/sample_data/04_prior_temporal_trajectories.png){width=70%}
+
+Temporal trajectories generated from the prior showing the ground truth underlying the synthetic data
+:::
+
 ### Posterior predictive validation overview
 
 ::: {#fig-posterior-overview}
 
 ![](./figures/posterior_predictive_jax/42/svi_auto_lowrank_multivariate_normal/01_posterior_predictive_check_svi_auto_lowrank_multivariate_normal_jax_42.png){width=70%}
 
-Comprehensive posterior predictive validation showing UMAP visualization, parameter distributions, count statistics, phase portraits, and pattern analysis for synthetic data recovery
-:::
-
-### Posterior expression validation
-
-::: {#fig-posterior-expression-validation}
-
-![](./figures/posterior_predictive_jax/42/svi_auto_lowrank_multivariate_normal/10_posterior_expression_validation.png){width=70%}
-
-Validation of posterior predictive expression levels against observed data, showing count distributions and expression ranges
+Posterior predictive validation overview
 :::
 
 ### Posterior parameter marginals
@@ -383,16 +549,7 @@ Validation of posterior predictive expression levels against observed data, show
 
 ![](./figures/posterior_predictive_jax/42/svi_auto_lowrank_multivariate_normal/02_posterior_parameter_marginals.png){width=70%}
 
-Marginal posterior distributions for key model parameters showing uncertainty quantification and comparison to prior distributions
-:::
-
-### Posterior parameter relationships
-
-::: {#fig-posterior-parameter-relationships}
-
-![](./figures/posterior_predictive_jax/42/svi_auto_lowrank_multivariate_normal/03_posterior_parameter_relationships.png){width=70%}
-
-Posterior parameter correlations and joint distributions showing learned dependencies between model parameters
+Marginal posterior distributions for model parameters
 :::
 
 ### Posterior temporal trajectories
@@ -410,35 +567,39 @@ Inferred cell trajectories in temporal space showing the recovered pseudotime or
 
 ![](./figures/posterior_predictive_jax/42/svi_auto_lowrank_multivariate_normal/05_posterior_parameter_marginals_by_gene.png){width=70%}
 
-Posterior parameter distributions for individual genes showing gene-specific parameter recovery quality
+Posterior parameter distributions for individual genes
 :::
 
 ### Parameter recovery correlation
+
+#### Gene-specific parameters
 
 ::: {#fig-parameter-recovery-correlation}
 
 ![](./figures/posterior_predictive_jax/42/svi_auto_lowrank_multivariate_normal/07_parameter_recovery_correlation.png){width=70%}
 
-Correlation between true and inferred parameters demonstrating quantitative assessment of parameter recovery quality
+Correlation between true and inferred gene-specific parameters
 :::
 
-### Temporal coordinate validation
+#### Temporal coordinate validation
 
 ::: {#fig-temporal-coordinate-validation}
 
 ![](./figures/posterior_predictive_jax/42/svi_auto_lowrank_multivariate_normal/12_temporal_coordinate_validation.png){width=70%}
 
-Validation of inferred temporal coordinates against true time, showing the quality of latent time recovery
+Correlation between true and inferered temporal coordinates
 :::
 
-### Detailed parameter recovery analysis
+#### Scaling parameters
 
 ::: {#fig-parameter-recovery-correlation-detailed}
 
 ![](./figures/posterior_predictive_jax/42/svi_auto_lowrank_multivariate_normal/13_parameter_recovery_correlation.png){width=70%}
 
-Detailed analysis of parameter recovery performance across different parameter types and genes
+Correlation between true and inferred scaling parameters
 :::
+
+### Posterior temporal dynamics
 
 ::: {#fig-posterior-temporal-dynamics}
 
@@ -454,15 +615,16 @@ Posterior temporal dynamics for genes recovered with relatively low error
 Posterior temporal dynamics for genes recovered with relatively high error
 :::
 
-### Recovery error analysis
+### Error correlation with count magnitudes
 
 ::: {#fig-posterior-mae-vs-spliced-count}
 
 ![](./figures/posterior_predictive_jax/42/svi_auto_lowrank_multivariate_normal/14_posterior_mae_vs_spliced_count.png){width=70%}
 
-Mean absolute error (MAE) in parameter recovery as a function of gene expression level, showing error patterns
+Mean absolute error (MAE) in parameter recovery as a function of gene expression level
 :::
 
+### Parameter recovery analysis for multiple synthetic data sets
 
 ::: {#fig-posterior-parameter-correlation-multiple-seeds}
 
@@ -478,3 +640,14 @@ Posterior parameter correlation to true values for multiple random seeds
 
 Posterior inferred time correlation to true values for multiple random seeds
 :::
+
+## Summary
+
+- **Dimensionless parameterization** eliminates scaling symmetries and enables identifiable inference
+- **Piecewise activation model** captures realistic gene expression dynamics with interpretable parameters
+- **Prior calibration** ensures biologically relevant expression patterns across activation types
+- **Parameter recovery** demonstrates model capability on synthetic data before real applications
+- **Temporal coordinate inference** successfully recovers latent pseudotime directly from count data
+- **Validation framework** provides principled approach to model assessment without "ground truth"
+
+**When consistency is all you have, simulation ↔ inference becomes the foundation for interpretable modeling.**
