@@ -1,0 +1,51 @@
+---
+title: Simulation and inference without ground truth
+toc: true
+number-sections: true
+highlight-style: gruvbox
+csl: ../../bibstyle.csl
+lightbox: auto
+format:
+  html:
+    html-math-method: mathjax
+    include-in-header: ../../mathjax.html
+format-links: [ipynb]
+execute:
+  freeze: true
+  eval: true
+  warning: false
+  error: false
+  cache: true
+bibliography: ../../references.bib
+jupyter:
+  jupytext:
+    cell_metadata_filter: all
+    cell_metadata_json: true
+    notebook_metadata_filter: all
+    text_representation:
+      extension: .qmd
+      format_name: quarto
+      format_version: 1.0
+      jupytext_version: 1.16.0
+  kernelspec:
+    display_name: Python 3
+    language: python
+    name: python3
+  language_info:
+    name: python
+  rise:
+    scroll: true
+    theme: black
+  toc-autonumbering: true
+  toc-showcode: false
+  toc-showmarkdowntxt: false
+---
+
+## Prior hyperparameter calibration
+
+::: {#fig-prior-distributions}
+
+![](./figures/prior_calibration/01_comprehensive_prior_distributions.png){width=70%}
+
+Prior distributions
+:::
