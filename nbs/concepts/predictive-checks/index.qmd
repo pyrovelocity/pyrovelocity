@@ -1,7 +1,13 @@
 ---
 title: |
- Consistency is all you have
+  Consistency is all you have
+subtitle: |
+  simulation $\leftrightarrow$ inference for interpretable modeling without "ground truth"
 toc: true
+author:
+  - name: Cameron R. Smith
+    email: team@pyrovelocity.net
+date: 2025-07-09
 number-sections: true
 highlight-style: gruvbox
 csl: ../../bibstyle.csl
@@ -46,15 +52,129 @@ jupyter:
 
 ### Dynamical system
 
-### Symmetry, identifiability, and non-dimensionalization
+RNA velocity models the transcriptional dynamics of genes through a system of ordinary differential equations:
 
-### Interpretable dimensionless model
+$$
+\begin{align}
+\frac{du}{dt} &= \alpha - \beta u \\
+\frac{ds}{dt} &= \beta u - \gamma s
+\end{align}
+$$
+
+where:
+
+- $u(t)$ = unspliced (pre-mRNA) concentration
+- $s(t)$ = spliced (mature mRNA) concentration  
+- $\alpha$ = transcription rate
+- $\beta$ = splicing rate
+- $\gamma$ = degradation rate
+
+This fundamental system governs RNA processing dynamics across all genes and cells.
 
 ### Probabilistic inference
 
+Bayesian inference provides a principled framework for learning model parameters from noisy observations:
+
+$$
+p(\theta | \mathcal{D}) = \frac{p(\mathcal{D} | \theta) p(\theta)}{p(\mathcal{D})}
+$$
+
+where:
+
+- $\theta$ = model parameters (rates, initial conditions, latent states)
+- $\mathcal{D} = \{u_{ij}, s_{ij}\}$ = observed RNA counts
+- $p(\theta)$ = prior distribution encoding biological constraints
+- $p(\mathcal{D} | \theta)$ = likelihood of observations given parameters
+- $p(\theta | \mathcal{D})$ = posterior distribution of parameters given data
+
+### Symmetry, identifiability, and non-dimensionalization
+
+The dimensional ODE system exhibits **scaling symmetry** that creates parameter non-identifiability:
+
+**Symmetry transformation:**
+$$
+(\alpha, \beta, \gamma, t) \mapsto (k\alpha, k\beta, k\gamma, t/k)
+$$
+
+This leaves the dynamics invariant but makes parameters non-identifiable from data.
+
+**Solution: Dimensionless parameterization**
+
+Define characteristic scales:
+
+- $T_0 = 1/\beta$ (splicing timescale)
+- $U_0 = \alpha/\beta$ (characteristic concentration)
+
+Transform to dimensionless variables:
+$$
+t^* = t/T_0, \quad u^* = u/U_0, \quad s^* = s/U_0
+$$
+
+Yielding the dimensionless system:
+$$
+\begin{align}
+\frac{du^*}{dt^*} &= 1 - u^* \\
+\frac{ds^*}{dt^*} &= u^* - \gamma^* s^*
+\end{align}
+$$
+
+where $\gamma^* = \gamma/\beta$ is the **only free parameter** (relative degradation rate).
+
+### Interpretable dimensionless model
+
+**Piecewise activation model** with three-phase gene expression dynamics:
+
+$$\alpha^*_i(t^*) = \begin{cases}
+1.0 & \text{if } t^* < t^*_{on,i} \quad \text{(off phase)} \\
+R_{\text{on},i} & \text{if } t^*_{on,i} \leq t^* < t^*_{on,i} + \delta^*_i \quad \text{(on phase)} \\
+1.0 & \text{if } t^* \geq t^*_{on,i} + \delta^*_i \quad \text{(return to off)}
+\end{cases}$$
+
+**Reference state parameterization**
+
+- Fix $\alpha^*_{\text{off}} = 1.0$ as reference (eliminates redundancy)
+- $R_{\text{on},i}$ = fold-change during activation (biologically interpretable)
+- $t^*_{on,i}$ = activation onset (can be negative for pre-activation)
+- $\delta^*_i$ = activation duration
+
+**Initial conditions:** Fixed at off-state steady state
+$$u^*_{0i} = 1.0, \quad s^*_{0i} = 1/\gamma^*_i$$
+
+This parameterization achieves:
+
+- Natural parameter identifiability
+- Clear biological interpretation
+- Support for expression patterns (pre-activation, transient, sustained) achievable by this model class
+
+
 ### Probabilistic model specification
 
+**Hierarchical prior structure:**
+
+| Parameter | Prior | Interpretation |
+|-----------|-------|----------------|
+| $\gamma^*_i$ | $\text{LogNormal}(\mu_\gamma, \sigma^2_\gamma)$ | Relative degradation rate |
+| $R_{\text{on},i}$ | $\text{LogNormal}(\mu_R, \sigma^2_R)$ | Activation fold-change |
+| $t^*_{on,i}$ | $\text{Normal}(\mu_{on}, \sigma^2_{on})$ | Activation onset time |
+| $\delta^*_i$ | $\text{LogNormal}(\mu_\delta, \sigma^2_\delta)$ | Activation duration |
+| $U_{0i}$ | $\text{Gamma}(\alpha_U, \beta_U)$ | Characteristic concentration |
+| $\lambda_j$ | $\text{LogNormal}(\mu_\lambda, \sigma^2_\lambda)$ | Cell capture efficiency |
+| $T_M$ | $\text{Gamma}(\alpha_T, \beta_T)$ | Process duration |
+| $t^*_j$ | $\text{Uniform}(0, T_M)$ | Cell time coordinates |
+
+**Likelihood with analytical dynamics:**
+
+$$p(u_{ij}, s_{ij} | \theta) = \text{NegativeBinomial}\left(\mu = \lambda_j U_{0i} \begin{pmatrix} u^*_{ij}(t^*_j; \theta_i) \\ s^*_{ij}(t^*_j; \theta_i) \end{pmatrix}, \phi \right)$$
+
+where $(u^*_{ij}, s^*_{ij})$ are computed from phase-specific analytical solutions:
+
+- **Phase 1 (off):** Steady state at $(1, 1/\gamma^*_i)$
+- **Phase 2 (on):** Exponential transition to on-state
+- **Phase 3 (return):** Exponential decay back to off-state
+
 ### Probabilistic graphical model
+
+The hierarchical structure and dependencies between model parameters, latent variables, and observations are captured in the following probabilistic graphical model:
 
 ```{python}
 #| label: fig-piecewise-activation-pgm
