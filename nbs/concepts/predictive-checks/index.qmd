@@ -1,5 +1,6 @@
 ---
-title: Simulation and inference without ground truth
+title: |
+ Consistency is all you have
 toc: true
 number-sections: true
 highlight-style: gruvbox
@@ -41,7 +42,17 @@ jupyter:
   toc-showmarkdowntxt: false
 ---
 
-## Prior hyperparameter calibration
+## Model definition
+
+### Dynamical system
+
+### Symmetry, identifiability, and non-dimensionalization
+
+### Interpretable dimensionless model
+
+### Probabilistic inference
+
+### Probabilistic model specification
 
 ### Probabilistic graphical model
 
@@ -176,6 +187,8 @@ pgm.add_plate(
 pgm.render()
 ```
 
+## Prior hyperparameter calibration
+
 
 ### Prior distributions
 
@@ -192,7 +205,7 @@ Prior distributions for the dimensionless piecewise activation model
 
 ![](./figures/prior_calibration/02_pattern_time_courses_seed_42.png){width=70%}
 
-Pattern time courses and $(u, s)$-phase portraits for randomly sampled model parameters
+Temporal trajectories and phase portraits based on model parameters sampled from prior
 :::
 
 ### Parameter space phase diagrams
@@ -201,7 +214,7 @@ Pattern time courses and $(u, s)$-phase portraits for randomly sampled model par
 
 ![](./figures/prior_calibration/03_phase_diagrams.png){width=70%}
 
-Phase diagrams showing parameter relationships across the three activation patterns: pre-activation (red), transient (blue), and sustained (green)
+Phase diagrams showing parameter relationships across three coarse-grained activation patterns
 :::
 
 
