@@ -20,7 +20,6 @@ from beartype import beartype
 
 from pyrovelocity.models.modular.interfaces import LikelihoodModel
 from pyrovelocity.models.modular.registry import LikelihoodModelRegistry
-from pyrovelocity.models.modular.plate_utils import component_plates
 
 
 def validate_context(component_name: str, context: Dict[str, Any], required_keys: List[str] = None, tensor_keys: List[str] = None) -> bool:
