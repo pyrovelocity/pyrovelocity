@@ -15,9 +15,7 @@ from pyrovelocity.models.metadata import (
     get_parameter_display_names,
     get_parameter_short_labels,
 )
-from pyrovelocity.models.modular.interfaces import (
-    ParameterMetadataProvider,
-)
+# ParameterMetadataProvider protocol removed - using static metadata registry instead
 
 
 @beartype
@@ -36,21 +34,10 @@ def get_model_parameter_metadata(model: Any) -> Dict[str, ComponentParameterMeta
     """
     metadata = {}
     
-    # Check if the model has the expected component structure
-    if hasattr(model, 'prior_model'):
-        if isinstance(model.prior_model, ParameterMetadataProvider):
-            component_metadata = model.prior_model.get_parameter_metadata()
-            metadata[component_metadata.component_name] = component_metadata
-    
-    if hasattr(model, 'dynamics_model'):
-        if isinstance(model.dynamics_model, ParameterMetadataProvider):
-            component_metadata = model.dynamics_model.get_parameter_metadata()
-            metadata[component_metadata.component_name] = component_metadata
-    
-    if hasattr(model, 'likelihood_model'):
-        if isinstance(model.likelihood_model, ParameterMetadataProvider):
-            component_metadata = model.likelihood_model.get_parameter_metadata()
-            metadata[component_metadata.component_name] = component_metadata
+    # ParameterMetadataProvider protocol has been removed
+    # Models should now expose component_name property for metadata lookup
+    # This function returns empty dict until models are updated to use the static registry
+    # The fallback mechanisms in get_parameter_label will handle missing metadata
     
     return metadata
 
