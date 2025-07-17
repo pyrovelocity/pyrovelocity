@@ -29,76 +29,12 @@ from pyrovelocity.models.experimental import (
     solve_transcription_splicing_model_analytical,
 )
 
-# Base classes have been removed in favor of Protocol interfaces
-from pyrovelocity.models.modular.components.dynamics import (
-    PiecewiseActivationDynamicsModel,
-)
-from pyrovelocity.models.modular.components.guides import (
-    AutoGuideFactory,
-)
-from pyrovelocity.models.modular.components.likelihoods import (
-    PiecewiseActivationPoissonLikelihoodModel,
-)
-from pyrovelocity.models.modular.components.priors import (
-    PiecewiseActivationPriorModel,
-)
-
-# Import the factory module for model creation and configuration
-from pyrovelocity.models.modular.factory import (
-    ComponentFactory,
-    create_model_from_config,
-    create_piecewise_activation_model,
-)
-from pyrovelocity.models.modular.interfaces import (
-    DynamicsModel,
-    InferenceGuide,
-    LikelihoodModel,
-    ObservationModel,
-    PriorModel,
-)
-
-# Import the new PyroVelocityModel and ModelState
-from pyrovelocity.models.modular.model import ModelState, PyroVelocityModel
-from pyrovelocity.models.modular.registry import (
-    DynamicsModelRegistry,
-    InferenceGuideRegistry,
-    LikelihoodModelRegistry,
-    ObservationModelRegistry,
-    PriorModelRegistry,
-)
+# Modular PyTorch/Pyro implementation has been archived
+# Only JAX and legacy models remain available
 
 __all__ = [
-    # Interfaces
-    "DynamicsModel",
-    "LikelihoodModel",
-    "ObservationModel",
-    "PriorModel",
-    "InferenceGuide",
-    # Registries
-    "DynamicsModelRegistry",
-    "LikelihoodModelRegistry",
-    "ObservationModelRegistry",
-    "PriorModelRegistry",
-    "InferenceGuideRegistry",
-    # Dynamics models
-    "PiecewiseActivationDynamicsModel",
-    # Prior models
-    "PiecewiseActivationPriorModel",
-    # Likelihood models
-    "PiecewiseActivationPoissonLikelihoodModel",
-
-    # Inference guides
-    "AutoGuideFactory",
     # Legacy model
     "PyroVelocity",
-    # New model
-    "ModelState",
-    "PyroVelocityModel",
-
-    # Factory module
-    "ComponentFactory",
-    "create_model_from_config",
-    "create_piecewise_activation_model",
     # Experimental implementations
     "deterministic_transcription_splicing_probabilistic_model",
     "generate_test_data_for_deterministic_model_inference",
