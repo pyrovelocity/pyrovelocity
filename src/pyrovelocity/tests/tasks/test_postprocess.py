@@ -28,6 +28,7 @@ def test_postprocess_dataset_model1(postprocess_dataset_model1_output):
     return postprocess_dataset_model1_output
 
 
+@pytest.mark.slow
 @pytest.mark.integration
 def test_postprocess_dataset_pancreas(
     adata_trained_pancreas_50_7,
