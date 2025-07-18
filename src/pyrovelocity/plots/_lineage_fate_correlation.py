@@ -16,7 +16,7 @@ from scipy.stats import spearmanr
 from pyrovelocity.analysis.trajectory import align_trajectory_diff
 from pyrovelocity.io.compressedpickle import CompressedPickle
 from pyrovelocity.logging import configure_logging
-from pyrovelocity.plots._common import set_colorbar
+from pyrovelocity.plots._common import calculate_adaptive_n_neighbors, set_colorbar
 from pyrovelocity.plots._time import plot_posterior_time
 from pyrovelocity.plots._uncertainty import (
     get_posterior_sample_angle_uncertainty,
@@ -241,8 +241,8 @@ def plot_lineage_fate_correlation(
 
     # SHIFT AXIS INDEX
     ax, current_axis_index = get_next_axis(all_axes, current_axis_index)
-    # Calculate safe n_neighbors for small datasets
-    n_neighbors = max(1, min(10, adata_input_clone.n_obs // 10))
+    # Calculate adaptive n_neighbors based on dataset size
+    n_neighbors = calculate_adaptive_n_neighbors(adata_input_clone.n_obs)
     
     scv.pl.velocity_embedding_grid(
         adata=adata_input_clone,

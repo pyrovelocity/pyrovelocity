@@ -18,6 +18,7 @@ from scvelo.plotting.velocity_embedding_grid import default_arrow
 
 from pyrovelocity.analysis.analyze import compute_mean_vector_field
 from pyrovelocity.logging import configure_logging
+from pyrovelocity.plots._common import calculate_adaptive_n_neighbors
 from pyrovelocity.plots._time import plot_posterior_time
 from pyrovelocity.plots._uncertainty import (
     get_posterior_sample_angle_uncertainty,
@@ -601,7 +602,7 @@ def project_grid_points(
     scale = np.mean([(g[1] - g[0]) for g in grs]) * smooth
     X_grid = np.vstack([i.flat for i in meshes_tuple]).T
 
-    n_neighbors = int(emb.shape[0] / 50)
+    n_neighbors = calculate_adaptive_n_neighbors(emb.shape[0])
     nn = NearestNeighbors(n_neighbors=n_neighbors, n_jobs=-1)
     nn.fit(emb)
     dists, neighs = nn.kneighbors(X_grid)
