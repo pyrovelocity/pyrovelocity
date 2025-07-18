@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import pytest
 from beartype.typing import List
 
-from pyrovelocity.plots.predictive_checks import combine_pdfs
+from pyrovelocity.plots.predictive import combine_pdfs
 
 
 class TestPDFCombination:

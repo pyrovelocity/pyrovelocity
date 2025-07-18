@@ -4,7 +4,7 @@ import pytest
 import torch
 import matplotlib.pyplot as plt
 from unittest.mock import Mock, MagicMock
-from pyrovelocity.plots.predictive_checks import plot_training_loss
+from pyrovelocity.plots.predictive import plot_training_loss
 
 
 class TestTrainingLossPlot:
@@ -22,7 +22,8 @@ class TestTrainingLossPlot:
         mock_training_state.loss_history = [-100.5, -95.2, -90.1, -88.3, -87.0, -86.5]
         mock_inference_state.training_state = mock_training_state
         
-        mock_model.state.metadata = {"inference_state": mock_inference_state}
+        # Use the new direct access pattern instead of metadata
+        mock_model.state.inference_state = mock_inference_state
         
         # Test plot generation
         fig = plot_training_loss(
@@ -63,7 +64,7 @@ class TestTrainingLossPlot:
         """Test error handling when model has no inference state."""
         mock_model = Mock()
         mock_model.state = Mock()
-        mock_model.state.metadata = {}
+        mock_model.state.inference_state = None
         
         with pytest.raises(ValueError, match="Model has no inference state"):
             plot_training_loss(mock_model)
@@ -74,7 +75,7 @@ class TestTrainingLossPlot:
         mock_model.state = Mock()
         mock_inference_state = Mock()
         mock_inference_state.training_state = None
-        mock_model.state.metadata = {"inference_state": mock_inference_state}
+        mock_model.state.inference_state = mock_inference_state
         
         with pytest.raises(ValueError, match="Model has no training history"):
             plot_training_loss(mock_model)
@@ -87,7 +88,7 @@ class TestTrainingLossPlot:
         mock_training_state = Mock()
         mock_training_state.loss_history = []
         mock_inference_state.training_state = mock_training_state
-        mock_model.state.metadata = {"inference_state": mock_inference_state}
+        mock_model.state.inference_state = mock_inference_state
         
         with pytest.raises(ValueError, match="Model has no training history"):
             plot_training_loss(mock_model)
@@ -100,7 +101,7 @@ class TestTrainingLossPlot:
         mock_training_state = Mock()
         mock_training_state.loss_history = [-100.0, -95.0]  # Only 2 epochs
         mock_inference_state.training_state = mock_training_state
-        mock_model.state.metadata = {"inference_state": mock_inference_state}
+        mock_model.state.inference_state = mock_inference_state
         
         # Test with moving average window larger than history
         fig = plot_training_loss(
@@ -127,7 +128,7 @@ class TestTrainingLossPlot:
         # Negative loss values (from minimization objective)
         mock_training_state.loss_history = [-100.0, -90.0, -80.0, -70.0]
         mock_inference_state.training_state = mock_training_state
-        mock_model.state.metadata = {"inference_state": mock_inference_state}
+        mock_model.state.inference_state = mock_inference_state
         
         fig = plot_training_loss(model=mock_model, moving_average_window=2)
         
