@@ -5,21 +5,21 @@ import matplotlib.pyplot as plt
 import pytest
 
 from pyrovelocity.analysis.trajectory import get_clone_trajectory
-from pyrovelocity.io.datasets import larry_cospar
 from pyrovelocity.plots import plot_lineage_fate_correlation
 from pyrovelocity.styles.colors import LARRY_CELL_TYPE_COLORS
 from pyrovelocity.utils import load_anndata_from_path
 
 
-@pytest.mark.network
 def test_plot_lineage_fate_correlation(
     larry_multilineage_model2_pyrovelocity_data_path,
+    larry_cospar_100_6,
     tmp_path,
 ):
     """Test plot_lineage_fate_correlation function works correctly."""
     fig, axes = plt.subplots(1, 7, figsize=(14, 3))
 
-    adata_cospar = larry_cospar()
+    # Use optimized fixture instead of downloading large dataset
+    adata_cospar = larry_cospar_100_6
 
     postprocessed_data_path = (
         files("pyrovelocity.tests.data")
