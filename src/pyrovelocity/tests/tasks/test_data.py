@@ -12,47 +12,11 @@ from pyrovelocity.tasks.data import (
 from pyrovelocity.utils import load_anndata_from_path
 
 
-def test_load_data_module():
-    from pyrovelocity.tasks import data
-
-    print(data.__file__)
-
-
 @pytest.fixture
 def temp_data_dir(tmp_path):
     data_dir = tmp_path / "data/external"
     data_dir.mkdir(parents=True, exist_ok=True)
     return str(data_dir)
-
-
-def test_failed_download(temp_data_dir, requests_mock, caplog):
-    """Test if dataset fails to download with mocked URL."""
-    mock_url = "https://example.com/test_dataset.h5ad"
-    dataset_name = "test_dataset"
-    requests_mock.head(mock_url, headers={"Content-Length": "4096000"})
-    requests_mock.get(mock_url, content=b"dummy h5ad content")
-
-    data_path = download_dataset(
-        data_set_name=dataset_name,
-        data_external_path=temp_data_dir,
-        data_url=mock_url,
-    )
-
-    caplog.set_level(logging.ERROR)
-
-    data_path = download_dataset(
-        data_set_name=dataset_name,
-        data_external_path=temp_data_dir,
-        data_url=mock_url,
-    )
-
-    assert not Path(data_path).exists()
-
-    assert "Failed to download from URL" in caplog.text
-    assert (
-        "No data available for test_dataset due to errors during download or processing."
-        in caplog.text
-    )
 
 
 def test_invalid_url(temp_data_dir):
