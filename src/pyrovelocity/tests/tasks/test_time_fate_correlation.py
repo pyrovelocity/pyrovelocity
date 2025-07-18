@@ -8,9 +8,11 @@ from pyrovelocity.tasks.time_fate_correlation import (
 )
 
 
-@pytest.mark.network
 def test_create_time_lineage_fate_correlation_plot(
     larry_multilineage_model2_pyrovelocity_data_path,
+    larry_cospar_100_6,
+    larry_mono_100_6,
+    larry_neu_100_6,
     tmp_path,
 ):
     """Test the time_fate_correlation function with multiple model results.
@@ -47,6 +49,9 @@ def test_create_time_lineage_fate_correlation_plot(
         model_results=model_results,
         output_dir=output_dir,
         dataset_label_map=dataset_label_map,
+        adata_cospar=larry_cospar_100_6,
+        adata_mono=larry_mono_100_6,
+        adata_neu=larry_neu_100_6,
     )
 
     assert os.path.exists(output_path)
