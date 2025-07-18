@@ -20,6 +20,7 @@ def get_fixture_hashes():
     data_dir = files("pyrovelocity.tests.data")
 
     fixture_files = [
+        "pancreas_50_13.json",
         "preprocessed_pancreas_50_7.json",
         "trained_pancreas_50_7.json",
         "postprocessed_pancreas_50_7.json",
