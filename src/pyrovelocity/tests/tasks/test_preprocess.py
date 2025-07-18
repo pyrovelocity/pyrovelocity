@@ -32,28 +32,26 @@ def test_preprocess_dataset(preprocess_dataset_output):
     return preprocess_dataset_output
 
 
+@pytest.mark.slow
 @pytest.mark.integration
-@pytest.mark.network
-def test_preprocess_dataset_pancreas(tmp_path):
-    from pyrovelocity.io.datasets import pancreas
-
+def test_preprocess_dataset_pancreas(adata_pancreas_raw_96_10, tmp_path):
     data_set_name = "pancreas"
     data_processed_path = tmp_path / "data/processed"
     reports_processed_path = tmp_path / "reports/processed"
 
-    # Load the pancreas dataset directly
-    adata = pancreas()
-    n_obs = 50
-    n_vars = 7
+    # Use the ultra-optimized pancreas fixture with 10 top velocity genes
+    adata = adata_pancreas_raw_96_10
+    n_obs = 96
+    n_vars = 10
 
     result = preprocess_dataset(
         data_set_name=data_set_name,
         adata=adata,
         data_processed_path=data_processed_path,
         reports_processed_path=reports_processed_path,
-        use_obs_subset=True,
+        use_obs_subset=False,  # Don't subset - use all 96 cells
         n_obs_subset=n_obs,
-        use_vars_subset=True,
+        use_vars_subset=False,  # Don't subset - use all 10 genes
         n_vars_subset=n_vars,
         process_cytotrace=True,
     )
