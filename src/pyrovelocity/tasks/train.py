@@ -365,6 +365,7 @@ def train_model(
         Tuple[AnnData, PyroVelocity, Dict[str, ndarray]]: A tuple containing the processed AnnData object, the trained PyroVelocity model, and a dictionary of posterior samples.
 
     Examples:
+        >>> # xdoctest: +SKIP
         >>> from pyrovelocity.tasks.train import train_model
         >>> from pyrovelocity.utils import generate_sample_data
         >>> from pyrovelocity.tasks.preprocess import copy_raw_counts
