@@ -13,7 +13,22 @@ from pyrovelocity.models.experimental.deterministic_simulation import (
     solve_transcription_splicing_model_impl,
 )
 
-jax.config.update("jax_debug_nans", True)
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def jax_debug_mode():
+    """Enable JAX debug mode for deterministic simulation tests with proper cleanup."""
+    # Store original state
+    original_debug_nans = jax.config.jax_debug_nans
+    
+    # Enable debug mode
+    jax.config.update("jax_debug_nans", True)
+    
+    yield
+    
+    # Restore original state
+    jax.config.update("jax_debug_nans", original_debug_nans)
 
 
 def test_dstate_dt_dimless_basic():
