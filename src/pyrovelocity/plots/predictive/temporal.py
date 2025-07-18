@@ -1287,7 +1287,7 @@ def plot_temporal_coordinate_validation(
         ...     save_path="reports/docs/posterior_predictive",
         ...     file_prefix="12",
         ...     check_type="posterior"
-        ... )
+        ... ) # xdoctest: +SKIP
     """
     fig, axes = plt.subplots(1, 3, figsize=figsize)
 

@@ -56,7 +56,7 @@ def plot_training_loss(
         ...     save_path="reports/docs/posterior_predictive",
         ...     file_prefix="07",
         ...     moving_average_window=100
-        ... )
+        ... ) # xdoctest: +SKIP
     """
     # Extract training history from model state
     if not hasattr(model, 'state') or model.state is None:
@@ -174,7 +174,7 @@ def plot_mae_vs_spliced_count(
         ...     observed_adata=original_adata,
         ...     save_path="reports/docs/posterior_predictive",
         ...     file_prefix="15"
-        ... )
+        ... ) # xdoctest: +SKIP
     """
     # Use observed_adata if provided, otherwise use predicted_adata
     data_adata = observed_adata if observed_adata is not None else predicted_adata

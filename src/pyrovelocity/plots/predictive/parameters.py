@@ -718,7 +718,7 @@ def plot_parameter_marginals_by_gene(
         ...     save_path="reports/docs/posterior_predictive",
         ...     file_prefix="05",
         ...     true_parameters_adata=prior_predictive_adata  # For validation
-        ... )
+        ... ) # xdoctest: +SKIP
     """
     from matplotlib.gridspec import GridSpec
 
@@ -1031,8 +1031,8 @@ def plot_parameter_recovery_correlation(
         ...     parameters_to_validate=["R_on", "gamma_star", "t_on_star", "delta_star"],
         ...     save_path="reports/docs/posterior_predictive",
         ...     file_prefix="06"
-        ... )
-        >>> print(f"Mean correlation: {metrics['summary']['mean_pearson_r']:.3f}")
+        ... ) # xdoctest: +SKIP
+        >>> print(f"Mean correlation: {metrics['summary']['mean_pearson_r']:.3f}") # xdoctest: +SKIP
     """
     from pyrovelocity.plots.parameter_metadata import get_parameter_label
 

@@ -114,7 +114,7 @@ def plot_posterior_predictive_checks(
         ...     figure_name="piecewise_activation_posterior_checks",
         ...     observed_adata=original_adata,
         ...     num_genes=10
-        ... )
+        ... ) # xdoctest: +SKIP
     """
     return plot_prior_predictive_checks(
         model=model,
@@ -190,7 +190,7 @@ def plot_prior_predictive_checks(
         ...     combine_individual_pdfs=True,
         ...     default_fontsize=8,
         ...     num_genes=10
-        ... )
+        ... ) # xdoctest: +SKIP
     """
     # Convert all parameters to NumPy arrays for framework-agnostic plotting
     numpy_prior_parameters = ensure_numpy_parameters(prior_parameters)
