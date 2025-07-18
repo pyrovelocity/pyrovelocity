@@ -25,6 +25,9 @@ FIXTURE_HASHES = {
     "preprocessed_larry_multilineage_50_6.json": "61d3da04b5de323d3e0fd0bfd6218281c76e58f2d5271d52247f2f3218f1b1a2",
     "trained_larry_multilineage_50_6.json": "c6338e64b437e8b7a82f245729e585dc4fa7f11cd428777716e84fc6c46603f8",
     "postprocessed_larry_multilineage_50_6.json": "a8aeec31939a8d1b93577e5bf3d4f747d69cd4564bd87af54ec800903aaa25a6",
+    "larry_cospar_100_6.json": "750280da645f11e6311b0ee2c3f628475f154ba9cf5235d9653cb90c50df8fde",
+    "larry_mono_100_6.json": "fb9c662ee58c1a74b30700ba1e60b439871b8b1fcf2f712d3dd44add2d642ddf",
+    "larry_neu_100_6.json": "47f4273f4d7ba17f914707da595b3f4fcd770176a95b62d024740e078331aa55",
 }
 
 
@@ -494,3 +497,47 @@ def save_and_load_helper():
         return CompressedPickle.load(file_path=file_path, **load_kwargs)
 
     return _save_and_load
+
+
+
+@pytest.fixture(scope="session")
+def larry_cospar_100_6():
+    """Larry COSPAR dataset fixture with 50 cells and 5 genes.
+    
+    Optimized fixture to replace downloading 2.7GB larry_cospar.h5ad.
+    Contains fate_potency_transition_map and X_emb for lineage fate correlation tests.
+    Compatible with all tests requiring COSPAR data.
+    """
+    fixture_path = files("pyrovelocity.tests.data") / "larry_cospar_100_6.json"
+    return load_anndata_from_json(
+        filename=fixture_path,
+        expected_hash=FIXTURE_HASHES["larry_cospar_100_6.json"],
+    )
+
+
+@pytest.fixture(scope="session")
+def larry_mono_100_6():
+    """Larry mono dataset fixture with 100 cells and 6 genes (clone-aware version).
+    
+    Optimized fixture to replace downloading 56MB larry_mono.h5ad.
+    Maintains proper clone trajectory structure with 12+ good clones across time points.
+    """
+    fixture_path = files("pyrovelocity.tests.data") / "larry_mono_100_6.json"
+    return load_anndata_from_json(
+        filename=fixture_path,
+        expected_hash=FIXTURE_HASHES["larry_mono_100_6.json"],
+    )
+
+
+@pytest.fixture(scope="session")
+def larry_neu_100_6():
+    """Larry neu dataset fixture with 100 cells and 6 genes (clone-aware version).
+    
+    Optimized fixture to replace downloading 50MB larry_neu.h5ad.
+    Maintains proper clone trajectory structure with 14+ good clones across time points.
+    """
+    fixture_path = files("pyrovelocity.tests.data") / "larry_neu_100_6.json"
+    return load_anndata_from_json(
+        filename=fixture_path,
+        expected_hash=FIXTURE_HASHES["larry_neu_100_6.json"],
+    )
