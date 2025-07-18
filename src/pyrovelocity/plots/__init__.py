@@ -30,7 +30,7 @@ from pyrovelocity.plots._uncertainty import (
     plot_state_uncertainty,
 )
 from pyrovelocity.plots._vector_fields import plot_vector_field_summary
-from pyrovelocity.plots.predictive_checks import (
+from pyrovelocity.plots.predictive import (
     plot_posterior_predictive_checks,
     plot_prior_predictive_checks,
 )
