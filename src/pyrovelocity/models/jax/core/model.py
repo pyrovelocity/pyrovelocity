@@ -22,9 +22,9 @@ Example:
     >>>
     >>> # Create a model configuration
     >>> config = ModelConfig(
-    ...     dynamics="standard",
-    ...     likelihood="poisson",
-    ...     prior="lognormal",
+    ...     dynamics="piecewise_activation",
+    ...     likelihood="piecewise_activation",
+    ...     prior="piecewise_activation",
     ...     latent_time=True,
     ...     include_prior=True
     ... )
@@ -268,9 +268,9 @@ def create_model(
         >>> tmp = getfixture("tmp_path")
         >>> # Create a model configuration
         >>> config = ModelConfig(
-        ...     dynamics="standard",
-        ...     likelihood="poisson",
-        ...     prior="lognormal",
+        ...     dynamics="piecewise_activation",
+        ...     likelihood="piecewise_activation",
+        ...     prior="piecewise_activation",
         ...     latent_time=True,
         ...     include_prior=True
         ... )

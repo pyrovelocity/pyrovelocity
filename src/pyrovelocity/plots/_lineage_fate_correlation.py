@@ -130,7 +130,13 @@ def plot_lineage_fate_correlation(
 
     adata_scvelo = adata_pyrovelocity.copy()
 
-    density = 0.35
+    # Calculate appropriate density for dataset size to avoid n_neighbors=0 in scvelo
+    # For small datasets (< 200 cells), use larger density to ensure n_neighbors >= 1
+    n_cells = adata_pyrovelocity.n_obs
+    if n_cells < 200:
+        density = max(0.5, 3.0 / n_cells)  # Ensure density gives at least 1-2 neighbors
+    else:
+        density = 0.35
     diff = align_trajectory_diff(
         [adata_input_clone, adata_scvelo, adata_scvelo],
         [
@@ -235,6 +241,9 @@ def plot_lineage_fate_correlation(
 
     # SHIFT AXIS INDEX
     ax, current_axis_index = get_next_axis(all_axes, current_axis_index)
+    # Calculate safe n_neighbors for small datasets
+    n_neighbors = max(1, min(10, adata_input_clone.n_obs // 10))
+    
     scv.pl.velocity_embedding_grid(
         adata=adata_input_clone,
         scale=scale,
@@ -242,6 +251,7 @@ def plot_lineage_fate_correlation(
         show=False,
         s=dotsize,
         density=density,
+        n_neighbors=n_neighbors,
         arrow_size=arrow,
         linewidth=1,
         vkey="clone_vector",
@@ -267,6 +277,7 @@ def plot_lineage_fate_correlation(
         show=False,
         s=dotsize,
         density=density,
+        n_neighbors=n_neighbors,
         scale=scale,
         autoscale=True,
         arrow_size=arrow,
@@ -302,6 +313,7 @@ def plot_lineage_fate_correlation(
         show=False,
         s=dotsize,
         density=density,
+        n_neighbors=n_neighbors,
         scale=scale,
         autoscale=True,
         arrow_size=arrow,
