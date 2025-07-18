@@ -405,10 +405,11 @@ def preprocess_dataset(
         # Capture state before moments
         pre_moments_representation = anndata_string(adata)
 
+        # Fix scanpy/scvelo compatibility issue - use pre-computed neighbors
         scv.pp.moments(
             data=adata,
-            n_pcs=n_pcs,
-            n_neighbors=n_neighbors,
+            n_pcs=None,  # Use pre-computed PCA from scanpy
+            n_neighbors=None,  # Use pre-computed neighbors from scanpy
         )
 
         # Track changes after moments
