@@ -8,6 +8,7 @@ import scanpy as sc
 
 from pyrovelocity.analysis.analyze import top_mae_genes
 from pyrovelocity.io.compressedpickle import CompressedPickle
+from pyrovelocity.io.hash import hash_file
 from pyrovelocity.io.serialization import load_anndata_from_json
 from pyrovelocity.tasks.data import download_dataset
 from pyrovelocity.tasks.postprocess import postprocess_dataset
@@ -18,6 +19,8 @@ from pyrovelocity.utils import generate_sample_data
 
 # see `src/pyrovelocity/tests/fixtures/get_fixture_hashes.py` to update fixture hashes
 FIXTURE_HASHES = {
+    "pancreas_50_13.json": "9dcf9914f5905e248b6f6309635eddbfecd94f132a738b89381d19da3c6a2e12",
+    "pancreas_raw_96_10.json": "97711767fdb13a96895450123f36fcc770c53e202154c5c1317daf12010182e5",
     "preprocessed_pancreas_50_7.json": "95c80131694f2c6449a48a56513ef79cdc56eae75204ec69abde0d81a18722ae",
     "trained_pancreas_50_7.json": "8c575d9de0430003b469b9cc9850171914a4fe1f0ae655fe0146f81af34abd04",
     "postprocessed_pancreas_50_7.json": "d50813ad23e4ae1c34f483547a7d8351fdfa94c805098caf99b8864eba8892ef",
@@ -29,6 +32,30 @@ FIXTURE_HASHES = {
     "larry_mono_100_6.json": "fb9c662ee58c1a74b30700ba1e60b439871b8b1fcf2f712d3dd44add2d642ddf",
     "larry_neu_100_6.json": "47f4273f4d7ba17f914707da595b3f4fcd770176a95b62d024740e078331aa55",
 }
+
+
+@pytest.fixture
+def adata_pancreas_50_13():
+    fixture_file_path = (
+        files("pyrovelocity.tests.data") / "pancreas_50_13.json"
+    )
+    return load_anndata_from_json(
+        filename=fixture_file_path,
+        expected_hash=FIXTURE_HASHES["pancreas_50_13.json"],
+        sparse_layers=True,  # Convert layers to sparse matrices for cytotrace compatibility
+    )
+
+
+@pytest.fixture
+def adata_pancreas_raw_96_10():
+    fixture_file_path = (
+        files("pyrovelocity.tests.data") / "pancreas_raw_96_10.json"
+    )
+    return load_anndata_from_json(
+        filename=fixture_file_path,
+        expected_hash=FIXTURE_HASHES["pancreas_raw_96_10.json"],
+        sparse_layers=True,  # Convert layers to sparse matrices for scvelo compatibility
+    )
 
 
 @pytest.fixture
