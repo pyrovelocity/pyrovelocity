@@ -279,13 +279,13 @@ The complete solutions are:
 
 \begin{align}
     u^*_{ij} &= 1 + (u^*_{0i} - 1) e^{-t^*_j} \\
-    {s^{\ast}}^{k}_{ij} &= 
+    {s^{\ast}}^{k}_{ij} &=
       \begin{cases}
-        \frac{1}{\gamma^{\ast}_i} + 
-        \left( s^{\ast}_{0i} - \xi_i - \frac{1}{\gamma^{\ast}_i} \right) \cdot e^{-\gamma^{\ast}_i {t^{\ast}}^k_j} + 
+        \frac{1}{\gamma^{\ast}_i} +
+        \left( s^{\ast}_{0i} - \xi_i - \frac{1}{\gamma^{\ast}_i} \right) \cdot e^{-\gamma^{\ast}_i {t^{\ast}}^k_j} +
         \xi_i \cdot e^{-{t^{\ast}}^k_j},& \gamma^{\ast}_i \neq 1 \\
 
-        1 + (s^{\ast}_{0i} - 1) e^{-{t^{\ast}}^k_j} + 
+        1 + (s^{\ast}_{0i} - 1) e^{-{t^{\ast}}^k_j} +
           (u^{\ast}_{0i} - 1) {t^{\ast}}^k_j e^{-{t^{\ast}}^k_j},& \gamma^{\ast}_i = 1 \\
       \end{cases}, \label{eq-s-star-model-cell}
 \end{align}
@@ -1410,13 +1410,13 @@ For each posterior sample $\theta^{(s)}$, generate a corresponding posterior pre
 
 $$\tilde{y}^{(s)} \sim p(y | \theta^{(s)})$$
 
-**Mathematical Prohibition Against Parameter Averaging**: 
+**Mathematical Prohibition Against Parameter Averaging**:
 
 **Correct Sampling**: Each $\tilde{y}^{(s)}$ must be generated using the complete parameter vector $\theta^{(s)}$:
 
 1. Compute phase assignments for each cell-gene pair using ${{t^{\ast}_{j}}}^{(s)}$, ${{t^{\ast}_{on,i}}}^{(s)}$, ${{\delta^{\ast}_i}}^{(s)}$
 2. Evaluate analytical solutions: ${{u^*_{ij}}}^{(s)}, {{s^*_{ij}}}^{(s)} = f_{\text{piecewise}}({{t^*_{j}}}^{(s)}, {{\gamma^*_i}}^{(s)}, {{R_{\text{on},i}}}^{(s)}, {{t^*_{on,i}}}^{(s)}, {{\delta^*_i}}^{(s)})$
-3. Sample observations: 
+3. Sample observations:
 
 \begin{align}
 {{u_{ij}}}^{(s)} &\sim \text{Poisson}({{\lambda_j}}^{(s)} \cdot {{U_{0i}}}^{(s)} \cdot {{u^*_{ij}}}^{(s)}) \\
