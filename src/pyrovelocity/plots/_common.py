@@ -3,11 +3,64 @@ from matplotlib.ticker import MaxNLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
+from beartype import beartype
+
 from pyrovelocity.logging import configure_logging
 
-__all__ = ["set_colorbar", "set_font_size"]
+__all__ = ["calculate_adaptive_n_neighbors", "set_colorbar", "set_font_size"]
 
 logger = configure_logging(__name__)
+
+
+@beartype
+def calculate_adaptive_n_neighbors(
+    n_obs: int, 
+    min_neighbors: int = 3, 
+    max_fraction: float = 0.05
+) -> int:
+    """Calculate adaptive n_neighbors based on dataset size.
+    
+    Uses scVelo's default formula (n_obs/50) as the base calculation,
+    with additional constraints for very small or very large datasets.
+    
+    Args:
+        n_obs: Number of observations/cells in the dataset.
+        min_neighbors: Minimum number of neighbors to ensure stable velocity estimation.
+            For very small datasets (<150 cells), at least 3 neighbors 
+            are needed for meaningful results. Defaults to 3.
+        max_fraction: Maximum fraction of total cells to use as neighbors.
+            Prevents using too large a neighborhood (e.g., 5% of 100k cells = 5k neighbors max).
+            Defaults to 0.05.
+        
+    Returns:
+        Appropriate number of neighbors for the dataset size.
+        
+    Examples:
+        >>> calculate_adaptive_n_neighbors(50)
+        3
+        >>> calculate_adaptive_n_neighbors(500)
+        10
+        >>> calculate_adaptive_n_neighbors(5000)
+        100
+        >>> calculate_adaptive_n_neighbors(50000)
+        1000
+        >>> calculate_adaptive_n_neighbors(200000, max_fraction=0.02)
+        4000
+        >>> calculate_adaptive_n_neighbors(10, min_neighbors=5)
+        5
+    """
+    # Use scVelo's default formula as base
+    n_neighbors = int(n_obs / 50)
+    
+    # Ensure minimum for small datasets
+    n_neighbors = max(min_neighbors, n_neighbors)
+    
+    # Cap at reasonable fraction of total cells for very large datasets
+    # but never go below the minimum
+    max_neighbors = max(int(n_obs * max_fraction), min_neighbors)
+    n_neighbors = min(n_neighbors, max_neighbors)
+    
+    return n_neighbors
 
 
 def set_font_size(size: int):
