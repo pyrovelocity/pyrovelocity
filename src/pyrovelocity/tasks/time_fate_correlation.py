@@ -39,6 +39,9 @@ def create_time_lineage_fate_correlation_plot(
         "larry_multilineage": "Multilineage",
         "larry": "All lineages",
     },
+    adata_cospar=None,
+    adata_mono=None,
+    adata_neu=None,
 ) -> Path:
     """
     Create a time lineage fate correlation plot from model results.
@@ -56,6 +59,12 @@ def create_time_lineage_fate_correlation_plot(
             This determines both the order and labels for datasets in the plot.
             Only datasets found in both model_results and this map will be included.
             The order of keys in this dictionary determines the order of rows in the plot.
+        adata_cospar: Optional COSPAR AnnData object. If None, will download larry_cospar dataset.
+            Used for testing with small fixtures to avoid downloading large datasets.
+        adata_mono: Optional mono AnnData object. If None, will download larry_mono dataset.
+            Used for testing with small fixtures to avoid downloading large datasets.
+        adata_neu: Optional neu AnnData object. If None, will download larry_neu dataset.
+            Used for testing with small fixtures to avoid downloading large datasets.
 
     Returns:
         Path: The path where the final plot is saved
@@ -122,7 +131,8 @@ def create_time_lineage_fate_correlation_plot(
         height_ratios=[1] * n_rows + [0.2],
     )
 
-    adata_cospar = larry_cospar()
+    if adata_cospar is None:
+        adata_cospar = larry_cospar()
 
     logger.info("Generating clone trajectories for all datasets")
     clone_trajectories = {}
@@ -145,10 +155,11 @@ def create_time_lineage_fate_correlation_plot(
                 "Creating multilineage clone trajectory from mono and neu datasets"
             )
 
-            from pyrovelocity.io.datasets import larry_mono, larry_neu
-
-            mono_adata = larry_mono()
-            neu_adata = larry_neu()
+            if adata_mono is None or adata_neu is None:
+                from pyrovelocity.io.datasets import larry_mono, larry_neu
+                
+            mono_adata = adata_mono if adata_mono is not None else larry_mono()
+            neu_adata = adata_neu if adata_neu is not None else larry_neu()
 
             logger.info(
                 f"  - Generating mono trajectory with {mono_adata.n_obs} cells"
