@@ -3,12 +3,12 @@ import tempfile
 import uuid
 from importlib.resources import files
 
+import mlflow
 import pytest
 import scanpy as sc
 
 from pyrovelocity.analysis.analyze import top_mae_genes
 from pyrovelocity.io.compressedpickle import CompressedPickle
-from pyrovelocity.io.hash import hash_file
 from pyrovelocity.io.serialization import load_anndata_from_json
 from pyrovelocity.tasks.data import download_dataset
 from pyrovelocity.tasks.postprocess import postprocess_dataset
@@ -16,6 +16,43 @@ from pyrovelocity.tasks.preprocess import preprocess_dataset
 from pyrovelocity.tasks.summarize import summarize_dataset
 from pyrovelocity.tasks.train import train_dataset
 from pyrovelocity.utils import generate_sample_data
+
+
+
+def mlflow_isolation_scope(fixture_name, config):
+    """Determine the appropriate scope for MLflow isolation based on execution mode."""
+    if os.environ.get('PYTEST_XDIST_WORKER'):
+        return "function"
+    return "session"
+
+@pytest.fixture(autouse=True, scope=mlflow_isolation_scope)
+def disable_mlflow_remote_tracking(tmp_path_factory):
+    """Disable MLflow remote tracking during tests to prevent network calls.
+
+    This fixture overrides MLflow tracking configuration to use a local
+    temporary directory instead of any remote server. Since tests run in
+    isolated processes, we don't need to restore the original environment.
+    """
+    tmp_dir = tmp_path_factory.getbasetemp() / "mlflow_local"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    os.environ['MLFLOW_TRACKING_URI'] = f"file://{tmp_dir}"
+
+    for env_var in ['MLFLOW_TRACKING_USERNAME', 'MLFLOW_TRACKING_PASSWORD', 'MLFLOW_TRACKING_TOKEN']:
+        os.environ.pop(env_var, None)
+
+    mlflow.set_tracking_uri(f"file://{tmp_dir}")
+
+    try:
+        mlflow.set_experiment("test_experiment")
+    except Exception:
+        try:
+            mlflow.create_experiment("test_experiment")
+            mlflow.set_experiment("test_experiment")
+        except Exception:
+            pass
+
+    yield
 
 # see `src/pyrovelocity/tests/fixtures/get_fixture_hashes.py` to update fixture hashes
 FIXTURE_HASHES = {
@@ -261,6 +298,9 @@ def default_sample_data_file(default_sample_data, tmp_path):
 
 
 def integration_fixture_scope(fixture_name, config):
+    if os.environ.get('PYTEST_XDIST_WORKER'):
+        return "function"
+
     if config.getoption("--cached-integration-fixtures", None):
         return "session"
     return "session"
@@ -530,7 +570,7 @@ def save_and_load_helper():
 @pytest.fixture(scope="session")
 def larry_cospar_100_6():
     """Larry COSPAR dataset fixture with 50 cells and 5 genes.
-    
+
     Optimized fixture to replace downloading 2.7GB larry_cospar.h5ad.
     Contains fate_potency_transition_map and X_emb for lineage fate correlation tests.
     Compatible with all tests requiring COSPAR data.
@@ -545,7 +585,7 @@ def larry_cospar_100_6():
 @pytest.fixture(scope="session")
 def larry_mono_100_6():
     """Larry mono dataset fixture with 100 cells and 6 genes (clone-aware version).
-    
+
     Optimized fixture to replace downloading 56MB larry_mono.h5ad.
     Maintains proper clone trajectory structure with 12+ good clones across time points.
     """
@@ -559,7 +599,7 @@ def larry_mono_100_6():
 @pytest.fixture(scope="session")
 def larry_neu_100_6():
     """Larry neu dataset fixture with 100 cells and 6 genes (clone-aware version).
-    
+
     Optimized fixture to replace downloading 50MB larry_neu.h5ad.
     Maintains proper clone trajectory structure with 14+ good clones across time points.
     """
