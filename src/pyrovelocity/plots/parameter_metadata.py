@@ -161,7 +161,7 @@ def get_parameter_label(
     
     # Strategy 3: Fall back to legacy formatting
     if fallback_to_legacy and label_type == "display":
-        from pyrovelocity.plots.predictive_checks import _format_parameter_name
+        from pyrovelocity.plots.predictive import _format_parameter_name
         return _format_parameter_name(param_name)
     
     # Strategy 4: Return the parameter name as-is
