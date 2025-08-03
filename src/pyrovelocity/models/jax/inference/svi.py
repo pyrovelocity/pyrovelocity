@@ -20,7 +20,7 @@ from jaxtyping import Array, Float, PyTree
 from numpyro.infer import SVI, Trace_ELBO, TraceEnum_ELBO
 from numpyro.infer.autoguide import AutoGuide
 
-from pyrovelocity.models.jax.core.state import InferenceConfig, TrainingState
+from pyrovelocity.models.jax.state import InferenceConfig, TrainingState
 from pyrovelocity.models.jax.factory.factory import create_model
 from pyrovelocity.models.jax.inference.guide import create_guide
 

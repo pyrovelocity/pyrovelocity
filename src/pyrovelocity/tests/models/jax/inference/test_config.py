@@ -10,7 +10,7 @@ from pyrovelocity.models.jax.inference.config import (
     create_inference_config,
     get_default_config,
 )
-from pyrovelocity.models.jax.core.state import InferenceConfig
+from pyrovelocity.models.jax.state import InferenceConfig
 
 
 def test_create_inference_config():

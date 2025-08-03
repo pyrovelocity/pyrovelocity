@@ -18,7 +18,7 @@ from beartype import beartype
 from jaxtyping import Array, Float, PyTree
 from numpyro.infer import HMC, MCMC, NUTS, DiscreteHMCGibbs
 
-from pyrovelocity.models.jax.core.state import InferenceConfig, InferenceState
+from pyrovelocity.models.jax.state import InferenceConfig, InferenceState
 from pyrovelocity.models.jax.factory.factory import create_model
 
 

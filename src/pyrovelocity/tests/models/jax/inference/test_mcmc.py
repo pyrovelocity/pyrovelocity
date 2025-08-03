@@ -9,7 +9,7 @@ import numpyro.distributions as dist
 import pytest
 from numpyro.infer import MCMC, NUTS
 
-from pyrovelocity.models.jax.core.state import InferenceConfig, InferenceState
+from pyrovelocity.models.jax.state import InferenceConfig, InferenceState
 from pyrovelocity.models.jax.factory.factory import create_model
 from pyrovelocity.models.jax.inference.mcmc import (
     create_inference_state,

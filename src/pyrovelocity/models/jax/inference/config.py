@@ -15,7 +15,7 @@ import numpyro
 from jaxtyping import Array, Float
 from beartype import beartype
 
-from pyrovelocity.models.jax.core.state import InferenceConfig
+from pyrovelocity.models.jax.state import InferenceConfig
 
 
 @beartype

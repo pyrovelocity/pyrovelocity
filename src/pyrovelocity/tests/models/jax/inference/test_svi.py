@@ -9,7 +9,7 @@ import numpyro.distributions as dist
 import optax
 import pytest
 
-from pyrovelocity.models.jax.core.state import InferenceConfig
+from pyrovelocity.models.jax.state import InferenceConfig
 from pyrovelocity.models.jax.factory.factory import create_model
 from pyrovelocity.models.jax.inference.guide import (
     auto_normal_guide,

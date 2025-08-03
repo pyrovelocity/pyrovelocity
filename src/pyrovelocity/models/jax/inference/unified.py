@@ -18,7 +18,7 @@ from numpyro.infer.autoguide import AutoGuide
 from jaxtyping import Array, Float, PyTree
 from beartype import beartype
 
-from pyrovelocity.models.jax.core.state import InferenceConfig, InferenceState
+from pyrovelocity.models.jax.state import InferenceConfig, InferenceState
 from pyrovelocity.models.jax.inference.config import create_inference_config
 from pyrovelocity.models.jax.inference.guide import create_guide
 from pyrovelocity.models.jax.inference.svi import run_svi_inference

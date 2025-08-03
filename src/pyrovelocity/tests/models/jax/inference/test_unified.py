@@ -16,7 +16,7 @@ from pyrovelocity.models.jax.inference.unified import (
     posterior_predictive,
     create_inference_state,
 )
-from pyrovelocity.models.jax.core.state import InferenceConfig, InferenceState, TrainingState
+from pyrovelocity.models.jax.state import InferenceConfig, InferenceState, TrainingState
 
 
 # Simple model for testing

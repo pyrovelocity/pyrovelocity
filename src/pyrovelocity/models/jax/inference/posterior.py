@@ -37,7 +37,7 @@ def get_standard_dynamics_model():
     return dynamics_fn
 
 standard_dynamics_model = get_standard_dynamics_model()
-from pyrovelocity.models.jax.core.state import InferenceState
+from pyrovelocity.models.jax.state import InferenceState
 from pyrovelocity.models.jax.factory.config import ModelConfig
 from pyrovelocity.models.jax.factory.factory import create_model
 

@@ -51,6 +51,13 @@ from pyrovelocity.models.jax.inference.unified import (
     create_inference_state,
 )
 
+# Import state classes for re-export
+from pyrovelocity.models.jax.state import (
+    InferenceConfig,
+    InferenceState,
+    TrainingState,
+)
+
 
 __all__ = [
     # Config
@@ -86,4 +93,8 @@ __all__ = [
     "analyze_posterior",
     "create_inference_data",
     "format_anndata_output",
+    # State
+    "InferenceConfig",
+    "InferenceState",
+    "TrainingState",
 ]

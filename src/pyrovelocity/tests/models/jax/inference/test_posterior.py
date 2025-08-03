@@ -12,7 +12,7 @@ import numpyro.distributions as dist
 import pytest
 
 from pyrovelocity.models.jax.registry.dynamics import get_dynamics
-from pyrovelocity.models.jax.core.model import velocity_model
+# Removed import of velocity_model from deleted core module
 
 
 def get_test_dynamics():
@@ -21,7 +21,7 @@ def get_test_dynamics():
     if dynamics_fn is None:
         raise ValueError("Test dynamics function 'piecewise_activation' not found in registry")
     return dynamics_fn
-from pyrovelocity.models.jax.core.state import InferenceState
+from pyrovelocity.models.jax.state import InferenceState
 from pyrovelocity.models.jax.inference.posterior import (
     analyze_posterior,
     compute_uncertainty,
