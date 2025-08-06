@@ -1,6 +1,8 @@
 #
 /archive/
 /scripts/parquet/data/
+/scripts/parquet/ducklake/
+/specs/
 
 #
 .DS_Store
