@@ -9,7 +9,7 @@ This module contains tests for the piecewise activation dynamics components, inc
 
 import jax.numpy as jnp
 
-from pyrovelocity.models.jax.components.dynamics import (
+from pyrovelocity.models.jax.components import (
     piecewise_activation_dynamics_function,
 )
 from pyrovelocity.models.jax.registry import get_dynamics

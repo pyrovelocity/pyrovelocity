@@ -11,7 +11,7 @@ import jax.numpy as jnp
 import numpy as np
 from numpyro.handlers import seed, trace
 
-from pyrovelocity.models.jax.components.likelihoods import (
+from pyrovelocity.models.jax.components import (
     piecewise_activation_likelihood_function,
 )
 from pyrovelocity.models.jax.registry import get_likelihood

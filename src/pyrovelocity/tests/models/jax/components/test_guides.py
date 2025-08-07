@@ -13,7 +13,7 @@ import jax.numpy as jnp
 import numpyro
 from numpyro.distributions import Normal
 
-from pyrovelocity.models.jax.components.guides import (
+from pyrovelocity.models.jax.components import (
     auto_delta_guide_factory,
     auto_normal_guide_factory,
 )

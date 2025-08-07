@@ -8,7 +8,7 @@ import pytest
 from numpyro.infer import Predictive
 
 from pyrovelocity.models.jax.factory.factory import create_piecewise_activation_model
-from pyrovelocity.models.jax.components.dynamics import piecewise_activation_dynamics_function
+from pyrovelocity.models.jax.components import piecewise_activation_dynamics_function
 
 
 class TestScaleFactors:
