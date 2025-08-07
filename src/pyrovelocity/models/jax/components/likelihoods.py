@@ -55,35 +55,39 @@ def piecewise_activation_likelihood_function(
     # Use get() method to allow None values for prior predictive sampling
     u_obs = context.get("u_obs")
     s_obs = context.get("s_obs")
-    u_expected = context["u_expected"]  # These should always be present
-    s_expected = context["s_expected"]
-    
-    # Extract optional scaling parameters
-    # u_log_library = context.get("u_log_library")
-    # s_log_library = context.get("s_log_library")
-    eps = context.get("eps", 1e-6)
+    u_star = context["u_star"]  # Dimensionless concentrations from dynamics
+    s_star = context["s_star"]  # Dimensionless concentrations from dynamics
     
     # Extract scaling parameters from context
-    lambda_j = context.get("lambda_j")  # Cell-specific capture efficiency [n_cells]
-    U_0i = context.get("U_0i")  # Gene-specific concentration scale [n_genes]
+    lambda_j = context["lambda_j"]  # Cell-specific capture efficiency [n_cells]
+    U_0i = context["U_0i"]  # Gene-specific concentration scale [n_genes]
+    eps = context.get("eps", 1e-6)
     
-    # Apply scaling to expected concentrations
-    # u_{ij} ∼ Poisson(λ_j · U_{0i} · u*_{ij})
-    # if lambda_j is not None and U_0i is not None:
-    #     # Ensure proper broadcasting: lambda_j [n_cells] × U_0i [n_genes] × u/s_expected [batch, n_cells, n_genes]
-    #     scaling_factor = lambda_j[jnp.newaxis, :, jnp.newaxis] * U_0i[jnp.newaxis, jnp.newaxis, :]
-    #     ut = u_expected * scaling_factor
-    #     st = s_expected * scaling_factor
-    # else:
-    #     # Fallback to unscaled if parameters not provided
-    #     ut = u_expected
-    #     st = s_expected
-
-    # NOTE: u_expected and s_expected from factory are ALREADY SCALED
-    # Factory applies: u_expected_scaled = lambda_j * U_0i * u_expected_raw
-    # So we should use them directly as rates, not scale again
-    u_rate = u_expected
-    s_rate = s_expected
+    # Apply observation model scaling according to mathematical specification
+    # u_{ij} ~ Poisson(λ_j · U_{0i} · u*_{ij})
+    # s_{ij} ~ Poisson(λ_j · U_{0i} · s*_{ij})
+    
+    # Handle potential extra dimensions from explicit plate dimensions
+    # Ensure lambda_j is 1D [n_cells]
+    if lambda_j.ndim > 1:
+        lambda_j = jnp.squeeze(lambda_j)
+    # Ensure U_0i is 1D [n_genes]  
+    if U_0i.ndim > 1:
+        U_0i = jnp.squeeze(U_0i)
+    
+    # Proper 2D broadcasting to compute rates:
+    # lambda_j: [N] -> [N, 1], U_0i: [G] -> [1, G] 
+    # Result: [N, 1] * [1, G] * [N, G] = [N, G]
+    lambda_j_expanded = lambda_j[:, jnp.newaxis]  # [N, 1]
+    U_0i_expanded = U_0i[jnp.newaxis, :]  # [1, G]
+    
+    # Apply scaling to get Poisson rates
+    u_rate = lambda_j_expanded * U_0i_expanded * u_star
+    s_rate = lambda_j_expanded * U_0i_expanded * s_star
+    
+    # Ensure positive rates for numerical stability
+    u_rate = jnp.maximum(u_rate, eps)
+    s_rate = jnp.maximum(s_rate, eps)
     
     # Apply library size scaling if available
     # if u_log_library is not None:
@@ -121,3 +125,11 @@ def register_standard_likelihoods():
     """Register standard likelihood functions."""
     register_likelihood("piecewise_activation", piecewise_activation_likelihood_function)
     register_likelihood("piecewise_activation_poisson_likelihood", piecewise_activation_likelihood_function)  # Alias for tests
+    
+    # Register alternative observation models to demonstrate multi-model extensibility
+    from pyrovelocity.models.jax.components.alternative_likelihoods import (
+        negative_binomial_likelihood_function,
+        gaussian_likelihood_function
+    )
+    register_likelihood("negative_binomial", negative_binomial_likelihood_function)
+    register_likelihood("gaussian", gaussian_likelihood_function)
