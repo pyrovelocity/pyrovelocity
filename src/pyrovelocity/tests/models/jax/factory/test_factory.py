@@ -399,6 +399,6 @@ def test_model_execution(setup_registries):
         trace = numpyro.handlers.trace(model).get_trace(u_obs, s_obs)
 
     # Check that the model executed without errors
-    # The mock model only produces deterministic sites u_expected and s_expected
-    assert "u_expected" in trace
-    assert "s_expected" in trace
+    # The mock model now produces deterministic sites u_star and s_star
+    assert "u_star" in trace
+    assert "s_star" in trace
