@@ -26,15 +26,21 @@ def test_piecewise_activation_likelihood_function():
 
     u_obs = jnp.ones((batch_size, n_cells, n_genes))
     s_obs = jnp.ones((batch_size, n_cells, n_genes))
-    u_expected = jnp.ones((batch_size, n_cells, n_genes))
-    s_expected = jnp.ones((batch_size, n_cells, n_genes))
+    u_star = jnp.ones((batch_size, n_cells, n_genes))  # Dimensionless concentrations
+    s_star = jnp.ones((batch_size, n_cells, n_genes))  # Dimensionless concentrations
+    
+    # Add required scaling parameters
+    lambda_j = jnp.ones(n_cells)  # Cell-specific capture efficiency
+    U_0i = jnp.ones(n_genes)  # Gene-specific concentration scale
 
     # Create context for likelihood function
     context = {
         "u_obs": u_obs,
         "s_obs": s_obs,
-        "u_expected": u_expected,
-        "s_expected": s_expected,
+        "u_star": u_star,
+        "s_star": s_star,
+        "lambda_j": lambda_j,
+        "U_0i": U_0i,
     }
 
     # Create a model that uses the likelihood function
@@ -58,8 +64,10 @@ def test_piecewise_activation_likelihood_function():
     context_with_scaling = {
         "u_obs": u_obs,
         "s_obs": s_obs,
-        "u_expected": u_expected,
-        "s_expected": s_expected,
+        "u_star": u_star,
+        "s_star": s_star,
+        "lambda_j": lambda_j,
+        "U_0i": U_0i,
         "u_log_library": u_log_library,
         "s_log_library": s_log_library,
     }
