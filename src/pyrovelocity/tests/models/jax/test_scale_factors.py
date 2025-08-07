@@ -57,9 +57,19 @@ class TestScaleFactors:
         lambda_j = samples["lambda_j"]  # Shape: (10, 20)
         U_0i = samples["U_0i"]  # Shape: (10, 10)
         
-        # Extract expected values (these should be pre-scaled)
-        u_expected = samples["u_expected"]  # Shape: (10, 1, 20, 10)
-        s_expected = samples["s_expected"]
+        # Extract dimensionless concentrations from dynamics
+        u_star = samples["u_star"]  # Shape: (10, 1, 20, 10)
+        s_star = samples["s_star"]
+        
+        # Compute expected values by applying scaling (as done in likelihood now)
+        # u_expected = lambda_j * U_0i * u_star
+        # Need to handle dimensions properly:
+        # lambda_j: (10, 20) -> (10, 20, 1) for broadcasting with u_star (10, 1, 20, 10)
+        # U_0i: (10, 10) -> (10, 1, 1, 10) for broadcasting with u_star (10, 1, 20, 10)
+        lambda_j_expanded = lambda_j[:, jnp.newaxis, :, jnp.newaxis]  # (10, 1, 20, 1)
+        U_0i_expanded = U_0i[:, jnp.newaxis, jnp.newaxis, :]  # (10, 1, 1, 10)
+        u_expected = lambda_j_expanded * U_0i_expanded * u_star  # (10, 1, 20, 10)
+        s_expected = lambda_j_expanded * U_0i_expanded * s_star
         
         # Extract observed values
         u_obs = samples["u_obs"]
@@ -96,17 +106,15 @@ class TestScaleFactors:
         lambda_j = samples["lambda_j"][0]  # Shape: (10,)
         U_0i = samples["U_0i"][0]  # Shape: (5,)
         
-        # Get expected values
-        u_expected = samples["u_expected"][0, 0]  # Shape: (10, 5)
+        # Get dimensionless concentrations 
+        u_star = samples["u_star"][0, 0]  # Shape: (10, 5)
         
-        # Expected values should be approximately lambda_j * U_0i * dynamics_output
-        # where dynamics_output is O(1) dimensionless
-        
-        # Compute scale matrix
+        # Now compute expected values as likelihood does: lambda_j * U_0i * u_star
         scale_matrix = lambda_j[:, np.newaxis] * U_0i[np.newaxis, :]
+        u_expected = scale_matrix * u_star
         
-        # Ratio of expected to scale should be O(1) if no double scaling
-        dynamics_implied = u_expected / scale_matrix
+        # Check that u_star (dimensionless concentrations) are O(1)
+        dynamics_implied = u_star  # These should be dimensionless
         
         # Check implied dynamics are in dimensionless range
         assert np.all(dynamics_implied > 0.01), "Implied dynamics too small"
@@ -136,13 +144,13 @@ class TestScaleFactors:
         post_pred = Predictive(model, num_samples=1)
         post_samples = post_pred(rng_key, u_obs=u_obs, s_obs=s_obs)
         
-        # Compare scale of expected values
-        prior_u_expected = prior_samples["u_expected"]
-        post_u_expected = post_samples["u_expected"]
+        # Compare scale of dimensionless concentrations 
+        prior_u_star = prior_samples["u_star"]
+        post_u_star = post_samples["u_star"]
         
-        # They should be in similar scale ranges
-        prior_mean = np.mean(prior_u_expected)
-        post_mean = np.mean(post_u_expected)
+        # They should be in similar scale ranges (both dimensionless)
+        prior_mean = np.mean(prior_u_star)
+        post_mean = np.mean(post_u_star)
         
         ratio = post_mean / prior_mean
         assert 0.1 < ratio < 10, f"Prior/posterior scale ratio {ratio} suggests inconsistency"
