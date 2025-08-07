@@ -359,43 +359,15 @@ def create_model(config: Union[Dict, ModelConfig]) -> Callable:
         # Create initial condition using dimensions instead of observations
         u0_star = jnp.ones((batch_size, n_cells, n_genes))  # Fixed initial condition
         
-        # Call the dynamics function with correct interface (no s0_star)
-        u_expected, s_expected = dynamics_fn(
+        # Call the dynamics function to get dimensionless concentrations
+        u_star, s_star = dynamics_fn(
             t_star, u0_star, {**sampled_params, **dynamics_params}
         )
 
-        # 🔧 CRITICAL FIX: Apply scaling BEFORE registering deterministic sites
-        # Extract scaling parameters
-        lambda_j = sampled_params["lambda_j"]  # Should be [n_cells]
-        U_0i = sampled_params["U_0i"]  # Should be [n_genes]
-        
-        
-        # Handle potential extra dimensions from explicit plate dimensions
-        # Ensure lambda_j is 1D [n_cells]
-        if lambda_j.ndim > 1:
-            lambda_j = jnp.squeeze(lambda_j)
-        # Ensure U_0i is 1D [n_genes]  
-        if U_0i.ndim > 1:
-            U_0i = jnp.squeeze(U_0i)
-
-        # Apply scaling: rate = lambda_j * U_0i * raw_concentration  
-        # Proper 2D broadcasting to match modular implementation:
-        # lambda_j: [N] -> [N, 1], U_0i: [G] -> [1, G] 
-        # Result: [N, 1] * [1, G] * [N, G] = [N, G] (not 3D!)
-        lambda_j_expanded = lambda_j[:, jnp.newaxis]  # [N, 1]
-        U_0i_expanded = U_0i[jnp.newaxis, :]  # [1, G]
-        
-        u_expected_scaled = lambda_j_expanded * U_0i_expanded * u_expected
-        s_expected_scaled = lambda_j_expanded * U_0i_expanded * s_expected
-
-        # Ensure positive rates for numerical stability
-        eps = 1e-6
-        u_expected_scaled = jnp.maximum(u_expected_scaled, eps)
-        s_expected_scaled = jnp.maximum(s_expected_scaled, eps)
-
-        # Register SCALED values as deterministic
-        numpyro.deterministic("u_expected", u_expected_scaled)
-        numpyro.deterministic("s_expected", s_expected_scaled)
+        # Register dimensionless concentrations as deterministic sites
+        # These are the raw dynamics outputs without any observation model scaling
+        numpyro.deterministic("u_star", u_star)
+        numpyro.deterministic("s_star", s_star)
 
         # Call the likelihood function
         likelihood_params = model_params.get("likelihood_params", {})
@@ -404,8 +376,8 @@ def create_model(config: Union[Dict, ModelConfig]) -> Callable:
                 **sampled_params,
                 "u_obs": u_transformed,
                 "s_obs": s_transformed,
-                "u_expected": u_expected_scaled,
-                "s_expected": s_expected_scaled,
+                "u_star": u_star,
+                "s_star": s_star,
                 "u_log_library": u_log_library,
                 "s_log_library": s_log_library,
                 "n_cells": n_cells,
@@ -417,8 +389,8 @@ def create_model(config: Union[Dict, ModelConfig]) -> Callable:
         # Return all sampled parameters and computed values
         return {
             **sampled_params,
-            "u_expected": u_expected_scaled,
-            "s_expected": s_expected_scaled,
+            "u_star": u_star,
+            "s_star": s_star,
         }
 
     return model
