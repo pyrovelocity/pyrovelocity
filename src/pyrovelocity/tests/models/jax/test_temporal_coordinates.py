@@ -89,8 +89,18 @@ class TestTemporalCoordinates:
         samples = predictive(rng_key, u_obs=u_obs, s_obs=s_obs)
         
         # Check that expected values are scaled appropriately
-        u_expected = samples["u_expected"]
-        s_expected = samples["s_expected"]
+        # Get dimensionless concentrations and compute expected values
+        u_star = samples["u_star"]
+        lambda_j = samples["lambda_j"]
+        U_0i = samples["U_0i"]
+        
+        # Apply scaling as likelihood does: u_expected = lambda_j * U_0i * u_star
+        # Handle dimensions properly
+        lambda_j_expanded = lambda_j[:, jnp.newaxis, :, jnp.newaxis]  # (5, 1, 20, 1)
+        U_0i_expanded = U_0i[:, jnp.newaxis, jnp.newaxis, :]  # (5, 1, 1, 10)
+        u_expected = lambda_j_expanded * U_0i_expanded * u_star
+        s_star = samples["s_star"]
+        s_expected = lambda_j_expanded * U_0i_expanded * s_star
         
         # Extract scale parameters
         lambda_j = samples["lambda_j"]  # Cell capture efficiency
