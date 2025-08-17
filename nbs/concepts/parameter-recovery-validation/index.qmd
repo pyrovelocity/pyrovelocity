@@ -68,6 +68,8 @@ This notebook demonstrates parameter recovery validation for PyroVelocity models
 
 We work through a progression of **dimensionless models** that naturally avoid or aim to avoid identifiability issues while maintaining biological interpretability. Each model builds complexity while preserving the core dimensionless parameterization.
 
+### Poisson likelihood-only model {#sec-poisson-likelihood-only}
+
 ### Dimensionless Analytical Dynamics with Observed Time
 
 This model uses the direct dimensionless approach with analytical solutions:
