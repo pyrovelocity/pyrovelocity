@@ -29,6 +29,8 @@ from pyrovelocity.models.jax.factory.factory import (
     piecewise_activation_model_config,
     create_piecewise_activation_model,
     create_piecewise_activation_model_jax,
+    create_poisson_model,
+    create_poisson_model_jax,
 )
 
 __all__ = [
@@ -48,4 +50,6 @@ __all__ = [
     "piecewise_activation_model_config",
     "create_piecewise_activation_model",
     "create_piecewise_activation_model_jax",
+    "create_poisson_model",
+    "create_poisson_model_jax",
 ]
