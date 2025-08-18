@@ -70,6 +70,116 @@ We work through a progression of **dimensionless models** that naturally avoid o
 
 ### Poisson likelihood-only model {#sec-poisson-likelihood-only}
 
+This validation study establishes a **direct Poisson likelihood baseline** that retains the core dimensionless framework parameters ($U_{0i}$, $\lambda_j$) while removing temporal dynamics complexity, providing a biologically interpretable minimal reference implementation for comparison with the piecewise activation model.
+
+#### Model Description
+
+This simplified model serves as a critical validation checkpoint, removing nearly all latent variable complexity to establish a minimal working implementation. The primary purpose is to validate our multi-model framework and provide a foundation for incremental complexity addition while maintaining biological interpretability through the established dimensionless parameterization.
+
+#### Simplification Rationale
+
+- **Retains biological interpretability**: Preserves $U_{0i}$ (gene expression capacity) and $\lambda_j$ (cell capture efficiency) 
+- **Removes temporal complexity**: Direct rate multipliers replace dynamics solutions
+- **Maintains dimensionless consistency**: Uses the same scaling structure as the full model
+- **Enables meaningful comparison**: Same observation model allows direct parameter comparison
+- **Validation purpose**: Establishes lower bound on model complexity while preserving interpretability
+
+#### Key Parameter Retention Justification
+
+- **$U_{0i}$ preservation**: Essential for biological interpretation as gene expression capacity
+- **$\lambda_j$ preservation**: Critical for modeling technical variation across cells  
+- **Framework compatibility**: Maintains connection to established dimensionless parameterization
+- **Incremental complexity**: Provides clear path to full piecewise activation model
+
+#### Prior Specification with Established Hyperparameters
+
+##### Gene-Specific Characteristic Scales (Biological) - INHERITED
+$$U_{0i} \sim \text{LogNormal}(2.3, 0.4^2)$$
+*Source: Established and validated in piecewise activation model*
+
+##### Cell-Specific Capture Efficiency (Technical) - INHERITED  
+$$\lambda_j \sim \text{LogNormal}(0.0, 0.2^2)$$
+*Source: Established and validated in piecewise activation model*
+
+##### Gene-Specific Dimensionless Rate Multipliers (New - Simple Defaults)
+$$r_{u,i} \sim \text{LogNormal}(0.0, 0.5^2)$$
+$$r_{s,i} \sim \text{LogNormal}(0.0, 0.5^2)$$
+*Note: Conservative defaults for new simplified parameters*
+
+##### Composite Poisson Rates (Dimensionally Consistent)
+$$u_{rate,ij} = \lambda_j \times U_{0i} \times r_{u,i}$$
+$$s_{rate,ij} = \lambda_j \times U_{0i} \times r_{s,i}$$
+
+##### Hyperparameter Inheritance Strategy
+- **Preserve calibration work**: Use validated hyperparameters from existing piecewise model
+- **Enable meaningful comparison**: Same $U_{0i}$ and $\lambda_j$ priors ensure comparable results  
+- **Source location**: `src/pyrovelocity/models/jax/components/piecewise/priors.py`
+- **New parameters only**: Only $r_{u,i}$ and $r_{s,i}$ require new default values
+
+#### Likelihood Specification
+
+##### Dimensionally Consistent Poisson Rates
+$$u_{rate,ij} = \lambda_j \times U_{0i} \times r_{u,i}$$
+$$s_{rate,ij} = \lambda_j \times U_{0i} \times r_{s,i}$$
+
+##### Joint Likelihood
+$$P(u_{obs}, s_{obs} | \lambda_j, U_{0i}, r_{u,i}, r_{s,i}) = \prod_{i=1}^{N_{genes}} \prod_{j=1}^{N_{cells}} \text{Poisson}(u_{obs,ij} | u_{rate,ij}) \times \text{Poisson}(s_{obs,ij} | s_{rate,ij})$$
+
+##### Connection to Dimensionless Framework
+This maintains the same scaling structure as the piecewise activation model:
+- $\lambda_j$: Cell-specific capture efficiency (technical)
+- $U_{0i}$: Gene-specific expression capacity (biological) 
+- $r_{u,i}, r_{s,i}$: Simplified rate multipliers replacing dynamics solutions
+
+#### Parameter Identifiability Analysis
+
+##### Identifiability Challenges with Rate Factorization
+The factorization $u_{rate,ij} = \lambda_j \times U_{0i} \times r_{u,i}$ introduces potential identifiability issues since multiple parameter combinations can produce the same observed rates. However, this simplified model benefits from several identifiability improvements:
+
+- **Hierarchical priors**: Log-normal priors on each parameter provide regularization
+- **Established calibration**: Inherited $U_{0i}$ and $\lambda_j$ hyperparameters from validated piecewise model
+- **Reduced complexity**: Elimination of temporal dynamics removes major source of identifiability issues
+- **Conservative new priors**: $r_{u,i}$ and $r_{s,i}$ use conservative (wide) priors allowing data to inform estimates
+
+##### Role of Hierarchical Priors in Resolving Ambiguity
+The hierarchical structure naturally resolves parameter ambiguity by:
+- **Gene-level pooling**: $U_{0i}$ priors share information across genes for expression capacity
+- **Cell-level pooling**: $\lambda_j$ priors share information across cells for capture efficiency  
+- **Biological constraints**: Prior ranges reflect biologically plausible parameter values
+- **Regularization**: Log-normal distributions prevent extreme parameter values
+
+##### Comparison to Identifiability Issues in Dynamics Models
+This simplified approach addresses several identifiability challenges present in full dynamics models:
+- **No temporal coordinate inference**: Eliminates major source of identifiability issues
+- **No dynamics parameter trade-offs**: Removes complex parameter interactions from ODE solutions
+- **Direct rate specification**: Straightforward relationship between parameters and observations
+- **Maintained biological meaning**: Parameters retain clear biological interpretation
+
+#### Implementation Mapping
+
+##### Mathematical Components to Code Structure
+- **Prior functions**: Map to `src/pyrovelocity/models/jax/components/poisson/priors.py`
+- **Likelihood functions**: Map to `src/pyrovelocity/models/jax/components/poisson/likelihoods.py`  
+- **Null dynamics**: Map to `src/pyrovelocity/models/jax/components/poisson/dynamics.py`
+- **Factory integration**: Map to model creation functions in `factory.py`
+
+##### Registry Pattern and Factory Functions
+```python
+# Model configuration for registry system
+ModelConfig(
+    dynamics_config=DynamicsFunctionConfig(name="null_dynamics"),
+    prior_config=PriorFunctionConfig(name="direct_poisson_prior"),
+    likelihood_config=LikelihoodFunctionConfig(name="direct_poisson_likelihood"),
+    guide_config=GuideFunctionConfig(name="auto_normal")
+)
+```
+
+##### Mathematical-to-Code Correspondence
+- Mathematical priors ($U_{0i} \sim \text{LogNormal}(2.3, 0.4^2)$) → NumPyro sample statements
+- Rate calculations ($u_{rate,ij} = \lambda_j \times U_{0i} \times r_{u,i}$) → JAX array operations
+- Likelihood evaluation ($\text{Poisson}(u_{obs,ij} | u_{rate,ij})$) → NumPyro Poisson distributions
+- Hierarchical structure → NumPyro plate notation for independence
+
 ### Dimensionless Analytical Dynamics with Observed Time
 
 This model uses the direct dimensionless approach with analytical solutions:
