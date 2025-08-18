@@ -78,7 +78,7 @@ def auto_delta_guide_factory(
 
 def register_poisson_guides():
     """Register Poisson-only guide factory functions."""
-    # Use the same guide names as piecewise components for compatibility
-    register_guide("auto", auto_normal_guide_factory)
-    register_guide("auto_normal", auto_normal_guide_factory)
-    register_guide("auto_delta", auto_delta_guide_factory)
+    # Only register poisson-specific guides to avoid collisions with piecewise components
+    # The "auto", "auto_normal", "auto_delta" guides are already registered by piecewise components
+    # and can be reused by poisson models since they're generic guide factories
+    pass  # No additional guides needed - reuse existing ones
