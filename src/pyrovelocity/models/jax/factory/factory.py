@@ -241,6 +241,83 @@ def create_piecewise_activation_model() -> Callable:
     return create_model(piecewise_activation_model_config())
 
 
+def poisson_model_config() -> ModelConfig:
+    """
+    Create a configuration for a Poisson-only PyroVelocity model.
+
+    This function returns a configuration for a PyroVelocity model with Poisson-only
+    components: trivial dynamics function, simplified prior function, Poisson 
+    likelihood function, and auto guide factory function.
+
+    Returns:
+        A ModelConfig object for Poisson-only model.
+    """
+    return ModelConfig(
+        dynamics_function=DynamicsFunctionConfig(name="poisson"),
+        prior_function=PriorFunctionConfig(name="poisson"),
+        likelihood_function=LikelihoodFunctionConfig(name="poisson"),
+        guide_function=GuideFunctionConfig(name="auto"),
+    )
+
+
+def create_poisson_model() -> Callable:
+    """
+    Create a Poisson-only PyroVelocity model.
+
+    This function creates a PyroVelocity model with Poisson-only components:
+    trivial dynamics function, simplified prior function, Poisson likelihood 
+    function, and auto guide factory function.
+
+    Returns:
+        A model function with Poisson-only components.
+    """
+    return create_model(poisson_model_config())
+
+
+def create_poisson_model_jax() -> Callable:
+    """
+    Create JAX Poisson-only model using registry system.
+    
+    This function creates a PyroVelocity model with native JAX Poisson-only
+    components retrieved directly from the registry system:
+    - Poisson trivial dynamics function
+    - Poisson simplified prior function  
+    - Poisson likelihood function
+    - Auto guide factory function
+    
+    Returns:
+        A model function with JAX-native Poisson-only components.
+        
+    Raises:
+        ValueError: If any required component is not registered.
+    """
+    # Retrieve JAX-native components from registry
+    dynamics_fn = get_dynamics("poisson")
+    prior_fn = get_prior("poisson")
+    likelihood_fn = get_likelihood("poisson")
+    guide_factory_fn = get_guide("auto")
+    
+    # Validate all components are available
+    if dynamics_fn is None:
+        raise ValueError("Poisson dynamics function not registered")
+    if prior_fn is None:
+        raise ValueError("Poisson prior function not registered")
+    if likelihood_fn is None:
+        raise ValueError("Poisson likelihood function not registered")
+    if guide_factory_fn is None:
+        raise ValueError("Auto guide factory function not registered")
+    
+    # Create the JAX model configuration using registry components
+    config = ModelConfig(
+        dynamics_function=DynamicsFunctionConfig(name="poisson"),
+        prior_function=PriorFunctionConfig(name="poisson"),
+        likelihood_function=LikelihoodFunctionConfig(name="poisson"),
+        guide_function=GuideFunctionConfig(name="auto"),
+    )
+    
+    return create_model(config)
+
+
 @beartype
 def create_model(config: Union[Dict, ModelConfig]) -> Callable:
     """
