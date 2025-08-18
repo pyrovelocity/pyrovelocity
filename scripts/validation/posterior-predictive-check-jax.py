@@ -9,7 +9,7 @@ import scanpy as sc
 import os
 from pathlib import Path
 
-from pyrovelocity.models.jax.factory.factory import create_piecewise_activation_model
+from pyrovelocity.models.jax.factory.factory import create_piecewise_activation_model, create_poisson_model
 from pyrovelocity.models.jax.inference.config import create_inference_config
 from pyrovelocity.models.jax.inference.unified import run_inference
 from pyrovelocity.plots.predictive import (
@@ -24,6 +24,20 @@ from numpyro.handlers import condition
 RANDOM_SEED = int(os.environ.get("RANDOM_SEED", 42))
 MAX_TIME = float(os.environ.get("MAX_TIME", 7.0))
 REPORTS_SAVE_PATH = "reports/docs/posterior_predictive_jax"
+
+# Model selection configuration
+MODEL_TYPES = {
+    "piecewise_activation": create_piecewise_activation_model,
+    "poisson_baseline": create_poisson_model,
+}
+
+MODEL_TYPE = os.environ.get("MODEL_TYPE", "piecewise_activation")
+print(f"Selected model type: {MODEL_TYPE}")
+
+if MODEL_TYPE not in MODEL_TYPES:
+    raise ValueError(f"Invalid MODEL_TYPE '{MODEL_TYPE}'. Available types: {list(MODEL_TYPES.keys())}")
+
+create_model_fn = MODEL_TYPES[MODEL_TYPE]
 num_samples = 1000
 num_cells = 200
 num_genes = 100
@@ -109,7 +123,7 @@ os.makedirs(f"{REPORTS_SAVE_PATH}/{RANDOM_SEED}/sample_data", exist_ok=True)
 # Step 1: Generate prior predictive data
 print(f"\n📊 Step 1: Generating prior predictive data (seed: {RANDOM_SEED})...")
 
-model = create_piecewise_activation_model()
+model = create_model_fn()
 
 dummy_u_obs = jnp.zeros((1, num_cells, num_genes))
 dummy_s_obs = jnp.zeros((1, num_cells, num_genes))
@@ -202,7 +216,7 @@ print(f"\n🔬 Step 2: Model Training with {SELECTED_METHOD}")
 method_save_path = f"{REPORTS_SAVE_PATH}/{RANDOM_SEED}/{SELECTED_METHOD}"
 os.makedirs(method_save_path, exist_ok=True)
 
-model = create_piecewise_activation_model()
+model = create_model_fn()
 print(f"✅ Created JAX model for {SELECTED_METHOD}")
 
 print(f"🎯 Training with {SELECTED_METHOD}...")
