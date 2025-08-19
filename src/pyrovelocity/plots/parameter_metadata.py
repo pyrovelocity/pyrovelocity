@@ -220,6 +220,14 @@ def infer_component_name_from_parameters(parameters: Dict[str, Any]) -> Optional
     """
     param_names = set(parameters.keys())
     
+    # Check for Poisson-only parameters first (more specific)
+    poisson_params = {'lambda_j', 't_star', 'U_0i', 'S_0i'}
+    # Must have most Poisson-specific parameters and NOT have piecewise-specific parameters
+    piecewise_specific = {'alpha_off', 'alpha_on', 'gamma_star', 't_on_star', 'delta_star', 'T_M_star', 't_loc', 't_scale'}
+    if (len(param_names.intersection(poisson_params)) >= 3 and 
+        len(param_names.intersection(piecewise_specific)) == 0):
+        return "poisson_prior"
+    
     # Check for piecewise activation parameters
     piecewise_params = {
         'alpha_off', 'alpha_on', 'gamma_star', 't_on_star', 'delta_star',
