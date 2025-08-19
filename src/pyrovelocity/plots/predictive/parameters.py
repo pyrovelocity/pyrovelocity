@@ -745,8 +745,33 @@ def plot_parameter_marginals_by_gene(
 
     available_genes = len(gene_names)
 
-    # Filter parameters to show based on availability
-    available_params = [p for p in parameters_to_show if p in posterior_parameters]
+    # Use dynamic parameter detection if no specific parameters requested or if none are available
+    if parameters_to_show == ["R_on", "gamma_star", "t_on_star", "delta_star"]:  # Default hardcoded list
+        # Try to infer component name and get parameters dynamically
+        from pyrovelocity.plots.parameter_metadata import infer_component_name_from_parameters
+        from pyrovelocity.models.metadata import get_parameter_metadata
+        
+        component_name = infer_component_name_from_parameters(posterior_parameters)
+        if component_name is not None:
+            try:
+                metadata = get_parameter_metadata(component_name)
+                # Get parameters sorted by plot_order
+                available_params = [
+                    param_name for param_name in metadata.parameters.keys()
+                    if param_name in posterior_parameters
+                ]
+                available_params.sort(key=lambda x: metadata.parameters[x].plot_order or 999)
+                print(f"Using dynamic parameter detection for component '{component_name}': {available_params}")
+            except KeyError:
+                # Fall back to available parameters if metadata not found
+                available_params = [p for p in parameters_to_show if p in posterior_parameters]
+        else:
+            # Fall back to manual filtering if component not detected
+            available_params = [p for p in parameters_to_show if p in posterior_parameters]
+    else:
+        # Use user-specified parameters
+        available_params = [p for p in parameters_to_show if p in posterior_parameters]
+    
     if not available_params:
         raise ValueError(f"None of the requested parameters {parameters_to_show} found in posterior_parameters. Available: {list(posterior_parameters.keys())}")
 
@@ -1045,13 +1070,47 @@ def plot_parameter_recovery_correlation(
 
     true_params_dict = true_parameters_adata.uns['true_parameters']
 
-    # Filter parameters to only those available in both posterior and true parameters
-    available_params = []
-    for param_name in parameters_to_validate:
-        if param_name in posterior_parameters and param_name in true_params_dict:
-            available_params.append(param_name)
+    # Use dynamic parameter detection if default hardcoded list is used
+    if parameters_to_validate == ["R_on", "gamma_star", "t_on_star", "delta_star"]:  # Default hardcoded list
+        # Try to infer component name and get parameters dynamically
+        from pyrovelocity.plots.parameter_metadata import infer_component_name_from_parameters
+        from pyrovelocity.models.metadata import get_parameter_metadata
+        
+        component_name = infer_component_name_from_parameters(posterior_parameters)
+        if component_name is not None:
+            try:
+                metadata = get_parameter_metadata(component_name)
+                # Get parameters sorted by plot_order that are available in both posterior and true parameters
+                available_params = [
+                    param_name for param_name in metadata.parameters.keys()
+                    if param_name in posterior_parameters and param_name in true_params_dict
+                ]
+                available_params.sort(key=lambda x: metadata.parameters[x].plot_order or 999)
+                print(f"Using dynamic parameter detection for correlation analysis with component '{component_name}': {available_params}")
+            except KeyError:
+                # Fall back to manual filtering if metadata not found
+                available_params = []
+                for param_name in parameters_to_validate:
+                    if param_name in posterior_parameters and param_name in true_params_dict:
+                        available_params.append(param_name)
+                    else:
+                        print(f"Warning: Parameter '{param_name}' not found in both posterior and true parameters")
         else:
-            print(f"Warning: Parameter '{param_name}' not found in both posterior and true parameters")
+            # Fall back to manual filtering if component not detected
+            available_params = []
+            for param_name in parameters_to_validate:
+                if param_name in posterior_parameters and param_name in true_params_dict:
+                    available_params.append(param_name)
+                else:
+                    print(f"Warning: Parameter '{param_name}' not found in both posterior and true parameters")
+    else:
+        # Use user-specified parameters
+        available_params = []
+        for param_name in parameters_to_validate:
+            if param_name in posterior_parameters and param_name in true_params_dict:
+                available_params.append(param_name)
+            else:
+                print(f"Warning: Parameter '{param_name}' not found in both posterior and true parameters")
 
     if not available_params:
         raise ValueError("No valid parameters found for correlation analysis")
