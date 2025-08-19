@@ -21,6 +21,9 @@ from pyrovelocity.models.jax.components.poisson.likelihoods import (
 from pyrovelocity.models.jax.components.poisson.guides import (
     register_poisson_guides,
 )
+from pyrovelocity.models.jax.components.poisson.metadata import (
+    create_poisson_prior_metadata,
+)
 
 
 def register_poisson_components():
