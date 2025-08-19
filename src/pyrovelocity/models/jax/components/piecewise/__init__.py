@@ -20,6 +20,9 @@ from pyrovelocity.models.jax.components.piecewise.guides import (
     auto_normal_guide_factory,
     register_standard_guides,
 )
+from pyrovelocity.models.jax.components.piecewise.metadata import (
+    create_piecewise_activation_prior_metadata,
+)
 
 
 def register_piecewise_activation_components():
