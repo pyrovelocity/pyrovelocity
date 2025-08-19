@@ -224,6 +224,7 @@ def piecewise_activation_model_config() -> ModelConfig:
         prior_function=PriorFunctionConfig(name="piecewise_activation"),
         likelihood_function=LikelihoodFunctionConfig(name="piecewise_activation"),
         guide_function=GuideFunctionConfig(name="auto"),
+        metadata={"parameter_metadata_component": "piecewise_activation_prior"},
     )
 
 
@@ -257,6 +258,7 @@ def poisson_model_config() -> ModelConfig:
         prior_function=PriorFunctionConfig(name="poisson"),
         likelihood_function=LikelihoodFunctionConfig(name="poisson"),
         guide_function=GuideFunctionConfig(name="auto"),
+        metadata={"parameter_metadata_component": "poisson_prior"},
     )
 
 
@@ -313,6 +315,7 @@ def create_poisson_model_jax() -> Callable:
         prior_function=PriorFunctionConfig(name="poisson"),
         likelihood_function=LikelihoodFunctionConfig(name="poisson"),
         guide_function=GuideFunctionConfig(name="auto"),
+        metadata={"parameter_metadata_component": "poisson_prior"},
     )
     
     return create_model(config)
