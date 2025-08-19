@@ -67,14 +67,22 @@ def poisson_likelihood_function(
     eps = context.get("eps", 1e-6)
 
     # Handle potential extra dimensions from explicit plate dimensions
-    # Ensure lambda_j is 1D [n_cells]
+    # Ensure lambda_j is 1D [n_cells] but maintain at least 1D shape
     if lambda_j.ndim > 1:
         lambda_j = jnp.squeeze(lambda_j)
-    # Ensure gene scales are 1D [n_genes]  
+    if lambda_j.ndim == 0:  # Handle scalar case
+        lambda_j = jnp.array([lambda_j])
+        
+    # Ensure gene scales are 1D [n_genes] but maintain at least 1D shape 
     if U_0i.ndim > 1:
         U_0i = jnp.squeeze(U_0i)
+    if U_0i.ndim == 0:  # Handle scalar case
+        U_0i = jnp.array([U_0i])
+        
     if S_0i.ndim > 1:
         S_0i = jnp.squeeze(S_0i)
+    if S_0i.ndim == 0:  # Handle scalar case
+        S_0i = jnp.array([S_0i])
 
     # Proper 2D broadcasting to compute Poisson rates:
     # lambda_j: [N] -> [N, 1], scales: [G] -> [1, G]
