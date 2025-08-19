@@ -8,6 +8,7 @@ This module contains integration tests for the Poisson-only model factory functi
 - test_poisson_model_functionality: Test full model functionality
 """
 
+import jax
 import jax.numpy as jnp
 import numpyro
 from numpyro.handlers import seed, trace
@@ -44,7 +45,10 @@ def test_create_poisson_model():
     num_genes = 3
     
     # Test prior predictive sampling (no observations)
-    samples = model(
+    rng_key = jax.random.PRNGKey(42)
+    predictive = Predictive(model, num_samples=1)
+    samples = predictive(
+        rng_key,
         u_obs=None,
         s_obs=None,
         num_cells=num_cells,
@@ -73,7 +77,10 @@ def test_create_poisson_model_jax():
     num_genes = 2
     
     # Test prior predictive sampling
-    samples = model(
+    rng_key = jax.random.PRNGKey(42)
+    predictive = Predictive(model, num_samples=1)
+    samples = predictive(
+        rng_key,
         u_obs=None,
         s_obs=None,
         num_cells=num_cells,
@@ -103,7 +110,10 @@ def test_poisson_model_with_observations():
     s_obs = jnp.ones((batch_size, num_cells, num_genes), dtype=jnp.int32)
     
     # Test model with observations
-    samples = model(
+    rng_key = jax.random.PRNGKey(42)
+    predictive = Predictive(model, num_samples=1)
+    samples = predictive(
+        rng_key,
         u_obs=u_obs,
         s_obs=s_obs,
         num_cells=num_cells,
@@ -113,12 +123,12 @@ def test_poisson_model_with_observations():
     # Should return parameters even with observations
     assert isinstance(samples, dict)
     
-    # Check parameter shapes
-    assert samples["lambda_j"].shape == (num_cells,)
-    assert samples["U_0i"].shape == (num_genes,)
-    assert samples["S_0i"].shape == (num_genes,)
-    assert samples["u_star"].shape == (batch_size, num_cells, num_genes)
-    assert samples["s_star"].shape == (batch_size, num_cells, num_genes)
+    # Check parameter shapes (Predictive adds a sample dimension)
+    assert samples["lambda_j"].shape == (1, num_cells, 1)  # [num_samples, num_cells, plate_dim]
+    assert samples["U_0i"].shape == (1, num_genes)
+    assert samples["S_0i"].shape == (1, num_genes)
+    assert samples["u_star"].shape == (1, batch_size, num_cells, num_genes)
+    assert samples["s_star"].shape == (1, batch_size, num_cells, num_genes)
 
 
 def test_poisson_model_predictive_sampling():
@@ -135,15 +145,15 @@ def test_poisson_model_predictive_sampling():
     
     with seed(rng_seed=42):
         samples = predictive(
-            numpyro.PRNGKey(0),
+            jax.random.PRNGKey(0),
             u_obs=None,
             s_obs=None,
             num_cells=num_cells,
             num_genes=num_genes,
         )
     
-    # Check sample shapes
-    assert samples["lambda_j"].shape == (10, num_cells)
+    # Check sample shapes (with plate dimensions)
+    assert samples["lambda_j"].shape == (10, num_cells, 1)  # Cell parameters have plate dimension
     assert samples["U_0i"].shape == (10, num_genes)
     assert samples["S_0i"].shape == (10, num_genes)
     assert samples["u_obs"].shape == (10, 1, num_cells, num_genes)
@@ -168,25 +178,28 @@ def test_poisson_model_trace_structure():
     
     # Create a wrapped model for tracing
     def traced_model():
-        return model(
+        rng_key = jax.random.PRNGKey(42)
+        predictive = Predictive(model, num_samples=1)
+        return predictive(
+            rng_key,
             u_obs=u_obs,
             s_obs=s_obs,
             num_cells=num_cells,
             num_genes=num_genes,
         )
     
-    # Trace the model
-    tr = trace(seed(traced_model, 42)).get_trace()
+    # Get the traced model samples
+    samples = traced_model()
     
-    # Check that all expected sites are present
-    expected_sites = ["lambda_j", "U_0i", "S_0i", "u_obs", "s_obs"]
-    for site in expected_sites:
-        assert site in tr, f"Site {site} not found in trace"
+    # Check that all expected parameters are present
+    expected_params = ["lambda_j", "U_0i", "S_0i", "u_obs", "s_obs"]
+    for param in expected_params:
+        assert param in samples, f"Parameter {param} not found in samples"
     
-    # Check deterministic sites
+    # Check deterministic parameters
     expected_deterministic = ["u_star", "s_star"]
-    for site in expected_deterministic:
-        assert site in tr, f"Deterministic site {site} not found in trace"
+    for param in expected_deterministic:
+        assert param in samples, f"Deterministic parameter {param} not found in samples"
 
 
 def test_poisson_model_numerical_stability():
@@ -203,7 +216,10 @@ def test_poisson_model_numerical_stability():
     s_obs = jnp.zeros((1, num_cells, num_genes), dtype=jnp.int32)
     
     # Should handle zeros without numerical issues
-    samples = model(
+    rng_key = jax.random.PRNGKey(42)
+    predictive = Predictive(model, num_samples=1)
+    samples = predictive(
+        rng_key,
         u_obs=u_obs,
         s_obs=s_obs,
         num_cells=num_cells,
@@ -214,7 +230,7 @@ def test_poisson_model_numerical_stability():
     for param_name, param_value in samples.items():
         assert jnp.all(jnp.isfinite(param_value)), f"Parameter {param_name} has non-finite values"
     
-    # Check that scaling parameters are positive
-    assert jnp.all(samples["lambda_j"] > 0)
-    assert jnp.all(samples["U_0i"] > 0)
-    assert jnp.all(samples["S_0i"] > 0)
+    # Check that scaling parameters are positive (access first sample)
+    assert jnp.all(samples["lambda_j"][0] > 0)
+    assert jnp.all(samples["U_0i"][0] > 0)
+    assert jnp.all(samples["S_0i"][0] > 0)
