@@ -131,14 +131,23 @@ dummy_s_obs = jnp.zeros((1, num_cells, num_genes))
 print("  Running prior predictive sampling...")
 rng_key, rng_key_prior = jax.random.split(rng_key)
 
-# Create synthetic data where T_M_star=MAX_TIME
-conditioned_model = condition(model, {"T_M_star": jnp.array(MAX_TIME)})
+# Create synthetic data with model-specific conditioning
+if MODEL_TYPE == "piecewise_activation":
+    # Piecewise model: condition on T_M_star parameter
+    conditioned_model = condition(model, {"T_M_star": jnp.array(MAX_TIME)})
+    condition_param = "T_M_star"
+    condition_value = MAX_TIME
+else:
+    # Poisson model: no conditioning needed (uses constant t_star=0.5)
+    conditioned_model = model
+    condition_param = "t_star"
+    condition_value = 0.5
 
 predictive = Predictive(conditioned_model, num_samples=1)
 prior_samples = predictive(rng_key_prior, u_obs=None, s_obs=None, 
                           num_cells=num_cells, num_genes=num_genes)
 
-print(f"  ✅ Fixed T_M_star = {prior_samples['T_M_star'][0]:.1f} for consistent synthetic data generation")
+print(f"  ✅ Using {condition_param} = {condition_value} for consistent synthetic data generation")
 
 prior_predictive_adata = anndata.AnnData(
     X=np.array(prior_samples["s_obs"][0, 0, :, :]),
