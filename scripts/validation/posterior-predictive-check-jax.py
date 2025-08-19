@@ -159,7 +159,7 @@ prior_predictive_adata = anndata.AnnData(
 
 # Store parameters in consistent format
 prior_parameter_samples = {}
-for key in ["U_0i", "lambda_j", "T_M_star", 
+for key in ["U_0i", "S_0i", "lambda_j", "T_M_star", 
             "R_on", "gamma_star", "t_on_star", "delta_star", "t_star"]:
     if key in prior_samples:
         prior_parameter_samples[key] = prior_samples[key]
