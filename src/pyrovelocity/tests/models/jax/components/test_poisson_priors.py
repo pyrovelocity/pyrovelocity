@@ -43,7 +43,7 @@ def test_poisson_prior_function():
         assert param in samples
         
     # Check parameter shapes
-    assert samples["lambda_j"].shape == (n_cells,)
+    assert samples["lambda_j"].shape == (n_cells, 1)  # Cell parameters have plate dimension
     assert samples["U_0i"].shape == (num_genes,)
     assert samples["S_0i"].shape == (num_genes,)
     
@@ -86,7 +86,7 @@ def test_poisson_prior_function_with_custom_hyperparameters():
         samples = test_model()
 
     # Check parameter shapes
-    assert samples["lambda_j"].shape == (n_cells,)
+    assert samples["lambda_j"].shape == (n_cells, 1)  # Cell parameters have plate dimension
     assert samples["U_0i"].shape == (num_genes,)
     assert samples["S_0i"].shape == (num_genes,)
     
@@ -134,7 +134,7 @@ def test_poisson_prior_trace_structure():
         assert site in tr, f"Site {site} not found in trace"
         
     # Check that sites have correct shapes
-    assert tr["lambda_j"]["value"].shape == (n_cells,)
+    assert tr["lambda_j"]["value"].shape == (n_cells, 1)  # Cell parameters have plate dimension
     assert tr["U_0i"]["value"].shape == (num_genes,)
     assert tr["S_0i"]["value"].shape == (num_genes,)
 
