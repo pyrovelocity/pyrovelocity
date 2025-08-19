@@ -8,6 +8,7 @@ on library size normalization and basic scaling parameters.
 
 from typing import Any, Dict, Optional
 
+import jax.numpy as jnp
 import numpyro
 import numpyro.distributions as dist
 from beartype import beartype
@@ -32,6 +33,7 @@ def poisson_prior_function(
     
     Cell Library Size Scaling:
         lambda_j ~ LogNormal(loc=0.0, scale=0.5)      # Cell capture efficiency
+        t_star ~ Delta(0.5)                           # Constant temporal coordinates (compatibility)
         
     Gene Concentration Scaling:
         U_0i ~ LogNormal(loc=0.0, scale=0.5)          # Gene-specific scale
@@ -43,7 +45,7 @@ def poisson_prior_function(
         
     Returns:
         Dictionary containing all sampled parameters with appropriate shapes:
-            - Cell arrays [n_cells]: lambda_j
+            - Cell arrays [n_cells]: lambda_j, t_star
             - Gene arrays [num_genes]: U_0i, S_0i
     """
     if prior_params is None:
@@ -63,6 +65,13 @@ def poisson_prior_function(
                 loc=prior_params.get("lambda_loc", 0.0),
                 scale=prior_params.get("lambda_scale", 0.5)
             )
+        )
+        
+        # COMPATIBILITY: Add neutral temporal coordinates for non-temporal model
+        # Constant 0.5 indicates no temporal structure (vs random values that suggest structure)
+        t_star = numpyro.sample(
+            "t_star",
+            dist.Delta(jnp.full((n_cells,), 0.5))  # Neutral constant value
         )
     
     # Gene-specific concentration scaling
@@ -88,6 +97,7 @@ def poisson_prior_function(
     return {
         # Cell parameters  
         "lambda_j": lambda_j,
+        "t_star": t_star,  # Required for factory layer compatibility
         # Gene parameters
         "U_0i": U_0i,
         "S_0i": S_0i,
