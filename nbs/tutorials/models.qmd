@@ -29,7 +29,7 @@ Before starting, make sure you have PyroVelocity [installed](../guides/installat
 
 Let's start with a realistic example using the bifurcation_14 dataset and the modular implementation:
 
-```{python}
+```python
 import torch
 import pyro
 import numpy as np
@@ -129,7 +129,7 @@ Each component implements a Protocol interface, allowing for flexible compositio
 
 You can create custom models by combining different components using the registry system:
 
-```{python}
+```python
 from pyrovelocity.models.modular.registry import (
     DynamicsModelRegistry,
     PriorModelRegistry,
@@ -177,7 +177,7 @@ custom_adata = custom_model.get_velocity(
 
 The modular implementation provides factory functions for creating models with different configurations:
 
-```{python}
+```python
 from pyrovelocity.models.modular.factory import (
     create_model_from_config,
     create_legacy_model1,
@@ -218,7 +218,7 @@ for layer in adata_primary.layers.keys():
 
 After training the model and computing velocity, you can visualize the results using scvelo's plotting functions. The velocity data is stored in the format expected by scvelo:
 
-```{python}
+```python
 import matplotlib.pyplot as plt
 
 # Add leiden clustering for visualization
