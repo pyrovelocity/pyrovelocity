@@ -5,3 +5,5 @@
 objects.json
 objects.txt
 /_freeze
+*.quarto_ipynb
+.jupyter_cache/
