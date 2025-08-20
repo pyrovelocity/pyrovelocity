@@ -340,144 +340,144 @@ quartodoc:
             - view_setup_args
             - load_model
             - setup_anndata
-    - subtitle: Modular Models
-      desc: |
-        The modular implementation provides a flexible, composable architecture for
-        RNA velocity modeling based on Protocol-First design.
-      contents:
-        - name: models.PyroVelocityModel
-          children: embedded
-          members:
-            - __init__
-            - forward
-            - generate_posterior_samples
-            - get_state
-            - get_velocity
-            - guide
-            - predict
-            - predict_future_states
-            - store_results_in_anndata
-            - train
-            - with_state
-            - setup_anndata
-        - models.ModelState
-        - models.modular.create_model
-        - models.modular.create_model_from_config
-        - models.modular.factory.create_legacy_model1
-        - models.modular.factory.create_legacy_model2
-        - models.modular.create_standard_model
-    - subtitle: Component Interfaces
-      desc: |
-        Protocol interfaces that define the contracts for component implementations.
-      contents:
-        - name: models.DynamicsModel
-          children: embedded
-          members:
-            - forward
-            - steady_state
-        - name: models.PriorModel
-          children: embedded
-          members:
-            - forward
-        - name: models.LikelihoodModel
-          children: embedded
-          members:
-            - forward
-        - name: models.ObservationModel
-          children: embedded
-          members:
-            - forward
-        - models.InferenceGuide
-    - subtitle: Component Implementations
-      desc: |
-        Specialized components that implement the core functionality of the modular architecture.
-      contents:
-        - name: models.StandardDynamicsModel
-          children: embedded
-          members:
-            - forward
-            - predict_future_states
-            - simulate
-            - steady_state
-        - name: models.LegacyDynamicsModel
-          children: embedded
-          members:
-            - forward
-            - steady_state
-        - name: models.LogNormalPriorModel
-          children: embedded
-          members:
-            - forward
-            - sample_parameters
-        - name: models.PoissonLikelihoodModel
-          children: embedded
-          members:
-            - forward
-            - log_prob
-            - sample
-        - name: models.LegacyLikelihoodModel
-          children: embedded
-          members:
-            - forward
-        - name: models.StandardObservationModel
-          children: embedded
-          members:
-            - forward
-            - guide_obs
-            - model_obs
-            - setup_observation
-        - name: models.AutoGuideFactory
-          children: embedded
-          members:
-            - create_guide
-            - get_guide
-            - get_posterior
-            - sample_posterior
-        - name: models.LegacyAutoGuideFactory
-          children: embedded
-          members:
-            - create_guide
-            - forward
-            - get_guide
-            - get_posterior
-            - sample_posterior
-    - subtitle: Model Comparison and Selection
-      desc: |
-        Tools for Bayesian model comparison, criticism, and selection.
-      contents:
-        - name: models.BayesianModelComparison
-          children: embedded
-          members:
-            - compare_models
-            - compare_models_bayes_factors
-            - compute_bayes_factor
-            - compute_loo
-            - compute_waic
-        - name: models.ComparisonResult
-          children: embedded
-          members:
-            - best_model
-            - to_dataframe
-        - name: models.ModelEnsemble
-          children: embedded
-          members:
-            - calculate_weights_from_comparison
-            - get_posterior_samples
-            - predict
-            - predict_future_states
-            - predict_with_uncertainty
-            - from_selection_result
-            - from_top_k_models
-        - name: models.ModelSelection
-          children: embedded
-          members:
-            - select_model
-        - models.SelectionCriterion
-        - name: models.SelectionResult
-          children: embedded
-          members:
-            - to_dataframe
-        - models.select_best_model
+    # - subtitle: Modular Models
+    #   desc: |
+    #     The modular implementation provides a flexible, composable architecture for
+    #     RNA velocity modeling based on Protocol-First design.
+    #   contents:
+    #     - name: models.PyroVelocityModel
+    #       children: embedded
+    #       members:
+    #         - __init__
+    #         - forward
+    #         - generate_posterior_samples
+    #         - get_state
+    #         - get_velocity
+    #         - guide
+    #         - predict
+    #         - predict_future_states
+    #         - store_results_in_anndata
+    #         - train
+    #         - with_state
+    #         - setup_anndata
+    #     - models.ModelState
+    #     - models.modular.create_model
+    #     - models.modular.create_model_from_config
+    #     - models.modular.factory.create_legacy_model1
+    #     - models.modular.factory.create_legacy_model2
+    #     - models.modular.create_standard_model
+    # - subtitle: Component Interfaces
+    #   desc: |
+    #     Protocol interfaces that define the contracts for component implementations.
+    #   contents:
+    #     - name: models.DynamicsModel
+    #       children: embedded
+    #       members:
+    #         - forward
+    #         - steady_state
+    #     - name: models.PriorModel
+    #       children: embedded
+    #       members:
+    #         - forward
+    #     - name: models.LikelihoodModel
+    #       children: embedded
+    #       members:
+    #         - forward
+    #     - name: models.ObservationModel
+    #       children: embedded
+    #       members:
+    #         - forward
+    #     - models.InferenceGuide
+    # - subtitle: Component Implementations
+    #   desc: |
+    #     Specialized components that implement the core functionality of the modular architecture.
+    #   contents:
+    #     - name: models.StandardDynamicsModel
+    #       children: embedded
+    #       members:
+    #         - forward
+    #         - predict_future_states
+    #         - simulate
+    #         - steady_state
+    #     - name: models.LegacyDynamicsModel
+    #       children: embedded
+    #       members:
+    #         - forward
+    #         - steady_state
+    #     - name: models.LogNormalPriorModel
+    #       children: embedded
+    #       members:
+    #         - forward
+    #         - sample_parameters
+    #     - name: models.PoissonLikelihoodModel
+    #       children: embedded
+    #       members:
+    #         - forward
+    #         - log_prob
+    #         - sample
+    #     - name: models.LegacyLikelihoodModel
+    #       children: embedded
+    #       members:
+    #         - forward
+    #     - name: models.StandardObservationModel
+    #       children: embedded
+    #       members:
+    #         - forward
+    #         - guide_obs
+    #         - model_obs
+    #         - setup_observation
+    #     - name: models.AutoGuideFactory
+    #       children: embedded
+    #       members:
+    #         - create_guide
+    #         - get_guide
+    #         - get_posterior
+    #         - sample_posterior
+    #     - name: models.LegacyAutoGuideFactory
+    #       children: embedded
+    #       members:
+    #         - create_guide
+    #         - forward
+    #         - get_guide
+    #         - get_posterior
+    #         - sample_posterior
+    # - subtitle: Model Comparison and Selection
+    #   desc: |
+    #     Tools for Bayesian model comparison, criticism, and selection.
+    #   contents:
+    #     - name: models.BayesianModelComparison
+    #       children: embedded
+    #       members:
+    #         - compare_models
+    #         - compare_models_bayes_factors
+    #         - compute_bayes_factor
+    #         - compute_loo
+    #         - compute_waic
+    #     - name: models.ComparisonResult
+    #       children: embedded
+    #       members:
+    #         - best_model
+    #         - to_dataframe
+    #     - name: models.ModelEnsemble
+    #       children: embedded
+    #       members:
+    #         - calculate_weights_from_comparison
+    #         - get_posterior_samples
+    #         - predict
+    #         - predict_future_states
+    #         - predict_with_uncertainty
+    #         - from_selection_result
+    #         - from_top_k_models
+    #     - name: models.ModelSelection
+    #       children: embedded
+    #       members:
+    #         - select_model
+    #     - models.SelectionCriterion
+    #     - name: models.SelectionResult
+    #       children: embedded
+    #       members:
+    #         - to_dataframe
+    #     - models.select_best_model
     - title: Tasks
       desc: |
         Task-oriented utilities for common workflows
