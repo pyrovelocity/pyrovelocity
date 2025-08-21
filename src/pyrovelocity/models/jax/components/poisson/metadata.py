@@ -40,7 +40,8 @@ def create_poisson_prior_metadata() -> ComponentParameterMetadata:
                 "Accounts for technical variation in RNA capture and sequencing depth "
                 "across individual cells."
             ),
-            plot_order=1
+            plot_order=1,
+            category="technical_scaling"
         ),
         
         "t_star": ParameterMetadata(
@@ -55,7 +56,8 @@ def create_poisson_prior_metadata() -> ComponentParameterMetadata:
                 "Poisson model. Maintains consistency with temporal model interfaces "
                 "without adding temporal structure."
             ),
-            plot_order=2
+            plot_order=2,
+            category="temporal_dynamics"
         ),
         
         # Gene-specific parameters
@@ -71,7 +73,8 @@ def create_poisson_prior_metadata() -> ComponentParameterMetadata:
                 "Represents the baseline scale of expression for each gene, "
                 "combining transcriptional activity and RNA processing efficiency."
             ),
-            plot_order=3
+            plot_order=3,
+            category="technical_scaling"
         ),
         
         "r_u_i": ParameterMetadata(
@@ -86,7 +89,8 @@ def create_poisson_prior_metadata() -> ComponentParameterMetadata:
                 "Represents the relative rate of unspliced RNA production "
                 "that would derive from differential equation solutions in the full model."
             ),
-            plot_order=4
+            plot_order=4,
+            category="gene_expression"
         ),
         
         "r_s_i": ParameterMetadata(
@@ -101,7 +105,8 @@ def create_poisson_prior_metadata() -> ComponentParameterMetadata:
                 "Represents the relative rate of spliced RNA production "
                 "that would derive from differential equation solutions in the full model."
             ),
-            plot_order=5
+            plot_order=5,
+            category="gene_expression"
         ),
     }
     
