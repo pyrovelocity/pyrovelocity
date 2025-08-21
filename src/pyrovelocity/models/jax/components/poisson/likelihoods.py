@@ -26,18 +26,23 @@ def poisson_likelihood_function(
 
     This function implements a pure Poisson observation model without temporal
     dynamics. It models RNA count data directly using Poisson distributions
-    with cell- and gene-specific scaling parameters.
+    with the correct multiplicative structure from the mathematical specification.
 
     Mathematical Formulation:
 
+    Rate Structure:
+        u_rate_ij = λ_j × U_{0i} × r_u,i
+        s_rate_ij = λ_j × U_{0i} × r_s,i
+
     Observation Model:
-        u_{ij} ∼ Poisson(λ_j × U_{0i})
-        s_{ij} ∼ Poisson(λ_j × S_{0i})
+        u_{ij} ∼ Poisson(u_rate_ij)
+        s_{ij} ∼ Poisson(s_rate_ij)
 
     Where:
         λ_j = cell-specific library size scaling (capture efficiency)
-        U_{0i} = gene-specific unspliced concentration scale
-        S_{0i} = gene-specific spliced concentration scale
+        U_{0i} = gene-specific expression capacity
+        r_u,i = gene-specific unspliced rate multiplier
+        r_s,i = gene-specific spliced rate multiplier
 
     Args:
         context: Dictionary containing:
@@ -46,8 +51,9 @@ def poisson_likelihood_function(
             - u_star: Expected unspliced concentrations (constant from dynamics)
             - s_star: Expected spliced concentrations (constant from dynamics)
             - lambda_j: Cell-specific library scaling parameters
-            - U_0i: Gene-specific unspliced scaling parameters
-            - S_0i: Gene-specific spliced scaling parameters
+            - U_0i: Gene-specific expression capacity parameters
+            - r_u_i: Gene-specific unspliced rate multipliers
+            - r_s_i: Gene-specific spliced rate multipliers
             - Additional likelihood parameters
 
     Returns:
@@ -60,10 +66,11 @@ def poisson_likelihood_function(
     u_star = context["u_star"]  # Constant concentrations from trivial dynamics
     s_star = context["s_star"]  # Constant concentrations from trivial dynamics
 
-    # Extract scaling parameters from context
+    # Extract scaling parameters from context (corrected parameter names)
     lambda_j = context["lambda_j"]  # Cell-specific library scaling [n_cells]
-    U_0i = context["U_0i"]       # Gene-specific unspliced scale [n_genes] 
-    S_0i = context["S_0i"]       # Gene-specific spliced scale [n_genes]
+    U_0i = context["U_0i"]         # Gene expression capacity [n_genes] 
+    r_u_i = context["r_u_i"]       # Unspliced rate multiplier [n_genes]
+    r_s_i = context["r_s_i"]       # Spliced rate multiplier [n_genes]
     eps = context.get("eps", 1e-6)
 
     # Handle potential extra dimensions from explicit plate dimensions
@@ -79,22 +86,28 @@ def poisson_likelihood_function(
     if U_0i.ndim == 0:  # Handle scalar case
         U_0i = jnp.array([U_0i])
         
-    if S_0i.ndim > 1:
-        S_0i = jnp.squeeze(S_0i)
-    if S_0i.ndim == 0:  # Handle scalar case
-        S_0i = jnp.array([S_0i])
+    if r_u_i.ndim > 1:
+        r_u_i = jnp.squeeze(r_u_i)
+    if r_u_i.ndim == 0:  # Handle scalar case
+        r_u_i = jnp.array([r_u_i])
+        
+    if r_s_i.ndim > 1:
+        r_s_i = jnp.squeeze(r_s_i)
+    if r_s_i.ndim == 0:  # Handle scalar case
+        r_s_i = jnp.array([r_s_i])
 
     # Proper 2D broadcasting to compute Poisson rates:
     # lambda_j: [N] -> [N, 1], scales: [G] -> [1, G]
-    # Result: [N, 1] * [1, G] * [N, G] = [N, G]
+    # Result: [N, 1] * [1, G] * [1, G] = [N, G]
     lambda_j_expanded = lambda_j[:, jnp.newaxis]  # [N, 1]
-    U_0i_expanded = U_0i[jnp.newaxis, :]  # [1, G]
-    S_0i_expanded = S_0i[jnp.newaxis, :]  # [1, G]
+    U_0i_expanded = U_0i[jnp.newaxis, :]          # [1, G]
+    r_u_i_expanded = r_u_i[jnp.newaxis, :]       # [1, G]
+    r_s_i_expanded = r_s_i[jnp.newaxis, :]       # [1, G]
 
-    # Apply scaling to get Poisson rates
-    # Note: u_star and s_star are constant from trivial dynamics
-    u_rate = lambda_j_expanded * U_0i_expanded * u_star
-    s_rate = lambda_j_expanded * S_0i_expanded * s_star
+    # Apply scaling to get Poisson rates using correct multiplicative structure
+    # Note: u_star and s_star are constant from trivial dynamics (typically 1.0)
+    u_rate = lambda_j_expanded * U_0i_expanded * r_u_i_expanded * u_star
+    s_rate = lambda_j_expanded * U_0i_expanded * r_s_i_expanded * s_star
 
     # Ensure positive rates for numerical stability
     u_rate = jnp.maximum(u_rate, eps)
