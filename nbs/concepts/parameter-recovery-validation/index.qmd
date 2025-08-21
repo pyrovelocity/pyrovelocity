@@ -83,7 +83,7 @@ The following probabilistic graphical models illustrate the parameter structure 
 ```{python}
 #| label: fig-poisson-baseline-overview-pgm
 #| code-fold: true
-#| fig-cap: Poisson baseline model - Simplest parameterization with static rate multipliers r_u,i and r_s,i replacing dynamical solutions. Features hierarchical priors on gene expression capacity U_0i and cell capture efficiency λ_j.
+#| fig-cap: Poisson baseline model - Simplest parameterization with static rate multipliers $r_{u,i}$ and $r_{s,i}$ replacing dynamical solutions. Features hierarchical priors on gene expression capacity $U_{0i}$ and cell capture efficiency $\lambda_j$.
 
 import daft
 import matplotlib.pyplot as plt
@@ -159,7 +159,7 @@ pgm.render()
 ```{python}
 #| label: fig-observed-time-overview-pgm
 #| code-fold: true
-#| fig-cap: Observed time model - Incorporates analytical dynamics with known temporal coordinates t*_j. Features dimensionless initial conditions and degradation rates, with latent dynamical states u*_ij and s*_ij computed from analytical solutions.
+#| fig-cap: Observed time model - Incorporates analytical dynamics with known temporal coordinates $t^*_j$. Features dimensionless initial conditions and degradation rates, with latent dynamical states $u^*_{ij}$ and $s^*_{ij}$ computed from analytical solutions.
 
 import daft
 import matplotlib.pyplot as plt
@@ -283,7 +283,7 @@ pgm.render()
 ```{python}
 #| label: fig-piecewise-activation-overview-pgm
 #| code-fold: true
-#| fig-cap: Piecewise activation model - Most complex model with latent temporal coordinates t*_j and piecewise transcription rates. Features independent temporal parameters θ_i (degradation, fold-change) and Δ_i (onset time, duration), with process duration T_M governing the temporal framework.
+#| fig-cap: Piecewise activation model - Most complex model with latent temporal coordinates $t^*_j$ and piecewise transcription rates. Features independent temporal parameters $\theta_i$ (degradation, fold-change) and $\Delta_i$ (onset time, duration), with process duration $T_M$ governing the temporal framework.
 
 import daft
 import matplotlib.pyplot as plt
@@ -420,6 +420,7 @@ pgm.render()
 ## Navigation
 
 Each model documentation includes:
+
 - Mathematical framework and assumptions
 - Probabilistic graphical model representation
 - Implementation details and code mapping
@@ -429,6 +430,7 @@ Each model documentation includes:
 ## Cross-Model Considerations
 
 All models share the **dimensionless parameterization framework** that:
+
 - Naturally avoids identifiability issues
 - Maintains biological interpretability
 - Uses hierarchical priors on characteristic scales
