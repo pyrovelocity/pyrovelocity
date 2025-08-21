@@ -16,17 +16,6 @@ execute:
   warning: false
   error: false
   cache: true
-author:
-  - name: Pyrovelocity Team
-    email: team@pyrovelocity.net
-abstract: |
-  This document presents the dimensionless analytical dynamics model with observed time coordinates for
-  parameter recovery validation in PyroVelocity. This model incorporates full transcription-splicing-degradation
-  dynamics using analytical solutions where temporal coordinates are treated as observed variables.
-  The dimensionless parameterization naturally avoids identifiability issues while maintaining biological
-  interpretability through relative degradation rates, characteristic scales, and lumped capture efficiency.
-  This model represents the middle complexity tier, bridging simple Poisson fitting and complex latent time models.
-keywords: [single-cell transcriptomics, probabilistic modeling, model calibration, model validation, RNA velocity]
 bibliography: ../../references.bib
 jupyter:
   jupytext:
@@ -51,6 +40,8 @@ jupyter:
   toc-showcode: false
   toc-showmarkdowntxt: false
 ---
+
+This document presents the dimensionless analytical dynamics model with observed time coordinates for parameter recovery validation in PyroVelocity. This model incorporates full transcription-splicing-degradation dynamics using analytical solutions where temporal coordinates are treated as observed variables. The dimensionless parameterization naturally avoids identifiability issues while maintaining biological interpretability through relative degradation rates, characteristic scales, and lumped capture efficiency. This model represents the middle complexity tier, bridging simple Poisson fitting and complex latent time models.
 
 ## Dimensionless analytical dynamics with observed time {#sec-dimless-observed-time}
 
