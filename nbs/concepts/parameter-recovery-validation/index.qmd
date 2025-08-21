@@ -74,6 +74,343 @@ The following models are available for parameter recovery validation, progressin
 | **Observed Time** | Medium | Analytical dynamics, observed temporal coordinates | [View Details](observed-time.qmd) |
 | **Piecewise Activation** | High | Latent time, piecewise transcription rates, pre-activation support | [View Details](piecewise-activation.qmd) |
 
+### Model Architecture Overview
+
+The following probabilistic graphical models illustrate the parameter structure and dependencies for each validation model, showing the progression from simple static rates to complex dynamical systems.
+
+#### Poisson Baseline Model
+
+```{python}
+#| label: fig-poisson-baseline-overview-pgm
+#| code-fold: true
+#| fig-cap: Poisson baseline model - Simplest parameterization with static rate multipliers r_u,i and r_s,i replacing dynamical solutions. Features hierarchical priors on gene expression capacity U_0i and cell capture efficiency λ_j.
+
+import daft
+import matplotlib.pyplot as plt
+
+plt.rcParams["font.family"] = "serif"
+plt.rcParams["font.size"] = 16
+plt.rcParams["text.usetex"] = True
+
+pgm = daft.PGM(line_width=1.2)
+
+# hyperparameters (reordered to align above their corresponding parameters)
+pgm.add_node("mu_ru", r"$\mu_{r_u}$", 0.5, 6, fixed=True)
+pgm.add_node("sigma_ru", r"$\sigma_{r_u}^2$", 1.5, 6, fixed=True)
+pgm.add_node("mu_rs", r"$\mu_{r_s}$", 2.5, 6, fixed=True)
+pgm.add_node("sigma_rs", r"$\sigma_{r_s}^2$", 3.5, 6, fixed=True)
+pgm.add_node("mu_U0", r"$\mu_{U_0}$", 4.5, 6, fixed=True)
+pgm.add_node("sigma_U0", r"$\sigma_{U_0}^2$", 5, 6, fixed=True)
+pgm.add_node("mu_lambda", r"$\mu_{\lambda}$", 5.5, 5, fixed=True)
+pgm.add_node("sigma_lambda", r"$\sigma_{\lambda}^2$", 6, 5, fixed=True)
+
+# gene-specific parameters (inside gene plate, r_s,i moved slightly right)
+pgm.add_node("U_0i", r"$U_{0i}$", 4.5, 5)
+pgm.add_node("r_u_i", r"$r_{u,i}$", 1, 5)
+pgm.add_node("r_s_i", r"$r_{s,i}$", 2.5, 5)
+
+# cell-specific parameters (inside cell plate)
+pgm.add_node("lambda_j", r"$\lambda_j$", 5.5, 4)
+
+# observed data (inside intersection of both plates)
+pgm.add_node("u_obs_ij", r"$u_{ij}$", 2, 2.5, scale=1.0, observed=True)
+pgm.add_node("s_obs_ij", r"$s_{ij}$", 4, 2.5, scale=1.0, observed=True)
+
+# edges
+edge_params = {"head_length": 0.3, "head_width": 0.25, "lw": 0.7}
+
+# hyperparameter edges
+pgm.add_edge("mu_U0", "U_0i", plot_params=edge_params)
+pgm.add_edge("sigma_U0", "U_0i", plot_params=edge_params)
+pgm.add_edge("mu_ru", "r_u_i", plot_params=edge_params)
+pgm.add_edge("sigma_ru", "r_u_i", plot_params=edge_params)
+pgm.add_edge("mu_rs", "r_s_i", plot_params=edge_params)
+pgm.add_edge("sigma_rs", "r_s_i", plot_params=edge_params)
+pgm.add_edge("mu_lambda", "lambda_j", plot_params=edge_params)
+pgm.add_edge("sigma_lambda", "lambda_j", plot_params=edge_params)
+
+# observation edges (multiplicative structure)
+pgm.add_edge("U_0i", "u_obs_ij", plot_params=edge_params)
+pgm.add_edge("r_u_i", "u_obs_ij", plot_params=edge_params)
+pgm.add_edge("lambda_j", "u_obs_ij", plot_params=edge_params)
+pgm.add_edge("U_0i", "s_obs_ij", plot_params=edge_params)
+pgm.add_edge("r_s_i", "s_obs_ij", plot_params=edge_params)
+pgm.add_edge("lambda_j", "s_obs_ij", plot_params=edge_params)
+
+# plates
+pgm.add_plate(
+    [0.5, 1.4, 4.5, 4.2],
+    label=r"$i \in \{1, \ldots, G\}$",
+    shift=-0.1,
+    fontsize=12,
+)
+pgm.add_plate(
+    [1.0, 1.9, 5.0, 2.6],
+    label=r"$j \in \{1, \ldots, N\}$",
+    shift=-0.1,
+    fontsize=12,
+)
+
+pgm.render()
+```
+
+#### Observed Time Model
+
+```{python}
+#| label: fig-observed-time-overview-pgm
+#| code-fold: true
+#| fig-cap: Observed time model - Incorporates analytical dynamics with known temporal coordinates t*_j. Features dimensionless initial conditions and degradation rates, with latent dynamical states u*_ij and s*_ij computed from analytical solutions.
+
+import daft
+import matplotlib.pyplot as plt
+
+plt.rcParams["font.family"] = "serif"
+plt.rcParams["font.size"] = 16
+plt.rcParams["text.usetex"] = True
+
+pgm = daft.PGM(line_width=1.2)
+
+# hyperparameters
+pgm.add_node("mu_init", r"$\mu_{0}$", 0.5, 6, fixed=True)
+pgm.add_node("sigma_init", r"$\sigma_{0}^2$", 1.5, 6, fixed=True)
+pgm.add_node("mu_gamma", r"$\mu_{\gamma^*}$", 2.5, 6, fixed=True)
+pgm.add_node("sigma_gamma", r"$\sigma_{\gamma^*}^2$", 3.5, 6, fixed=True)
+pgm.add_node("mu_U0", r"$\mu_{U_0}$", 4.5, 6, fixed=True)
+pgm.add_node("sigma_U0", r"$\sigma_{U_0}^2$", 5, 6, fixed=True)
+pgm.add_node("mu_lambda", r"$\mu_{\lambda}$", 5.5, 5, fixed=True)
+pgm.add_node("sigma_lambda", r"$\sigma_{\lambda}^2$", 6, 5, fixed=True)
+
+# latent variables for gene-specific parameters
+pgm.add_node("u_star_0i", r"$u^{\ast}_{0i}$", 1, 5)
+pgm.add_node("s_star_0i", r"$s^{\ast}_{0i}$", 2, 5)
+pgm.add_node("gamma_star_i", r"$\gamma^{\ast}_i$", 3, 5)
+pgm.add_node("U_0i", r"$U_{0i}$", 4.5, 5)
+
+# cell-specific parameters (moved inside cell plate)
+pgm.add_node("lambda_j", r"$\lambda_j$", 5.5, 4)
+
+# latent variables for cell-specific outcomes
+pgm.add_node(
+    "u_star_ij",
+    r"$u^{\ast}_{ij}$",
+    2,
+    4,
+    scale=1.0,
+    shape="rectangle",
+)
+pgm.add_node(
+    "s_star_ij",
+    r"$s^{\ast}_{ij}$",
+    4,
+    4,
+    scale=1.0,
+    shape="rectangle",
+)
+
+# observed data
+pgm.add_node(
+    "t_star_j",
+    r"$t^{\ast}_j$",
+    5.5,
+    3.0,
+    observed=True,
+    shape="rectangle",
+)
+pgm.add_node(
+    "u_obs_ij",
+    r"$u_{ij}$",
+    2,
+    2.5,
+    scale=1.0,
+    observed=True,
+)
+pgm.add_node(
+    "s_obs_ij",
+    r"$s_{ij}$",
+    4,
+    2.5,
+    scale=1.0,
+    observed=True,
+)
+
+# edges
+edge_params = {"head_length": 0.3, "head_width": 0.25, "lw": 0.7}
+pgm.add_edge("mu_init", "u_star_0i", plot_params=edge_params)
+pgm.add_edge("sigma_init", "u_star_0i", plot_params=edge_params)
+pgm.add_edge("mu_init", "s_star_0i", plot_params=edge_params)
+pgm.add_edge("sigma_init", "s_star_0i", plot_params=edge_params)
+pgm.add_edge("mu_gamma", "gamma_star_i", plot_params=edge_params)
+pgm.add_edge("sigma_gamma", "gamma_star_i", plot_params=edge_params)
+pgm.add_edge("mu_U0", "U_0i", plot_params=edge_params)
+pgm.add_edge("sigma_U0", "U_0i", plot_params=edge_params)
+pgm.add_edge("mu_lambda", "lambda_j", plot_params=edge_params)
+pgm.add_edge("sigma_lambda", "lambda_j", plot_params=edge_params)
+
+pgm.add_edge("u_star_0i", "u_star_ij", plot_params=edge_params)
+pgm.add_edge("s_star_0i", "s_star_ij", plot_params=edge_params)
+pgm.add_edge("u_star_0i", "s_star_ij", plot_params=edge_params)
+pgm.add_edge("gamma_star_i", "s_star_ij", plot_params=edge_params)
+
+pgm.add_edge("u_star_ij", "u_obs_ij", plot_params=edge_params)
+pgm.add_edge("s_star_ij", "s_obs_ij", plot_params=edge_params)
+pgm.add_edge("U_0i", "u_obs_ij", plot_params=edge_params)
+pgm.add_edge("U_0i", "s_obs_ij", plot_params=edge_params)
+pgm.add_edge("lambda_j", "u_obs_ij", plot_params=edge_params)
+pgm.add_edge("lambda_j", "s_obs_ij", plot_params=edge_params)
+
+pgm.add_edge("t_star_j", "u_star_ij", plot_params=edge_params)
+pgm.add_edge("t_star_j", "s_star_ij", plot_params=edge_params)
+
+# plates
+pgm.add_plate(
+    [0.5, 1.4, 4.5, 4.2],
+    label=r"$i \in \{1, \ldots, G\}$",
+    shift=-0.1,
+    fontsize=12,
+)
+pgm.add_plate(
+    [1.0, 1.9, 5.0, 2.6],
+    label=r"$j \in \{1, \ldots, N\}$",
+    shift=-0.1,
+    fontsize=12,
+)
+
+pgm.render()
+```
+
+#### Piecewise Activation Model
+
+```{python}
+#| label: fig-piecewise-activation-overview-pgm
+#| code-fold: true
+#| fig-cap: Piecewise activation model - Most complex model with latent temporal coordinates t*_j and piecewise transcription rates. Features independent temporal parameters θ_i (degradation, fold-change) and Δ_i (onset time, duration), with process duration T_M governing the temporal framework.
+
+import daft
+import matplotlib.pyplot as plt
+
+plt.rcParams["font.family"] = "serif"
+plt.rcParams["font.size"] = 16
+plt.rcParams["text.usetex"] = True
+
+pgm = daft.PGM(line_width=1.2)
+
+# hyperparameters for gene-specific parameters
+pgm.add_node("mu_theta", r"$\mu_{\theta}$", 0.5, 6, fixed=True)
+pgm.add_node("sigma_theta", r"$\sigma_{\theta}^2$", 1.5, 6, fixed=True)
+pgm.add_node("mu_Delta", r"$\mu_{\Delta}$", 2.5, 6, fixed=True)
+pgm.add_node("sigma_Delta", r"$\sigma_{\Delta}^2$", 3.5, 6, fixed=True)
+pgm.add_node("mu_U0", r"$\mu_{U_0}$", 4.5, 6, fixed=True)
+pgm.add_node("sigma_U0", r"$\sigma_{U_0}^2$", 5, 6, fixed=True)
+
+# hyperparameters for independent time structure
+pgm.add_node("alpha_T", r"$\alpha_{T}$", 5.5, 6, fixed=True)
+pgm.add_node("beta_T", r"$\beta_{T}$", 6, 6, fixed=True)
+
+# hyperparameters for lambda (entering from right edge of cell plate)
+pgm.add_node("mu_lambda", r"$\mu_{\lambda}$", 6.5, 3.5, fixed=True)
+pgm.add_node("sigma_lambda", r"$\sigma_{\lambda}^2$", 6.5, 2.5, fixed=True)
+
+# latent variables for gene-specific parameters
+pgm.add_node("theta_i", r"$\theta_i$", 1, 5)
+pgm.add_node("Delta_i", r"$\Delta_i$", 3, 5)
+pgm.add_node("U_0i", r"$U_{0i}$", 4.5, 5)
+
+# independent time parameters
+pgm.add_node("T_M", r"$T_M$", 5.5, 5)
+
+# latent time coordinates and cell-specific parameters
+pgm.add_node("t_star_j", r"$t^{\ast}_j$", 5.5, 4)
+pgm.add_node("lambda_j", r"$\lambda_j$", 5.5, 3)
+
+# latent variables for cell-specific outcomes (centered between rows)
+pgm.add_node(
+    "u_star_ij",
+    r"$u^{\ast}_{ij}$",
+    2,
+    3.75,
+    scale=1.0,
+    shape="rectangle",
+)
+pgm.add_node(
+    "s_star_ij",
+    r"$s^{\ast}_{ij}$",
+    4,
+    3.75,
+    scale=1.0,
+    shape="rectangle",
+)
+
+# observed data
+pgm.add_node(
+    "u_obs_ij",
+    r"$u_{ij}$",
+    2,
+    2.25,
+    scale=1.0,
+    observed=True,
+)
+pgm.add_node(
+    "s_obs_ij",
+    r"$s_{ij}$",
+    4,
+    2.25,
+    scale=1.0,
+    observed=True,
+)
+
+# edges
+edge_params = {"head_length": 0.3, "head_width": 0.25, "lw": 0.7}
+
+# gene-specific parameter edges
+pgm.add_edge("mu_theta", "theta_i", plot_params=edge_params)
+pgm.add_edge("sigma_theta", "theta_i", plot_params=edge_params)
+pgm.add_edge("mu_Delta", "Delta_i", plot_params=edge_params)
+pgm.add_edge("sigma_Delta", "Delta_i", plot_params=edge_params)
+pgm.add_edge("mu_U0", "U_0i", plot_params=edge_params)
+pgm.add_edge("sigma_U0", "U_0i", plot_params=edge_params)
+pgm.add_edge("mu_lambda", "lambda_j", plot_params=edge_params)
+pgm.add_edge("sigma_lambda", "lambda_j", plot_params=edge_params)
+
+# independent time structure edges
+pgm.add_edge("alpha_T", "T_M", plot_params=edge_params)
+pgm.add_edge("beta_T", "T_M", plot_params=edge_params)
+
+# independent time edges (no hierarchical scaling)
+pgm.add_edge("T_M", "t_star_j", plot_params=edge_params)
+
+# dynamics edges
+pgm.add_edge("theta_i", "u_star_ij", plot_params=edge_params)
+pgm.add_edge("theta_i", "s_star_ij", plot_params=edge_params)
+pgm.add_edge("Delta_i", "u_star_ij", plot_params=edge_params)
+pgm.add_edge("Delta_i", "s_star_ij", plot_params=edge_params)
+pgm.add_edge("t_star_j", "u_star_ij", plot_params=edge_params)
+pgm.add_edge("t_star_j", "s_star_ij", plot_params=edge_params)
+
+# observation edges
+pgm.add_edge("u_star_ij", "u_obs_ij", plot_params=edge_params)
+pgm.add_edge("s_star_ij", "s_obs_ij", plot_params=edge_params)
+pgm.add_edge("U_0i", "u_obs_ij", plot_params=edge_params)
+pgm.add_edge("U_0i", "s_obs_ij", plot_params=edge_params)
+pgm.add_edge("lambda_j", "u_obs_ij", plot_params=edge_params)
+pgm.add_edge("lambda_j", "s_obs_ij", plot_params=edge_params)
+
+# plates
+pgm.add_plate(
+    [0.5, 1.25, 4.5, 4.25],
+    label=r"$i \in \{1, \ldots, G\}$",
+    shift=-0.1,
+    fontsize=12,
+)
+pgm.add_plate(
+    [1.5, 1.75, 4.5, 2.75],
+    label=r"$j \in \{1, \ldots, N\}$",
+    shift=-0.1,
+    fontsize=12,
+)
+
+pgm.render()
+```
+
 ### Model Selection Guide
 
 - **Start with Poisson Baseline** for understanding basic parameter recovery concepts
