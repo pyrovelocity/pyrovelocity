@@ -35,7 +35,8 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless time",
             typical_range=(1.0, 10.0),
             biological_interpretation="Overall duration of the biological process being modeled",
-            plot_order=1
+            plot_order=1,
+            category="temporal_dynamics"
         ),
 
         "boundary_concentration": ParameterMetadata(
@@ -95,7 +96,8 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless time",
             typical_range=(0.0, 10.0),
             biological_interpretation="Progression of individual cells through the biological process",
-            plot_order=6
+            plot_order=6,
+            category="temporal_dynamics"
         ),
 
         "t_star_normalized": ParameterMetadata(
@@ -119,7 +121,8 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless ratio",
             typical_range=(1.5, 4.2),
             biological_interpretation="Magnitude of transcriptional upregulation during gene activation phase",
-            plot_order=8
+            plot_order=8,
+            category="gene_expression"
         ),
 
         "gamma_star": ParameterMetadata(
@@ -130,7 +133,8 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless rate ratio",
             typical_range=(0.3, 3.0),
             biological_interpretation="Balance between mRNA splicing and degradation kinetics; γ*=1 represents balanced kinetics",
-            plot_order=9
+            plot_order=9,
+            category="gene_expression"
         ),
 
         "t_on_star": ParameterMetadata(
@@ -141,7 +145,8 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless time",
             typical_range=(-1.0, 1.4),
             biological_interpretation="When during the process each gene begins its activation phase; negative values indicate pre-activation",
-            plot_order=10
+            plot_order=10,
+            category="gene_expression"
         ),
 
         "delta_star": ParameterMetadata(
@@ -152,7 +157,8 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="dimensionless time",
             typical_range=(0.1, 1.0),
             biological_interpretation="How long each gene remains in its activated state",
-            plot_order=11
+            plot_order=11,
+            category="gene_expression"
         ),
         
         # Observation model parameters
@@ -164,7 +170,8 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="count scale",
             typical_range=(10.0, 1000.0),
             biological_interpretation="Gene-specific expression scale, accounting for differences in gene expression levels",
-            plot_order=12
+            plot_order=12,
+            category="technical_scaling"
         ),
 
         "lambda_j": ParameterMetadata(
@@ -175,7 +182,8 @@ def create_piecewise_activation_prior_metadata() -> ComponentParameterMetadata:
             units="efficiency ratio",
             typical_range=(0.1, 2.0),
             biological_interpretation="Technical variation in RNA capture and sequencing efficiency across cells",
-            plot_order=13
+            plot_order=13,
+            category="technical_scaling"
         ),
 
         # Latent RNA concentrations (true/unobserved values)
