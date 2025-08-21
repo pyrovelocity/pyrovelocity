@@ -23,15 +23,15 @@ from numpyro.handlers import condition
 
 RANDOM_SEED = int(os.environ.get("RANDOM_SEED", 42))
 MAX_TIME = float(os.environ.get("MAX_TIME", 7.0))
-REPORTS_SAVE_PATH = "reports/docs/posterior_predictive_jax"
 
-# Model selection configuration
+# Model selection configuration  
 MODEL_TYPES = {
     "piecewise_activation": create_piecewise_activation_model,
     "poisson_baseline": create_poisson_model,
 }
 
 MODEL_TYPE = os.environ.get("MODEL_TYPE", "piecewise_activation")
+REPORTS_SAVE_PATH = f"reports/docs/posterior_predictive_jax/{MODEL_TYPE}"
 print(f"Selected model type: {MODEL_TYPE}")
 
 if MODEL_TYPE not in MODEL_TYPES:
@@ -253,6 +253,10 @@ class ModelWithState:
     def __init__(self, model, inference_state):
         self.model = model
         self.state = type('State', (), {'inference_state': inference_state})()
+        
+        # Preserve metadata component information for plotting functions
+        if hasattr(model, '_parameter_metadata_component'):
+            self._parameter_metadata_component = model._parameter_metadata_component
     
     def __call__(self, *args, **kwargs):
         return self.model(*args, **kwargs)
