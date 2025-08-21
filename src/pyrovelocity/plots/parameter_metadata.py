@@ -134,6 +134,10 @@ def get_parameter_label(
         if hasattr(model, 'component_name') and component_name is None:
             component_name = model.component_name
         
+        # Check if model has _parameter_metadata_component attribute (from factory)
+        if hasattr(model, '_parameter_metadata_component') and component_name is None:
+            component_name = model._parameter_metadata_component
+        
         if label_type == "short":
             labels = get_parameter_short_labels_from_model(model, fallback_to_legacy=False)
         elif label_type == "display":
