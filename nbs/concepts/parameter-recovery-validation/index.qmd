@@ -121,6 +121,82 @@ This simplified model serves as a critical validation checkpoint, removing nearl
 - **Framework compatibility**: Maintains connection to established dimensionless parameterization
 - **Incremental complexity**: Provides clear path to full piecewise activation model
 
+### Probabilistic Graphical Model
+
+```{python}
+#| label: fig-poisson-likelihood-pgm
+#| code-fold: true
+#| fig-cap: Probabilistic graphical model for the simplified Poisson likelihood-only model with gene-specific rate multipliers r_u,i and r_s,i representing the core learnable parameters that replace differential equation solutions.
+
+import daft
+import matplotlib.pyplot as plt
+
+plt.rcParams["font.family"] = "serif"
+plt.rcParams["font.size"] = 16
+plt.rcParams["text.usetex"] = True
+
+pgm = daft.PGM(line_width=1.2)
+
+# hyperparameters (reordered to align above their corresponding parameters)
+pgm.add_node("mu_ru", r"$\mu_{r_u}$", 0.5, 6, fixed=True)
+pgm.add_node("sigma_ru", r"$\sigma_{r_u}^2$", 1.5, 6, fixed=True)
+pgm.add_node("mu_rs", r"$\mu_{r_s}$", 2.5, 6, fixed=True)
+pgm.add_node("sigma_rs", r"$\sigma_{r_s}^2$", 3.5, 6, fixed=True)
+pgm.add_node("mu_U0", r"$\mu_{U_0}$", 4.5, 6, fixed=True)
+pgm.add_node("sigma_U0", r"$\sigma_{U_0}^2$", 5, 6, fixed=True)
+pgm.add_node("mu_lambda", r"$\mu_{\lambda}$", 5.5, 5, fixed=True)
+pgm.add_node("sigma_lambda", r"$\sigma_{\lambda}^2$", 6, 5, fixed=True)
+
+# gene-specific parameters (inside gene plate, r_s,i moved slightly right)
+pgm.add_node("U_0i", r"$U_{0i}$", 4.5, 5)
+pgm.add_node("r_u_i", r"$r_{u,i}$", 1, 5)
+pgm.add_node("r_s_i", r"$r_{s,i}$", 2.5, 5)
+
+# cell-specific parameters (inside cell plate)
+pgm.add_node("lambda_j", r"$\lambda_j$", 5.5, 4)
+
+# observed data (inside intersection of both plates)
+pgm.add_node("u_obs_ij", r"$u_{ij}$", 2, 2.5, scale=1.0, observed=True)
+pgm.add_node("s_obs_ij", r"$s_{ij}$", 4, 2.5, scale=1.0, observed=True)
+
+# edges
+edge_params = {"head_length": 0.3, "head_width": 0.25, "lw": 0.7}
+
+# hyperparameter edges
+pgm.add_edge("mu_U0", "U_0i", plot_params=edge_params)
+pgm.add_edge("sigma_U0", "U_0i", plot_params=edge_params)
+pgm.add_edge("mu_ru", "r_u_i", plot_params=edge_params)
+pgm.add_edge("sigma_ru", "r_u_i", plot_params=edge_params)
+pgm.add_edge("mu_rs", "r_s_i", plot_params=edge_params)
+pgm.add_edge("sigma_rs", "r_s_i", plot_params=edge_params)
+pgm.add_edge("mu_lambda", "lambda_j", plot_params=edge_params)
+pgm.add_edge("sigma_lambda", "lambda_j", plot_params=edge_params)
+
+# observation edges (multiplicative structure)
+pgm.add_edge("U_0i", "u_obs_ij", plot_params=edge_params)
+pgm.add_edge("r_u_i", "u_obs_ij", plot_params=edge_params)
+pgm.add_edge("lambda_j", "u_obs_ij", plot_params=edge_params)
+pgm.add_edge("U_0i", "s_obs_ij", plot_params=edge_params)
+pgm.add_edge("r_s_i", "s_obs_ij", plot_params=edge_params)
+pgm.add_edge("lambda_j", "s_obs_ij", plot_params=edge_params)
+
+# plates
+pgm.add_plate(
+    [0.5, 1.4, 4.5, 4.2],
+    label=r"$i \in \{1, \ldots, G\}$",
+    shift=-0.1,
+    fontsize=12,
+)
+pgm.add_plate(
+    [1.0, 1.9, 5.0, 2.6],
+    label=r"$j \in \{1, \ldots, N\}$",
+    shift=-0.1,
+    fontsize=12,
+)
+
+pgm.render()
+```
+
 ### Prior Specification with Established Hyperparameters
 
 #### Gene-Specific Characteristic Scales (Biological) - INHERITED
@@ -131,10 +207,10 @@ $$U_{0i} \sim \text{LogNormal}(2.3, 0.4^2)$$
 $$\lambda_j \sim \text{LogNormal}(0.0, 0.2^2)$$
 *Source: Established and validated in piecewise activation model*
 
-#### Gene-Specific Dimensionless Rate Multipliers (New - Simple Defaults)
+#### Gene-Specific Dimensionless Rate Multipliers (Core Learnable Parameters)
 $$r_{u,i} \sim \text{LogNormal}(0.0, 0.5^2)$$
 $$r_{s,i} \sim \text{LogNormal}(0.0, 0.5^2)$$
-*Note: Conservative defaults for new simplified parameters*
+*Note: These are the key parameters to be inferred, representing the static mean values that would later derive from differential equation solutions in the piecewise activation model*
 
 #### Composite Poisson Rates (Dimensionally Consistent)
 $$u_{rate,ij} = \lambda_j \times U_{0i} \times r_{u,i}$$
@@ -144,13 +220,10 @@ $$s_{rate,ij} = \lambda_j \times U_{0i} \times r_{s,i}$$
 - **Preserve calibration work**: Use validated hyperparameters from existing piecewise model
 - **Enable meaningful comparison**: Same $U_{0i}$ and $\lambda_j$ priors ensure comparable results
 - **Source location**: `src/pyrovelocity/models/jax/components/piecewise/priors.py`
-- **New parameters only**: Only $r_{u,i}$ and $r_{s,i}$ require new default values
+- **Core parameters**: $r_{u,i}$ and $r_{s,i}$ rate multipliers require conservative default priors
 
 ### Likelihood Specification
 
-#### Dimensionally Consistent Poisson Rates
-$$u_{rate,ij} = \lambda_j \times U_{0i} \times r_{u,i}$$
-$$s_{rate,ij} = \lambda_j \times U_{0i} \times r_{s,i}$$
 
 #### Joint Likelihood
 $$P(u_{obs}, s_{obs} | \lambda_j, U_{0i}, r_{u,i}, r_{s,i}) = \prod_{i=1}^{N_{genes}} \prod_{j=1}^{N_{cells}} \text{Poisson}(u_{obs,ij} | u_{rate,ij}) \times \text{Poisson}(s_{obs,ij} | s_{rate,ij})$$
@@ -159,7 +232,7 @@ $$P(u_{obs}, s_{obs} | \lambda_j, U_{0i}, r_{u,i}, r_{s,i}) = \prod_{i=1}^{N_{ge
 This maintains the same scaling structure as the piecewise activation model:
 - $\lambda_j$: Cell-specific capture efficiency (technical)
 - $U_{0i}$: Gene-specific expression capacity (biological)
-- $r_{u,i}, r_{s,i}$: Simplified rate multipliers replacing dynamics solutions
+- $r_{u,i}, r_{s,i}$: Gene-specific rate multipliers replacing dynamics solutions
 
 ### Parameter Identifiability Analysis
 
@@ -192,6 +265,31 @@ This simplified approach addresses several identifiability challenges present in
 - **Likelihood functions**: Map to `src/pyrovelocity/models/jax/components/poisson/likelihoods.py`
 - **Null dynamics**: Map to `src/pyrovelocity/models/jax/components/poisson/dynamics.py`
 - **Factory integration**: Map to model creation functions in `factory.py`
+
+### Implementation Discrepancy Note
+
+**⚠️ Current Implementation Inconsistency**: The current JAX implementation incorrectly uses separate `S_0i` parameters instead of the mathematically correct `r_u,i` and `r_s,i` rate multipliers shown in the model above.
+
+**Mathematical Model (Correct)**:
+- Rate multipliers: `r_u,i` and `r_s,i` (core learnable parameters)
+- Rates: `u_rate = λ_j × U_0i × r_u,i` and `s_rate = λ_j × U_0i × r_s,i`
+
+**Current Implementation (Incorrect)**:
+- Uses: `S_0i` as separate spliced scaling parameter
+- Should be replaced with: `r_s,i` rate multiplier
+
+**Affected Files**:
+- `src/pyrovelocity/models/jax/components/poisson/priors.py` - should sample `r_u,i` and `r_s,i` instead of `S_0i`
+- `src/pyrovelocity/models/jax/components/poisson/likelihoods.py` - should implement `λ_j × U_0i × r_s,i` instead of `λ_j × S_0i`  
+- `src/pyrovelocity/models/jax/components/poisson/metadata.py` - should include `r_u,i` and `r_s,i` instead of `S_0i`
+
+**Required Refactoring** (Future Work):
+1. Replace `S_0i` with `r_u,i` and `r_s,i` parameters in prior sampling
+2. Update likelihood to implement correct multiplicative structure: `s_rate = λ_j × U_0i × r_s,i`
+3. Add `r_u,i` and `r_s,i` to parameter metadata, remove `S_0i`
+4. Update tests to reflect correct parameter structure
+
+**Impact**: The current implementation works for validation but uses a different parameterization than the mathematical model. The `r_u,i` and `r_s,i` parameters are the correct representation of the static rate values that would later derive from differential equation solutions in the piecewise activation model.
 
 #### Registry Pattern and Factory Functions
 ```python
