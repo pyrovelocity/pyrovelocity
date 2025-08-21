@@ -43,6 +43,8 @@ jupyter:
 
 This document details the Poisson baseline model for parameter recovery validation in PyroVelocity. This model serves as the simplest approach, fitting Poisson distributions directly to gene expression marginals without incorporating temporal dynamics. It retains key dimensionless parameterization concepts including hierarchical priors on characteristic scales and effective capture efficiency parameters, providing a foundation for understanding more complex dynamical models. The model is useful for validating basic parameter recovery concepts and serving as a performance baseline for comparison with dynamical approaches.
 
+For comprehensive mathematical foundations of parameter recovery validation, including prior predictive distributions, uncertainty decomposition, and cross-model comparison frameworks, see the [general parameter recovery validation framework](index.qmd#sec-general-parameter-recovery). This document focuses on the Poisson baseline's specific implementation details and its role as a performance reference.
+
 ## Dimensionless Poisson Baseline Model {#sec-poisson-likelihood-only}
 
 This study introduces the foundational model in the PyroVelocity parameter recovery validation framework: a dimensionless Poisson baseline that eliminates temporal dynamics while preserving the essential biological and technical parameter structure. The model establishes the minimal mathematical foundation required for parameter identifiability analysis and provides the reference point for evaluating the computational benefits of incorporating temporal dynamics in more sophisticated models.
@@ -252,3 +254,34 @@ The Poisson baseline model serves as the foundational element in the PyroVelocit
 The model's dimensionless parameterization ensures direct correspondence with more sophisticated models in the validation suite. Parameters $U_{0i}$ and $\lambda_j$ maintain identical interpretation across all models, while the static rate multipliers $r_{u,i}$ and $r_{s,i}$ provide the baseline reference for evaluating the temporal solutions derived in dynamical models.
 
 This progression from static to dynamic modeling enables systematic assessment of when temporal complexity provides meaningful improvements over baseline parameter estimation. The Poisson baseline thus establishes both the computational foundation and the interpretive framework for the entire parameter recovery validation methodology.
+
+### Baseline Performance Characteristics
+
+#### Computational Efficiency
+
+The Poisson baseline offers significant computational advantages over dynamical models:
+
+- **No temporal coordinate inference**: Eliminates the need to infer latent time variables $t^*_j$ or process duration $T_M$
+- **Simple parameter space**: Direct inference over $\{r_{u,i}, r_{s,i}, U_{0i}, \lambda_j\}$ without complex analytical solutions
+- **Fast convergence**: Static parameterization avoids multimodal landscapes common in temporal models
+- **Efficient posterior sampling**: Reduced dimensionality enables comprehensive posterior exploration
+
+#### Parameter Recovery Benchmarks
+
+The model establishes minimum performance thresholds for parameter recovery validation:
+
+1. **$U_{0i}$ recovery**: Characteristic scale parameters should be recoverable within 20% accuracy for realistic cell/gene counts
+2. **$\lambda_j$ recovery**: Capture efficiency parameters should maintain proper hierarchical structure with narrow posterior intervals
+3. **Rate multiplier interpretability**: $r_{u,i}$ and $r_{s,i}$ should exhibit biologically meaningful correlations and dynamic ranges
+
+#### Use Cases for Non-Dynamical Modeling
+
+The Poisson baseline is particularly appropriate for:
+
+**Steady-state biological systems**: Cell populations in homeostatic equilibrium where temporal changes are negligible compared to cell-to-cell variation. Examples include mature tissue maintenance, constitutive gene expression analysis, or quality control studies where temporal dynamics are not expected.
+
+**Cross-condition comparisons**: Studies comparing gene expression between discrete experimental conditions (treatment vs. control, wildtype vs. mutant, tissue type comparisons) where the focus is on static expression differences rather than temporal trajectories.
+
+**Technical validation studies**: Benchmarking experiments using synthetic data or spike-in controls where temporal dynamics are known to be absent, enabling controlled assessment of parameter recovery performance without temporal confounds.
+
+**Preliminary model selection**: Initial analysis to determine whether temporal modeling provides meaningful improvements over static rate estimation, informing the choice between baseline and dynamical approaches for specific datasets.
