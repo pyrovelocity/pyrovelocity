@@ -31,8 +31,9 @@ def test_poisson_likelihood_function():
     
     # Add required scaling parameters
     lambda_j = jnp.ones(n_cells)  # Cell-specific library scaling
-    U_0i = jnp.ones(n_genes)      # Gene-specific unspliced scale
-    S_0i = jnp.ones(n_genes)      # Gene-specific spliced scale
+    U_0i = jnp.ones(n_genes)      # Gene-specific expression capacity
+    r_u_i = jnp.ones(n_genes)     # Unspliced rate multiplier
+    r_s_i = jnp.ones(n_genes)     # Spliced rate multiplier
 
     # Create context for likelihood function
     context = {
@@ -42,7 +43,8 @@ def test_poisson_likelihood_function():
         "s_star": s_star,
         "lambda_j": lambda_j,
         "U_0i": U_0i,
-        "S_0i": S_0i,
+        "r_u_i": r_u_i,
+        "r_s_i": r_s_i,
     }
 
     # Create a model that uses the likelihood function
@@ -76,7 +78,8 @@ def test_poisson_likelihood_function_prior_predictive():
     # Scaling parameters
     lambda_j = jnp.ones(n_cells)
     U_0i = jnp.ones(n_genes)
-    S_0i = jnp.ones(n_genes)
+    r_u_i = jnp.ones(n_genes)
+    r_s_i = jnp.ones(n_genes)
 
     # Create context for likelihood function
     context = {
@@ -86,7 +89,8 @@ def test_poisson_likelihood_function_prior_predictive():
         "s_star": s_star,
         "lambda_j": lambda_j,
         "U_0i": U_0i,
-        "S_0i": S_0i,
+        "r_u_i": r_u_i,
+        "r_s_i": r_s_i,
     }
 
     # Create a model that uses the likelihood function
@@ -122,8 +126,9 @@ def test_poisson_likelihood_function_scaling():
     
     # Different scaling parameters
     lambda_j = jnp.array([1.5, 2.0])      # Cell-specific scaling
-    U_0i = jnp.array([0.8, 1.2])          # Gene-specific unspliced scaling
-    S_0i = jnp.array([0.9, 1.1])          # Gene-specific spliced scaling
+    U_0i = jnp.array([0.8, 1.2])          # Gene-specific expression capacity
+    r_u_i = jnp.array([0.9, 1.1])         # Unspliced rate multiplier
+    r_s_i = jnp.array([1.0, 1.2])         # Spliced rate multiplier
 
     context = {
         "u_obs": u_obs,
@@ -132,7 +137,8 @@ def test_poisson_likelihood_function_scaling():
         "s_star": s_star,
         "lambda_j": lambda_j,
         "U_0i": U_0i,
-        "S_0i": S_0i,
+        "r_u_i": r_u_i,
+        "r_s_i": r_s_i,
     }
 
     # Create a model that uses the likelihood function
@@ -161,7 +167,8 @@ def test_poisson_likelihood_function_numerical_stability():
     # Small scaling parameters
     lambda_j = jnp.array([1e-8])
     U_0i = jnp.array([1e-8])
-    S_0i = jnp.array([1e-8])
+    r_u_i = jnp.array([1e-8])
+    r_s_i = jnp.array([1e-8])
 
     context = {
         "u_obs": u_obs,
@@ -170,7 +177,8 @@ def test_poisson_likelihood_function_numerical_stability():
         "s_star": s_star,
         "lambda_j": lambda_j,
         "U_0i": U_0i,
-        "S_0i": S_0i,
+        "r_u_i": r_u_i,
+        "r_s_i": r_s_i,
     }
 
     # Should handle small values without numerical issues
