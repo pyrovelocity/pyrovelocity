@@ -62,17 +62,25 @@ Parameter recovery validation is a critical step in validating probabilistic mod
 3. **Evaluating recovery performance**
 4. **Assessing model identifiability**
 
-This notebook demonstrates parameter recovery validation for PyroVelocity models using the dimensionless parameterization that naturally avoids identifiability issues while maintaining biological interpretability. We implement hierarchical priors on characteristic scales and lumped effective capture efficiency, progressing from analytical solutions with observed time to numerical simulation with latent time coordinates. For each model we include a graphical representation of the model's generative process as well as a mathematical description of the prior, observation model, and likelihood. We illustrate how to perform a somewhat simplified version of prior and posterior predictive checking for the piecewise activation model with latent time.
+For each model, we need to demonstrate parameter recovery. For dynamical models, we generally use dimensionless parameterization that naturally eliminates a classe of identifiability issues while maintaining biological interpretability. We implement hierarchical priors that account for scaling behavior and lumped parameters for technical artifacts such as effective capture efficiency. We intend to progress from relatively simple likelihood-based models to dynamical models with analytical solutions where time is either observed or latent. Further, we may also introduce support for analytically intractable dynamical models requiring numerical simulation. For each model we include a graphical representation of the model's generative process as well as a mathematical description of the prior, observation model, and likelihood. We illustrate how to perform a somewhat simplified version of prior and posterior predictive checking for key model classes.
 
 ## Available Models
 
-The following models are available for parameter recovery validation, progressing from simple baseline models to sophisticated dynamical systems with latent variables:
+The following models are available for parameter recovery validation:
 
 | Model | Complexity | Key Features | Documentation |
 |-------|------------|--------------|---------------|
-| **Poisson Baseline** | Low | Direct likelihood fit without dynamics | [Details](poisson-baseline.qmd) |
+| **Poisson Baseline** | Low | Direct Poisson likelihood without dynamics | [Details](poisson-baseline.qmd) |
 | **Observed Time** | Medium | Analytical dynamics with observed temporal coordinates | [Details](observed-time.qmd) |
 | **Piecewise Activation** | High | Analytical dynamics with latent time | [Details](piecewise-activation.qmd) |
+
+Each completed model document generally intends to include:
+
+- Mathematical framework and assumptions
+- Probabilistic graphical model representation
+- Implementation details and code mapping
+- Parameter recovery validation strategies
+- Biological interpretation guidelines
 
 ### Model Architecture Overview
 
@@ -411,27 +419,17 @@ pgm.add_plate(
 pgm.render()
 ```
 
-### Model Selection Guide
+### Model usage
 
 - **Start with Poisson Baseline** for understanding basic parameter recovery concepts
 - **Use Observed Time** when temporal coordinates are known or can be approximated
-- **Apply Piecewise Activation** for complex biological scenarios with unknown temporal structure
+- **Apply Piecewise Activation** for scenarios believed to contain latent dynamics
 
-## Navigation
+## Principles for model development
 
-Each model documentation includes:
+All models are developed with consideration for
 
-- Mathematical framework and assumptions
-- Probabilistic graphical model representation
-- Implementation details and code mapping
-- Parameter recovery validation strategies
-- Biological interpretation guidelines
-
-## Cross-Model Considerations
-
-All models share the **dimensionless parameterization framework** that:
-
-- Naturally avoids identifiability issues
-- Maintains biological interpretability
-- Uses hierarchical priors on characteristic scales
-- Accounts for technical artifacts through effective parameters
+- Identifiability
+- Biological interpretability
+- Hierarchical structure and relevant characteristic scales
+- Technical artifacts
