@@ -27,17 +27,22 @@ def poisson_prior_function(
 
     This function implements a simplified hierarchical prior structure for the
     Poisson-only RNA velocity model, focusing on library size normalization
-    and basic scaling parameters without temporal dynamics.
+    and gene-specific rate multipliers without temporal dynamics.
 
     Mathematical Structure:
 
     Cell Library Size Scaling:
-        lambda_j ~ LogNormal(loc=0.0, scale=0.5)      # Cell capture efficiency
+        lambda_j ~ LogNormal(loc=0.0, scale=0.2)      # Cell capture efficiency
         t_star ~ Delta(0.5)                           # Constant temporal coordinates (compatibility)
 
-    Gene Concentration Scaling:
-        U_0i ~ LogNormal(loc=0.0, scale=0.5)          # Gene-specific scale
-        S_0i ~ LogNormal(loc=0.0, scale=0.5)          # Gene-specific scale (spliced)
+    Gene Expression Scaling:
+        U_0i ~ LogNormal(loc=2.3, scale=0.4)          # Gene expression capacity
+        r_u,i ~ LogNormal(loc=0.0, scale=0.5)         # Unspliced rate multiplier
+        r_s,i ~ LogNormal(loc=0.0, scale=0.5)         # Spliced rate multiplier
+
+    Rate Structure:
+        u_rate_ij = lambda_j × U_0i × r_u,i
+        s_rate_ij = lambda_j × U_0i × r_s,i
 
     Args:
         num_genes: Number of genes in the dataset
@@ -46,7 +51,7 @@ def poisson_prior_function(
     Returns:
         Dictionary containing all sampled parameters with appropriate shapes:
             - Cell arrays [n_cells]: lambda_j, t_star
-            - Gene arrays [num_genes]: U_0i, S_0i
+            - Gene arrays [num_genes]: U_0i, r_u_i, r_s_i
     """
     if prior_params is None:
         prior_params = {}
@@ -58,12 +63,12 @@ def poisson_prior_function(
 
     # Cell-specific library size scaling
     with numpyro.plate("cells", n_cells, dim=-2):
-        # Cell capture efficiency/library size
+        # Cell capture efficiency/library size (inherit from piecewise model)
         lambda_j = numpyro.sample(
             "lambda_j",
             dist.LogNormal(
                 loc=prior_params.get("lambda_loc", 0.0),
-                scale=prior_params.get("lambda_scale", 0.5)
+                scale=prior_params.get("lambda_scale", 0.2)  # Use established hyperparameter
             )
         )
 
@@ -74,23 +79,32 @@ def poisson_prior_function(
             dist.Delta(0.5)  # numpyro may broadcast across cells dimension
         )
 
-    # Gene-specific concentration scaling
+    # Gene-specific concentration scaling and rate multipliers
     with numpyro.plate("genes", num_genes, dim=-1):
-        # Unspliced RNA concentration scale
+        # Gene expression capacity (inherit established hyperparameter)
         U_0i = numpyro.sample(
             "U_0i",
             dist.LogNormal(
-                loc=prior_params.get("U_0i_loc", 0.0),
-                scale=prior_params.get("U_0i_scale", 0.5)
+                loc=prior_params.get("U_0i_loc", 2.3),  # Use established hyperparameter
+                scale=prior_params.get("U_0i_scale", 0.4)  # Use established hyperparameter
             )
         )
 
-        # Spliced RNA concentration scale
-        S_0i = numpyro.sample(
-            "S_0i",
+        # Unspliced rate multiplier (core learnable parameter)
+        r_u_i = numpyro.sample(
+            "r_u_i",
             dist.LogNormal(
-                loc=prior_params.get("S_0i_loc", 0.0),
-                scale=prior_params.get("S_0i_scale", 0.5)
+                loc=prior_params.get("r_u_i_loc", 0.0),
+                scale=prior_params.get("r_u_i_scale", 0.5)
+            )
+        )
+
+        # Spliced rate multiplier (core learnable parameter)
+        r_s_i = numpyro.sample(
+            "r_s_i",
+            dist.LogNormal(
+                loc=prior_params.get("r_s_i_loc", 0.0),
+                scale=prior_params.get("r_s_i_scale", 0.5)
             )
         )
 
@@ -100,7 +114,8 @@ def poisson_prior_function(
         "t_star": t_star,  # Required for factory layer compatibility
         # Gene parameters
         "U_0i": U_0i,
-        "S_0i": S_0i,
+        "r_u_i": r_u_i,
+        "r_s_i": r_s_i,
     }
 
 
