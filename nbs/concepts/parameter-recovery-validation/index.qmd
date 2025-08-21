@@ -52,6 +52,8 @@ Parameter recovery validation is a critical step in validating probabilistic mod
 
 For each model, we need to demonstrate parameter recovery. For dynamical models, we generally use dimensionless parameterization that naturally eliminates a classe of identifiability issues while maintaining biological interpretability. We implement hierarchical priors that account for scaling behavior and lumped parameters for technical artifacts such as effective capture efficiency. We intend to progress from relatively simple likelihood-based models to dynamical models with analytical solutions where time is either observed or latent. Further, we may also introduce support for analytically intractable dynamical models requiring numerical simulation. For each model we include a graphical representation of the model's generative process as well as a mathematical description of the prior, observation model, and likelihood. We illustrate how to perform a somewhat simplified version of prior and posterior predictive checking for key model classes.
 
+See @sec-general-parameter-recovery for an outline of the steps required to generate synthetic data, perform inference, perform predictive checks, and parameter recovery validation.
+
 ## Available Models
 
 The following models are available for parameter recovery validation:
@@ -421,3 +423,119 @@ All models are developed with consideration for
 - Biological interpretability
 - Hierarchical structure and relevant characteristic scales
 - Technical artifacts
+
+## General Mathematical Framework for Parameter Recovery Validation {#sec-general-parameter-recovery}
+
+### Synthetic Data Generation Theory
+
+The foundation of parameter recovery validation rests on generating synthetic datasets from known parameter values, then attempting to recover those parameters through inference. This approach provides a controlled environment where the "ground truth" parameter values are known by construction, enabling rigorous assessment of model identifiability and inference performance.
+
+#### Prior Predictive Sampling
+
+The prior predictive distribution represents all possible datasets our model could generate:
+
+$$p(\tilde{y}) = \int p(\tilde{y}|\theta)p(\theta)d\theta$$
+
+This marginal distribution integrates over all possible parameter configurations weighted by their prior probabilities, providing a complete characterization of the model's predictive uncertainty in the absence of observed data.
+
+**Monte Carlo Approximation**
+
+The prior predictive distribution is computed via Monte Carlo sampling:
+
+\begin{align}
+p(\tilde{y}) \approx \frac{1}{S} \sum_{s=1}^S p(\tilde{y} | \theta^{(s)}) \label{eq-mc-prior-predictive}
+\end{align}
+
+where $\theta^{(s)} \sim p(\theta)$ are samples from the joint prior distribution.
+
+**Detailed Sampling Procedure:**
+
+1. **Sample model parameters**: $\theta^{(s)} \sim p(\theta)$ following the model's hierarchical prior structure
+2. **Compute latent states**: Apply the model's dynamical solutions or rate equations to determine latent concentrations
+3. **Generate synthetic observations**: $y_{obs}^{(s)} \sim p(y | \theta^{(s)})$ from the observation model (typically Poisson)
+
+### Universal Validation Methodology
+
+#### Prior Predictive Checking Framework
+
+Prior predictive checking validates model assumptions before seeing data by examining the range of datasets the model can generate under the prior. This crucial validation step ensures that:
+
+1. **Count distribution realism**: Prior predictive counts match expected single-cell RNA-seq distributional properties (mean-variance relationships, sparsity patterns, dynamic range)
+2. **Parameter coverage**: The prior covers biologically plausible parameter ranges without generating unrealistic dynamics
+3. **Computational stability**: All analytical solutions remain numerically stable across the full prior parameter space
+
+#### Uncertainty Decomposition
+
+Total prior predictive uncertainty decomposes as:
+
+\begin{align}
+\text{Var}[\tilde{y}] = \mathbb{E}_\theta[\text{Var}[y|\theta]] + \text{Var}_\theta[\mathbb{E}[y|\theta]] \label{eq-prior-uncertainty-decomp}
+\end{align}
+
+The first term represents **irreducible observation noise** (Poisson variance), while the second represents **reducible uncertainty** due to parameter uncertainty propagating through model dynamics.
+
+**Sources of Prior Uncertainty:**
+
+- **Kinetic parameter uncertainty**: Prior uncertainty in rate constants affects trajectory shapes and magnitudes
+- **Temporal parameter uncertainty**: Uncertainty in timing parameters affects when and how long processes occur
+- **Characteristic scale uncertainty**: Prior uncertainty in expression scales affects absolute magnitude of observations
+- **Technical parameter uncertainty**: Prior uncertainty in capture efficiencies affects detection and count levels
+- **Observation noise**: Irreducible Poisson variance that persists regardless of parameter knowledge
+
+#### Bayesian Learning and Posterior Predictive Distributions
+
+The posterior predictive distribution represents the prior predictive distribution updated by observed data:
+
+\begin{align}
+p(\tilde{y} | y_{obs}) = \int p(\tilde{y} | \theta) p(\theta | y_{obs}) d\theta \label{eq-posterior-predictive-relation}
+\end{align}
+
+where $p(\theta | y_{obs}) \propto p(y_{obs} | \theta) p(\theta)$ incorporates the likelihood of observed data through Bayes' theorem.
+
+**Uncertainty Reduction**
+
+Bayesian learning systematically reduces predictive uncertainty:
+
+\begin{align}
+\text{Var}[\tilde{y} | y_{obs}] \leq \text{Var}[\tilde{y}] \label{eq-uncertainty-reduction}
+\end{align}
+
+with equality only when the observed data provides no information about the parameters.
+
+**Information Content Quantification**
+
+The reduction in predictive uncertainty quantifies the information content of the observed data:
+
+\begin{align}
+\text{Information} = \text{Var}[\tilde{y}] - \text{Var}[\tilde{y} | y_{obs}] \label{eq-information-content}
+\end{align}
+
+This quantity measures how much the data constrains the model's predictions about future observations.
+
+### Cross-Model Comparison Framework
+
+#### Baseline vs Dynamical Model Performance
+
+The model hierarchy enables systematic comparison of parameter recovery performance across complexity levels:
+
+- **Poisson Baseline**: Establishes minimal parameter recovery requirements without temporal dynamics
+- **Observed Time Models**: Assess benefits of incorporating known temporal structure
+- **Latent Time Models**: Evaluate performance when temporal structure must be inferred
+
+#### Complexity-Identifiability Tradeoffs
+
+Each model represents a different balance between:
+
+- **Model complexity**: Number of parameters and dynamical sophistication
+- **Parameter identifiability**: Ability to uniquely recover parameter values from data
+- **Computational efficiency**: Speed and stability of inference procedures
+- **Biological interpretability**: Clarity of parameter meaning and practical utility
+
+#### Performance Metrics
+
+Standard metrics for comparing parameter recovery across models:
+
+1. **Parameter bias**: $\mathbb{E}[\hat{\theta} - \theta_{true}]$ measures systematic estimation error
+2. **Parameter variance**: $\text{Var}[\hat{\theta}]$ measures estimation precision
+3. **Coverage probability**: Fraction of credible intervals containing true parameter values
+4. **Computational cost**: Wall-clock time and memory requirements for inference
