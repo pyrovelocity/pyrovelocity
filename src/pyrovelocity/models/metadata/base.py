@@ -5,8 +5,16 @@ This module defines the core data structures for parameter metadata that are
 shared across all PyroVelocity implementations.
 """
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 from dataclasses import dataclass
+
+
+# Standard parameter category constants
+PARAMETER_CATEGORIES = {
+    "gene_expression": "Parameters controlling gene-specific expression dynamics",
+    "technical_scaling": "Parameters for technical normalization and scaling", 
+    "temporal_dynamics": "Parameters controlling temporal progression and timing"
+}
 
 
 @dataclass
@@ -25,6 +33,7 @@ class ParameterMetadata:
     typical_range: Tuple[float, float]
     biological_interpretation: str
     plot_order: int
+    category: Optional[str] = None
 
 
 @dataclass
@@ -59,3 +68,15 @@ class ComponentParameterMetadata:
     def get_ordered_parameters(self) -> list[ParameterMetadata]:
         """Get parameters ordered by plot_order."""
         return sorted(self.parameters.values(), key=lambda p: p.plot_order)
+    
+    def get_parameters_by_category(self, category: str) -> List[str]:
+        """Get parameter names filtered by category."""
+        return [
+            name for name, param in self.parameters.items()
+            if param.category == category
+        ]
+    
+    def get_parameter_categories(self) -> List[str]:
+        """Get all unique parameter categories defined in this component."""
+        categories = {param.category for param in self.parameters.values() if param.category is not None}
+        return sorted(categories)
