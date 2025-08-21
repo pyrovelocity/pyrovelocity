@@ -59,7 +59,7 @@ def test_create_poisson_model():
     assert isinstance(samples, dict)
     
     # Should contain required parameters from prior
-    expected_params = ["lambda_j", "U_0i", "S_0i", "u_star", "s_star"]
+    expected_params = ["lambda_j", "U_0i", "r_u_i", "r_s_i", "u_star", "s_star"]
     for param in expected_params:
         assert param in samples
 
@@ -91,7 +91,7 @@ def test_create_poisson_model_jax():
     assert isinstance(samples, dict)
     
     # Should contain required parameters
-    expected_params = ["lambda_j", "U_0i", "S_0i", "u_star", "s_star"]
+    expected_params = ["lambda_j", "U_0i", "r_u_i", "r_s_i", "u_star", "s_star"]
     for param in expected_params:
         assert param in samples
 
@@ -126,7 +126,8 @@ def test_poisson_model_with_observations():
     # Check parameter shapes (Predictive adds a sample dimension)
     assert samples["lambda_j"].shape == (1, num_cells, 1)  # [num_samples, num_cells, plate_dim]
     assert samples["U_0i"].shape == (1, num_genes)
-    assert samples["S_0i"].shape == (1, num_genes)
+    assert samples["r_u_i"].shape == (1, num_genes)
+    assert samples["r_s_i"].shape == (1, num_genes)
     assert samples["u_star"].shape == (1, batch_size, num_cells, num_genes)
     assert samples["s_star"].shape == (1, batch_size, num_cells, num_genes)
 
@@ -155,7 +156,8 @@ def test_poisson_model_predictive_sampling():
     # Check sample shapes (with plate dimensions)
     assert samples["lambda_j"].shape == (10, num_cells, 1)  # Cell parameters have plate dimension
     assert samples["U_0i"].shape == (10, num_genes)
-    assert samples["S_0i"].shape == (10, num_genes)
+    assert samples["r_u_i"].shape == (10, num_genes)
+    assert samples["r_s_i"].shape == (10, num_genes)
     assert samples["u_obs"].shape == (10, 1, num_cells, num_genes)
     assert samples["s_obs"].shape == (10, 1, num_cells, num_genes)
     
@@ -192,7 +194,7 @@ def test_poisson_model_trace_structure():
     samples = traced_model()
     
     # Check that all expected parameters are present
-    expected_params = ["lambda_j", "U_0i", "S_0i", "u_obs", "s_obs"]
+    expected_params = ["lambda_j", "U_0i", "r_u_i", "r_s_i", "u_obs", "s_obs"]
     for param in expected_params:
         assert param in samples, f"Parameter {param} not found in samples"
     
@@ -233,4 +235,5 @@ def test_poisson_model_numerical_stability():
     # Check that scaling parameters are positive (access first sample)
     assert jnp.all(samples["lambda_j"][0] > 0)
     assert jnp.all(samples["U_0i"][0] > 0)
-    assert jnp.all(samples["S_0i"][0] > 0)
+    assert jnp.all(samples["r_u_i"][0] > 0)
+    assert jnp.all(samples["r_s_i"][0] > 0)
