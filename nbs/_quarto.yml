@@ -190,8 +190,17 @@ website:
           href: concepts/geneexpression.qmd
         - text: "Inference in dynamical systems"
           href: concepts/inferenceindynamicalsystems/index.qmd
-        - text: "Parameter recovery validation"
+        - section: "Parameter recovery validation"
           href: concepts/parameter-recovery-validation/index.qmd
+          contents:
+            - text: "Overview"
+              href: concepts/parameter-recovery-validation/index.qmd
+            - text: "Poisson Baseline"
+              href: concepts/parameter-recovery-validation/poisson-baseline.qmd
+            - text: "Observed Time"
+              href: concepts/parameter-recovery-validation/observed-time.qmd
+            - text: "Piecewise Activation"
+              href: concepts/parameter-recovery-validation/piecewise-activation.qmd
     - id: development
       title: "Development"
       style: "floating"
@@ -286,8 +295,17 @@ website:
               href: concepts/geneexpression.qmd
             - text: "Inference in dynamical systems"
               href: concepts/inferenceindynamicalsystems/index.qmd
-            - text: "Parameter recovery validation"
+            - section: "Parameter recovery validation"
               href: concepts/parameter-recovery-validation/index.qmd
+              contents:
+                - text: "Overview"
+                  href: concepts/parameter-recovery-validation/index.qmd
+                - text: "Poisson Baseline"
+                  href: concepts/parameter-recovery-validation/poisson-baseline.qmd
+                - text: "Observed Time"
+                  href: concepts/parameter-recovery-validation/observed-time.qmd
+                - text: "Piecewise Activation"
+                  href: concepts/parameter-recovery-validation/piecewise-activation.qmd
         - section: "Development"
           contents:
             - text: "Overview"
