@@ -38,24 +38,27 @@ def test_poisson_prior_function():
         samples = test_model()
 
     # Check that required parameters are present
-    expected_params = ["lambda_j", "U_0i", "S_0i"]
+    expected_params = ["lambda_j", "U_0i", "r_u_i", "r_s_i"]
     for param in expected_params:
         assert param in samples
         
     # Check parameter shapes
     assert samples["lambda_j"].shape == (n_cells, 1)  # Cell parameters have plate dimension
     assert samples["U_0i"].shape == (num_genes,)
-    assert samples["S_0i"].shape == (num_genes,)
+    assert samples["r_u_i"].shape == (num_genes,)
+    assert samples["r_s_i"].shape == (num_genes,)
     
     # Check that all parameters are positive (from LogNormal priors)
     assert jnp.all(samples["lambda_j"] > 0)
     assert jnp.all(samples["U_0i"] > 0)
-    assert jnp.all(samples["S_0i"] > 0)
+    assert jnp.all(samples["r_u_i"] > 0)
+    assert jnp.all(samples["r_s_i"] > 0)
     
     # Check that all parameters are finite
     assert jnp.all(jnp.isfinite(samples["lambda_j"]))
     assert jnp.all(jnp.isfinite(samples["U_0i"]))
-    assert jnp.all(jnp.isfinite(samples["S_0i"]))
+    assert jnp.all(jnp.isfinite(samples["r_u_i"]))
+    assert jnp.all(jnp.isfinite(samples["r_s_i"]))
 
 
 def test_poisson_prior_function_with_custom_hyperparameters():
@@ -70,8 +73,10 @@ def test_poisson_prior_function_with_custom_hyperparameters():
         "lambda_scale": 0.3,
         "U_0i_loc": 0.5,
         "U_0i_scale": 0.2,
-        "S_0i_loc": -0.5,
-        "S_0i_scale": 0.4,
+        "r_u_i_loc": -0.5,
+        "r_u_i_scale": 0.4,
+        "r_s_i_loc": -0.3,
+        "r_s_i_scale": 0.4,
     }
     
     # Create test model
@@ -88,12 +93,14 @@ def test_poisson_prior_function_with_custom_hyperparameters():
     # Check parameter shapes
     assert samples["lambda_j"].shape == (n_cells, 1)  # Cell parameters have plate dimension
     assert samples["U_0i"].shape == (num_genes,)
-    assert samples["S_0i"].shape == (num_genes,)
+    assert samples["r_u_i"].shape == (num_genes,)
+    assert samples["r_s_i"].shape == (num_genes,)
     
     # Check positivity (LogNormal distributions)
     assert jnp.all(samples["lambda_j"] > 0)
     assert jnp.all(samples["U_0i"] > 0)
-    assert jnp.all(samples["S_0i"] > 0)
+    assert jnp.all(samples["r_u_i"] > 0)
+    assert jnp.all(samples["r_s_i"] > 0)
 
 
 def test_poisson_prior_missing_n_cells():
@@ -129,14 +136,15 @@ def test_poisson_prior_trace_structure():
     tr = trace(seed(test_model, 42)).get_trace()
 
     # Check that all expected parameters are in the trace
-    expected_sites = ["lambda_j", "U_0i", "S_0i"]
+    expected_sites = ["lambda_j", "U_0i", "r_u_i", "r_s_i"]
     for site in expected_sites:
         assert site in tr, f"Site {site} not found in trace"
         
     # Check that sites have correct shapes
     assert tr["lambda_j"]["value"].shape == (n_cells, 1)  # Cell parameters have plate dimension
     assert tr["U_0i"]["value"].shape == (num_genes,)
-    assert tr["S_0i"]["value"].shape == (num_genes,)
+    assert tr["r_u_i"]["value"].shape == (num_genes,)
+    assert tr["r_s_i"]["value"].shape == (num_genes,)
 
 
 def test_register_poisson_priors():
