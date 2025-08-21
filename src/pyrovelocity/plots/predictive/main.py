@@ -27,6 +27,7 @@ from pyrovelocity.plots.tensor_utils import (
     framework_agnostic_sigmoid,
 )
 from pyrovelocity.styles import configure_matplotlib_style
+from pyrovelocity.plots.parameter_metadata import get_parameters_for_plot
 
 # Local imports
 from .utils import cleanup_numbered_files, _save_figure, combine_pdfs
@@ -238,13 +239,21 @@ def plot_prior_predictive_checks(
             true_parameters_adata=true_parameters_adata
         )
 
-        # Plot 07: Parameter recovery correlation analysis
+        # Plot 07: Gene expression parameter recovery correlation analysis
         if true_parameters_adata is not None:
-            plot_parameter_recovery_correlation(
-                posterior_parameters=processed_parameters,
-                true_parameters_adata=true_parameters_adata,
-                parameters_to_validate=["R_on", "gamma_star", "t_on_star", "delta_star"],
-                save_path=save_path,
+            # Use dynamic parameter selection based on model metadata
+            gene_expression_params = get_parameters_for_plot(
+                model=model,
+                category="gene_expression", 
+                available_parameters=processed_parameters
+            )
+            
+            if gene_expression_params:  # Only create plot if parameters available
+                plot_parameter_recovery_correlation(
+                    posterior_parameters=processed_parameters,
+                    true_parameters_adata=true_parameters_adata,
+                    parameters_to_validate=gene_expression_params,  # Dynamic selection
+                    save_path=save_path,
                 file_prefix="07",
                 model=model,
                 default_fontsize=default_fontsize,
@@ -273,13 +282,21 @@ def plot_prior_predictive_checks(
             default_fontsize=default_fontsize
         )
 
-        # Plot 13: Gene and cell-specific parameter recovery correlation analysis (U_0i and lambda_j)
+        # Plot 13: Technical/scaling parameter recovery correlation analysis
         if true_parameters_adata is not None:
-            plot_parameter_recovery_correlation(
-                posterior_parameters=processed_parameters,
-                true_parameters_adata=true_parameters_adata,
-                parameters_to_validate=["U_0i", "lambda_j"],
-                save_path=save_path,
+            # Use dynamic parameter selection based on model metadata
+            technical_scaling_params = get_parameters_for_plot(
+                model=model,
+                category="technical_scaling",
+                available_parameters=processed_parameters
+            )
+            
+            if technical_scaling_params:  # Only create plot if parameters available
+                plot_parameter_recovery_correlation(
+                    posterior_parameters=processed_parameters,
+                    true_parameters_adata=true_parameters_adata,
+                    parameters_to_validate=technical_scaling_params,  # Dynamic selection
+                    save_path=save_path,
                 file_prefix="13",
                 model=model,
                 default_fontsize=default_fontsize,
