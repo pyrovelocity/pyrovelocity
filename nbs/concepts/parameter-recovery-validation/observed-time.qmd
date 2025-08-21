@@ -43,6 +43,8 @@ jupyter:
 
 This document presents the dimensionless analytical dynamics model with observed time coordinates for parameter recovery validation in PyroVelocity. This model incorporates full transcription-splicing-degradation dynamics using analytical solutions where temporal coordinates are treated as observed variables. The dimensionless parameterization naturally avoids identifiability issues while maintaining biological interpretability through relative degradation rates, characteristic scales, and lumped capture efficiency. This model represents the middle complexity tier, bridging simple Poisson fitting and complex latent time models.
 
+For comprehensive mathematical foundations of parameter recovery validation, including prior predictive distributions, uncertainty decomposition, and cross-model comparison frameworks, see the [general parameter recovery validation framework](index.qmd#general-mathematical-framework-for-parameter-recovery-validation). This document focuses on observed time model-specific implementation and its intermediate position between baseline and latent time approaches.
+
 ## Dimensionless analytical dynamics with observed time {#sec-dimless-observed-time}
 
 This validation study focuses on the **direct dimensionless approach** that naturally avoids identifiability issues while maintaining biological interpretability. We follow the theoretical foundation from our [Probabilistic inference in dynamical systems](../inferenceindynamicalsystems/index.qmd) concept guide, implementing hierarchical priors on characteristic scales and lumped effective capture efficiency.
