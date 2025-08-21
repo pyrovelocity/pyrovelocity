@@ -22,6 +22,7 @@ from pyrovelocity.analysis.analyze import mae_per_gene
 from pyrovelocity.plots.parameter_metadata import (
     get_parameter_label,
     get_model_parameter_metadata,
+    get_parameters_for_plot,
     infer_component_name_from_parameters,
 )
 from pyrovelocity.plots.tensor_utils import (
@@ -994,7 +995,8 @@ def plot_parameter_marginals_by_gene(
 def plot_parameter_recovery_correlation(
     posterior_parameters: Dict[str, ArrayLike],
     true_parameters_adata: AnnData,
-    parameters_to_validate: List[str] = ["R_on", "gamma_star", "t_on_star", "delta_star"],
+    parameters_to_validate: Optional[List[str]] = None,  # Make optional
+    parameter_category: Optional[str] = None,  # NEW: Alternative to explicit list
     figsize: Optional[Tuple[Union[int, float], Union[int, float]]] = None,
     save_path: Optional[str] = None,
     file_prefix: str = "",
@@ -1013,10 +1015,14 @@ def plot_parameter_recovery_correlation(
     Creates scatter plots showing true parameter values (x-axis) vs posterior estimates (y-axis)
     with correlation metrics, perfect recovery line (y=x), and best-fit line.
 
+    Enhanced to support both explicit parameter lists and category-based selection.
+    
     Args:
         posterior_parameters: Dictionary of posterior parameter samples with shape [num_samples, num_genes]
         true_parameters_adata: AnnData object containing true parameters in adata.uns['true_parameters']
-        parameters_to_validate: List of parameter names to include in correlation analysis
+        parameters_to_validate: Optional list of parameter names to include in correlation analysis
+        parameter_category: Optional parameter category ("gene_expression", "technical_scaling", etc).
+                          Takes precedence over parameters_to_validate if both provided.
         figsize: Optional figure size (auto-calculated if None)
         save_path: Optional directory path to save figures
         file_prefix: Prefix for saved file names
@@ -1060,6 +1066,28 @@ def plot_parameter_recovery_correlation(
         >>> print(f"Mean correlation: {metrics['summary']['mean_pearson_r']:.3f}") # xdoctest: +SKIP
     """
     from pyrovelocity.plots.parameter_metadata import get_parameter_label
+
+    # Priority: explicit list > category selection > hardcoded default
+    if parameter_category is not None:
+        # Use category-based selection
+        selected_params = get_parameters_for_plot(
+            model=model,
+            category=parameter_category,
+            available_parameters=posterior_parameters
+        )
+    elif parameters_to_validate is not None:
+        # Use explicit list
+        selected_params = parameters_to_validate
+    else:
+        # Fallback to dynamic detection based on available parameters
+        component_name = infer_component_name_from_parameters(posterior_parameters)
+        if component_name == "poisson_prior":
+            selected_params = ["r_u_i", "r_s_i"]  # Default gene expression for poisson
+        else:
+            selected_params = ["R_on", "gamma_star", "t_on_star", "delta_star"]  # Original default
+    
+    # Update parameters_to_validate for the rest of the function
+    parameters_to_validate = selected_params
 
     # Convert to numpy for plotting
     posterior_parameters = ensure_numpy_parameters(posterior_parameters)
