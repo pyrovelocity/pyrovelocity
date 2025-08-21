@@ -52,28 +52,29 @@ jupyter:
   toc-showmarkdowntxt: false
 ---
 
-## Poisson likelihood-only model {#sec-poisson-likelihood-only}
+## Dimensionless Poisson Baseline Model {#sec-poisson-likelihood-only}
 
-This validation study establishes a **direct Poisson likelihood baseline** that retains the core dimensionless framework parameters ($U_{0i}$, $\lambda_j$) while removing temporal dynamics complexity, providing a biologically interpretable minimal reference implementation for comparison with the piecewise activation model.
+This study introduces the foundational model in the PyroVelocity parameter recovery validation framework: a dimensionless Poisson baseline that eliminates temporal dynamics while preserving the essential biological and technical parameter structure. The model establishes the minimal mathematical foundation required for parameter identifiability analysis and provides the reference point for evaluating the computational benefits of incorporating temporal dynamics in more sophisticated models.
 
-### Model Description
+### Mathematical Framework
 
-This simplified model serves as a critical validation checkpoint, removing nearly all latent variable complexity to establish a minimal working implementation. The primary purpose is to validate our multi-model framework and provide a foundation for incremental complexity addition while maintaining biological interpretability through the established dimensionless parameterization.
+The Poisson baseline model represents the simplest approach to modeling single-cell RNA expression data within the dimensionless PyroVelocity framework. Rather than modeling the temporal evolution of gene expression through differential equations, this approach directly parameterizes the expected expression levels using static rate multipliers while maintaining the core biological distinctions between gene-specific expression capacity and cell-specific capture efficiency.
 
-### Simplification Rationale
+This formulation preserves the essential parameter structure that enables meaningful biological interpretation: gene-specific characteristic scales $U_{0i}$ represent the intrinsic expression capacity of each gene, while cell-specific capture efficiency parameters $\lambda_j$ account for technical variation in the single-cell measurement process. The model's strength lies in its ability to separate these biological and technical sources of variation without requiring the inference of complex temporal trajectories.
 
-- **Retains biological interpretability**: Preserves $U_{0i}$ (gene expression capacity) and $\lambda_j$ (cell capture efficiency)
-- **Removes temporal complexity**: Direct rate multipliers replace dynamics solutions
-- **Maintains dimensionless consistency**: Uses the same scaling structure as the full model
-- **Enables meaningful comparison**: Same observation model allows direct parameter comparison
-- **Validation purpose**: Establishes lower bound on model complexity while preserving interpretability
+### Biological Motivation and Model Scope
 
-### Key Parameter Retention Justification
+The Poisson baseline addresses several important experimental scenarios where temporal dynamics are either negligible relative to technical noise or cannot be reliably inferred from available measurements. These scenarios arise naturally in many single-cell RNA sequencing contexts and represent an important validation regime for parameter recovery methodologies.
 
-- **$U_{0i}$ preservation**: Essential for biological interpretation as gene expression capacity
-- **$\lambda_j$ preservation**: Critical for modeling technical variation across cells
-- **Framework compatibility**: Maintains connection to established dimensionless parameterization
-- **Incremental complexity**: Provides clear path to full piecewise activation model
+#### Experimental Scenarios for Static Modeling
+**Limited temporal resolution experiments**: Many single-cell studies sample biological processes at discrete timepoints with intervals much larger than the characteristic timescales of gene expression dynamics. Examples include developmental studies with sampling every 24-48 hours, drug treatment responses measured at pre-treatment and post-treatment timepoints, or differentiation experiments with weekly sampling intervals. In these contexts, temporal dynamics between sampling points are not directly observable, making static rate estimation more appropriate than attempting to infer detailed temporal trajectories.
+
+**Highly heterogeneous populations**: Single-cell studies of complex tissues or mixed cell populations often exhibit substantial cell-to-cell variability that overwhelms temporal signals. Examples include tumor tissue with diverse cancer cell populations, immune infiltrates with multiple activation states, or tissue homeostasis studies where cells occupy diverse functional states. The Poisson baseline provides robust parameter estimation in these challenging contexts where temporal signals may be undetectable above population heterogeneity.
+
+**Technical validation studies**: Parameter recovery validation requires ground-truth scenarios where true parameter values are known. The Poisson baseline enables controlled validation of the fundamental parameter recovery capabilities without confounding effects from temporal coordinate inference. This validation regime is essential for establishing confidence in more complex dynamical models.
+
+#### Biological Interpretation of Model Parameters
+The dimensionless parameterization maintains direct biological interpretability across experimental contexts. Gene-specific expression capacity parameters $U_{0i}$ capture fundamental differences in transcriptional output that remain consistent across experimental conditions, while cell-specific capture efficiency parameters $\lambda_j$ account for technical variation that affects all genes within each cell proportionally. This parameter structure provides biologically meaningful insights even when temporal dynamics are not explicitly modeled.
 
 ### Probabilistic Graphical Model
 
@@ -151,113 +152,112 @@ pgm.add_plate(
 pgm.render()
 ```
 
-### Prior Specification with Established Hyperparameters
+### Prior Specification and Hierarchical Structure
 
-#### Gene-Specific Characteristic Scales (Biological) - INHERITED
+The Poisson baseline model employs a hierarchical prior structure that separates biological and technical sources of variation while maintaining consistency with the broader PyroVelocity framework. The prior specification draws from established calibration work in the piecewise activation model to ensure meaningful parameter comparisons across model complexity levels.
+
+#### Gene-Specific Expression Capacity
 $$U_{0i} \sim \text{LogNormal}(2.3, 0.4^2)$$
-*Source: Established and validated in piecewise activation model*
 
-#### Cell-Specific Capture Efficiency (Technical) - INHERITED
+The characteristic scale parameter $U_{0i}$ represents the intrinsic expression capacity of gene $i$, capturing the fundamental biological differences in transcriptional output across genes. The log-normal prior with location parameter $2.3$ corresponds to a median expression capacity of approximately $10$ molecules per cell, consistent with typical single-cell RNA expression magnitudes. The scale parameter $0.4$ allows for substantial heterogeneity across genes while maintaining biological plausibility.
+
+#### Cell-Specific Capture Efficiency
 $$\lambda_j \sim \text{LogNormal}(0.0, 0.2^2)$$
-*Source: Established and validated in piecewise activation model*
 
-#### Gene-Specific Dimensionless Rate Multipliers (Core Learnable Parameters)
+The capture efficiency parameter $\lambda_j$ models technical variation in the single-cell measurement process, including effects of cell lysis efficiency, reverse transcription success, and amplification artifacts. The unit median (location parameter $0.0$) establishes a natural reference scale, while the narrow scale parameter $0.2$ reflects the expectation that technical variation should be relatively controlled in high-quality single-cell experiments.
+
+#### Static Rate Multipliers
 $$r_{u,i} \sim \text{LogNormal}(0.0, 0.5^2)$$
 $$r_{s,i} \sim \text{LogNormal}(0.0, 0.5^2)$$
-*Note: These are the key parameters to be inferred, representing the static mean values that would later derive from differential equation solutions in the piecewise activation model*
 
-#### Composite Poisson Rates (Dimensionally Consistent)
+The dimensionless rate multipliers $r_{u,i}$ and $r_{s,i}$ represent gene-specific scaling factors that capture the steady-state expression characteristics of each gene without explicitly modeling temporal dynamics. These parameters provide direct biological interpretation:
+
+**Unspliced rate multiplier ($r_{u,i}$)**: Captures the gene's current transcriptional activity level relative to its baseline capacity. Genes with high $r_{u,i}$ values exhibit elevated transcription rates, potentially reflecting active regulatory states, chromatin accessibility, or transcription factor binding. Examples include immediate early genes during stimulus response ($r_{u,i} > 2$), constitutively expressed housekeeping genes ($r_{u,i} \approx 1$), or repressed developmental genes in inappropriate cellular contexts ($r_{u,i} < 0.5$).
+
+**Spliced rate multiplier ($r_{s,i}$)**: Reflects the gene's mature mRNA steady-state level, incorporating both transcriptional activity and post-transcriptional processing efficiency. The ratio $r_{s,i}/r_{u,i}$ provides insight into splicing efficiency and mRNA stability. Highly stable mRNAs may exhibit $r_{s,i} > r_{u,i}$, while rapidly degraded transcripts or genes with inefficient splicing may show $r_{s,i} < r_{u,i}$.
+
+The unit median (location parameter $0.0$) establishes a natural reference scale corresponding to baseline expression levels, while the moderate scale parameter $0.5$ accommodates the substantial heterogeneity in expression states observed across genes in single-cell studies. This parameterization enables direct comparison with the equilibrium solutions of dynamical models, providing insight into when temporal modeling significantly improves upon static rate estimation.
+
+#### Composite Observation Rates
+The expected expression levels combine all three parameter types through multiplicative scaling:
+
 $$u_{rate,ij} = \lambda_j \times U_{0i} \times r_{u,i}$$
 $$s_{rate,ij} = \lambda_j \times U_{0i} \times r_{s,i}$$
 
-#### Hyperparameter Inheritance Strategy
-- **Preserve calibration work**: Use validated hyperparameters from existing piecewise model
-- **Enable meaningful comparison**: Same $U_{0i}$ and $\lambda_j$ priors ensure comparable results
-- **Source location**: `src/pyrovelocity/models/jax/components/piecewise/priors.py`
-- **Core parameters**: $r_{u,i}$ and $r_{s,i}$ rate multipliers require conservative default priors
+This factorization explicitly separates technical effects ($\lambda_j$), biological expression capacity ($U_{0i}$), and gene-specific expression state ($r_{u,i}$, $r_{s,i}$), enabling interpretable parameter recovery and meaningful comparison with dynamical models that exhibit similar parameter structure.
 
 ### Likelihood Specification
 
+The observation model assumes that both unspliced and spliced RNA counts follow independent Poisson distributions, reflecting the discrete counting process inherent in single-cell RNA sequencing technologies. This choice naturally accommodates the overdispersion commonly observed in single-cell data while maintaining computational tractability for parameter inference.
 
 #### Joint Likelihood
 $$P(u_{obs}, s_{obs} | \lambda_j, U_{0i}, r_{u,i}, r_{s,i}) = \prod_{i=1}^{N_{genes}} \prod_{j=1}^{N_{cells}} \text{Poisson}(u_{obs,ij} | u_{rate,ij}) \times \text{Poisson}(s_{obs,ij} | s_{rate,ij})$$
 
-#### Connection to Dimensionless Framework
-This maintains the same scaling structure as the piecewise activation model:
-- $\lambda_j$: Cell-specific capture efficiency (technical)
-- $U_{0i}$: Gene-specific expression capacity (biological)
-- $r_{u,i}, r_{s,i}$: Gene-specific rate multipliers replacing dynamics solutions
+The likelihood factorizes across both genes and cells, reflecting the assumption that expression measurements are conditionally independent given the underlying rate parameters. This independence assumption is appropriate for single-cell RNA sequencing data where cross-contamination between cells is minimal and technical artifacts primarily affect individual measurements rather than creating systematic correlations.
 
-### Parameter Identifiability Analysis
+#### Mathematical Properties
+The Poisson likelihood provides several advantageous properties for parameter inference:
 
-#### Identifiability Challenges with Rate Factorization
-The factorization $u_{rate,ij} = \lambda_j \times U_{0i} \times r_{u,i}$ introduces potential identifiability issues since multiple parameter combinations can produce the same observed rates. However, this simplified model benefits from several identifiability improvements:
+**Mean-variance relationship**: The Poisson distribution's intrinsic relationship between mean and variance naturally accommodates the observation that highly expressed genes exhibit greater absolute variability while maintaining proportional noise characteristics.
 
-- **Hierarchical priors**: Log-normal priors on each parameter provide regularization
-- **Established calibration**: Inherited $U_{0i}$ and $\lambda_j$ hyperparameters from validated piecewise model
-- **Reduced complexity**: Elimination of temporal dynamics removes major source of identifiability issues
-- **Conservative new priors**: $r_{u,i}$ and $r_{s,i}$ use conservative (wide) priors allowing data to inform estimates
+**Count data appropriateness**: The discrete nature of the Poisson distribution directly reflects the molecular counting process in RNA sequencing, avoiding distributional assumptions inappropriate for count data.
 
-#### Role of Hierarchical Priors in Resolving Ambiguity
-The hierarchical structure naturally resolves parameter ambiguity by:
-- **Gene-level pooling**: $U_{0i}$ priors share information across genes for expression capacity
-- **Cell-level pooling**: $\lambda_j$ priors share information across cells for capture efficiency
-- **Biological constraints**: Prior ranges reflect biologically plausible parameter values
-- **Regularization**: Log-normal distributions prevent extreme parameter values
+**Computational efficiency**: The log-likelihood exhibits simple analytical forms that enable efficient gradient-based optimization and Hamiltonian Monte Carlo sampling.
 
-#### Comparison to Identifiability Issues in Dynamics Models
-This simplified approach addresses several identifiability challenges present in full dynamics models:
-- **No temporal coordinate inference**: Eliminates major source of identifiability issues
-- **No dynamics parameter trade-offs**: Removes complex parameter interactions from ODE solutions
-- **Direct rate specification**: Straightforward relationship between parameters and observations
-- **Maintained biological meaning**: Parameters retain clear biological interpretation
+#### Connection to Dynamical Framework
+The multiplicative rate structure maintains direct correspondence with more complex dynamical models. Where dynamical models compute expression rates through temporal integration of differential equations, the Poisson baseline directly parameterizes these rates through the static multipliers $r_{u,i}$ and $r_{s,i}$. This enables parameter comparison across model complexity levels and provides insight into when temporal dynamics contribute meaningfully beyond static rate estimation.
 
-### Implementation Mapping
+### Parameter Identifiability and Statistical Inference
 
-#### Mathematical Components to Code Structure
-- **Prior functions**: Map to `src/pyrovelocity/models/jax/components/poisson/priors.py`
-- **Likelihood functions**: Map to `src/pyrovelocity/models/jax/components/poisson/likelihoods.py`
-- **Null dynamics**: Map to `src/pyrovelocity/models/jax/components/poisson/dynamics.py`
-- **Factory integration**: Map to model creation functions in `factory.py`
+#### Theoretical Identifiability Analysis
+The multiplicative factorization $u_{rate,ij} = \lambda_j \times U_{0i} \times r_{u,i}$ introduces a fundamental identifiability challenge: multiple parameter combinations can yield identical observed rates. Consider the transformation:
 
-### Implementation Discrepancy Note
+$$(\lambda_j, U_{0i}, r_{u,i}) \rightarrow (\alpha \lambda_j, \beta U_{0i}, \frac{r_{u,i}}{\alpha \beta})$$
 
-**⚠️ Current Implementation Inconsistency**: The current JAX implementation incorrectly uses separate `S_0i` parameters instead of the mathematically correct `r_u,i` and `r_s,i` rate multipliers shown in the model above.
+for any positive constants $\alpha$ and $\beta$. This transformation preserves the product $\lambda_j \times U_{0i} \times r_{u,i}$, demonstrating that the parameters are not uniquely determined by the likelihood alone.
 
-**Mathematical Model (Correct)**:
-- Rate multipliers: `r_u,i` and `r_s,i` (core learnable parameters)
-- Rates: `u_rate = λ_j × U_0i × r_u,i` and `s_rate = λ_j × U_0i × r_s,i`
+#### Hierarchical Prior Regularization
+The hierarchical prior structure resolves the identifiability issue through information sharing and regularization. The log-normal priors on each parameter type create distinct shrinkage patterns:
 
-**Current Implementation (Incorrect)**:
-- Uses: `S_0i` as separate spliced scaling parameter
-- Should be replaced with: `r_s,i` rate multiplier
+**Cell-level regularization**: The prior $\lambda_j \sim \text{LogNormal}(0.0, 0.2^2)$ constrains capture efficiency parameters toward unit values, reflecting the expectation that technical variation should be relatively modest in high-quality experiments.
 
-**Affected Files**:
-- `src/pyrovelocity/models/jax/components/poisson/priors.py` - should sample `r_u,i` and `r_s,i` instead of `S_0i`
-- `src/pyrovelocity/models/jax/components/poisson/likelihoods.py` - should implement `λ_j × U_0i × r_s,i` instead of `λ_j × S_0i`
-- `src/pyrovelocity/models/jax/components/poisson/metadata.py` - should include `r_u,i` and `r_s,i` instead of `S_0i`
+**Gene-level regularization**: The prior $U_{0i} \sim \text{LogNormal}(2.3, 0.4^2)$ establishes biologically informed scaling for expression capacity, preventing extreme values that would require compensatory adjustments in other parameters.
 
-**Required Refactoring** (Future Work):
-1. Replace `S_0i` with `r_u,i` and `r_s,i` parameters in prior sampling
-2. Update likelihood to implement correct multiplicative structure: `s_rate = λ_j × U_0i × r_s,i`
-3. Add `r_u,i` and `r_s,i` to parameter metadata, remove `S_0i`
-4. Update tests to reflect correct parameter structure
+**Rate multiplier regularization**: The priors $r_{u,i}, r_{s,i} \sim \text{LogNormal}(0.0, 0.5^2)$ provide conservative regularization that allows data to inform expression state parameters while preventing numerical instabilities.
 
-**Impact**: The current implementation works for validation but uses a different parameterization than the mathematical model. The `r_u,i` and `r_s,i` parameters are the correct representation of the static rate values that would later derive from differential equation solutions in the piecewise activation model.
+#### Information Sharing and Partial Pooling
+The hierarchical structure enables statistical strength sharing across genes and cells. The gene-specific parameters $U_{0i}$ and $r_{u,i}, r_{s,i}$ benefit from information sharing across the full set of cells measuring each gene, while cell-specific parameters $\lambda_j$ benefit from information sharing across all genes measured in each cell.
 
-#### Registry Pattern and Factory Functions
-```python
-# Model configuration for registry system
-ModelConfig(
-    dynamics_config=DynamicsFunctionConfig(name="null_dynamics"),
-    prior_config=PriorFunctionConfig(name="direct_poisson_prior"),
-    likelihood_config=LikelihoodFunctionConfig(name="direct_poisson_likelihood"),
-    guide_config=GuideFunctionConfig(name="auto_normal")
-)
-```
+This partial pooling mechanism naturally resolves parameter ambiguity by leveraging the distinct patterns of variation across genes versus cells. Technical variation captured by $\lambda_j$ should exhibit similar patterns across genes within each cell, while biological variation captured by $U_{0i}$ should exhibit gene-specific patterns that remain consistent across cells.
 
-#### Mathematical-to-Code Correspondence
-- Mathematical priors ($U_{0i} \sim \text{LogNormal}(2.3, 0.4^2)$) → NumPyro sample statements
-- Rate calculations ($u_{rate,ij} = \lambda_j \times U_{0i} \times r_{u,i}$) → JAX array operations
-- Likelihood evaluation ($\text{Poisson}(u_{obs,ij} | u_{rate,ij})$) → NumPyro Poisson distributions
-- Hierarchical structure → NumPyro plate notation for independence
+#### Computational Advantages of Simplified Model
+The elimination of temporal dynamics provides substantial computational benefits for parameter inference. Dynamic models require inference over high-dimensional latent temporal coordinates, introducing complex parameter interactions that can impede convergence and create multimodal posterior distributions. The static rate parameterization avoids these challenges while maintaining the essential biological distinctions between expression capacity and capture efficiency.
+
+The model's identifiability properties make it particularly suitable for posterior predictive checking and parameter recovery validation, as the true parameter values remain uniquely recoverable under the hierarchical prior structure.
+
+### Computational Implementation
+
+The Poisson baseline model integrates with the PyroVelocity framework through a modular component architecture that separates mathematical concerns from computational implementation details. The model employs JAX for numerical computation and NumPyro for probabilistic programming, enabling efficient gradient-based inference and automatic differentiation.
+
+#### Model Architecture
+The implementation follows the established PyroVelocity component structure, with mathematical elements mapping to specialized modules:
+
+- **Prior specification**: Log-normal distributions for hierarchical parameters
+- **Likelihood evaluation**: Poisson distributions for count data
+- **Rate computation**: Multiplicative scaling operations in JAX
+- **Inference coordination**: NumPyro plate notation for statistical independence
+
+The modular design enables direct comparison with more complex models while maintaining computational efficiency through vectorized operations and automatic differentiation.
+
+#### Parameter Recovery Validation
+The model's computational simplicity makes it particularly suitable for parameter recovery studies. The static rate parameterization eliminates complex temporal dependencies that can complicate convergence assessment in dynamical models. This enables robust validation of the underlying hierarchical structure and provides confidence in the parameter estimation methodology used across the PyroVelocity framework.
+
+The implementation supports standard posterior predictive checking workflows, enabling assessment of model adequacy and identification of systematic biases in parameter estimation or data simulation procedures.
+
+### Model Position in Validation Framework
+
+The Poisson baseline model serves as the foundational element in the PyroVelocity parameter recovery validation progression. Its mathematical simplicity and computational efficiency make it an ideal starting point for establishing parameter recovery capabilities before introducing the additional complexity of temporal dynamics.
+
+The model's dimensionless parameterization ensures direct correspondence with more sophisticated models in the validation suite. Parameters $U_{0i}$ and $\lambda_j$ maintain identical interpretation across all models, while the static rate multipliers $r_{u,i}$ and $r_{s,i}$ provide the baseline reference for evaluating the temporal solutions derived in dynamical models.
+
+This progression from static to dynamic modeling enables systematic assessment of when temporal complexity provides meaningful improvements over baseline parameter estimation. The Poisson baseline thus establishes both the computational foundation and the interpretive framework for the entire parameter recovery validation methodology.
