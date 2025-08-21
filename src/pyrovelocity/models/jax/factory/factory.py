@@ -473,4 +473,8 @@ def create_model(config: Union[Dict, ModelConfig]) -> Callable:
             "s_star": s_star,
         }
 
+    # Attach metadata component information to model for plotting functions
+    if hasattr(config, 'metadata') and config.metadata and "parameter_metadata_component" in config.metadata:
+        model._parameter_metadata_component = config.metadata["parameter_metadata_component"]
+
     return model
