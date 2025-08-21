@@ -16,18 +16,6 @@ execute:
   warning: false
   error: false
   cache: true
-author:
-  - name: Pyrovelocity Team
-    email: team@pyrovelocity.net
-abstract: |
-  This document details the most sophisticated model in the PyroVelocity parameter recovery validation suite:
-  dimensionless analytical dynamics with latent time coordinates and piecewise activation patterns.
-  This model features independent latent temporal coordinates, piecewise constant transcription rates across
-  three phases (off, on, return-to-off), and support for pre-activation scenarios with negative onset times.
-  The framework maintains analytical tractability while supporting rich expression pattern representation
-  and includes comprehensive posterior predictive checking capabilities. This model addresses the most
-  challenging biological scenarios where temporal structure must be inferred from data.
-keywords: [single-cell transcriptomics, probabilistic modeling, model calibration, model validation, RNA velocity]
 bibliography: ../../references.bib
 jupyter:
   jupytext:
@@ -52,6 +40,8 @@ jupyter:
   toc-showcode: false
   toc-showmarkdowntxt: false
 ---
+
+This document details the most sophisticated model in the PyroVelocity parameter recovery validation suite: dimensionless analytical dynamics with latent time coordinates and piecewise activation patterns. This model features independent latent temporal coordinates, piecewise constant transcription rates across three phases (off, on, return-to-off), and support for pre-activation scenarios with negative onset times. The framework maintains analytical tractability while supporting rich expression pattern representation and includes comprehensive posterior predictive checking capabilities. This model addresses the most challenging biological scenarios where temporal structure must be inferred from data.
 
 ## Dimensionless Analytical Dynamics with Latent Time and Piecewise Activation {#sec-dimless-latent-piecewise}
 
