@@ -12,6 +12,8 @@ from pathlib import Path
 from pyrovelocity.models.jax.factory.factory import create_piecewise_activation_model, create_poisson_model
 from pyrovelocity.models.jax.inference.config import create_inference_config
 from pyrovelocity.models.jax.inference.unified import run_inference
+from pyrovelocity.models.jax.components.poisson.metadata import create_poisson_prior_metadata
+from pyrovelocity.models.jax.components.piecewise.metadata import create_piecewise_activation_prior_metadata
 from pyrovelocity.plots.predictive import (
     plot_prior_predictive_checks,
     plot_posterior_predictive_checks,
@@ -29,6 +31,17 @@ MODEL_TYPES = {
     "piecewise_activation": create_piecewise_activation_model,
     "poisson_baseline": create_poisson_model,
 }
+
+
+def get_model_metadata(model_type: str):
+    """Get parameter metadata for the specified model type."""
+    if model_type == "poisson_baseline":
+        return create_poisson_prior_metadata()
+    elif model_type == "piecewise_activation":
+        return create_piecewise_activation_prior_metadata()
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
+
 
 MODEL_TYPE = os.environ.get("MODEL_TYPE", "piecewise_activation")
 REPORTS_SAVE_PATH = f"reports/docs/posterior_predictive_jax/{MODEL_TYPE}"
@@ -157,11 +170,21 @@ prior_predictive_adata = anndata.AnnData(
     }
 )
 
-# Store parameters in consistent format
+# Store parameters in consistent format using metadata
+model_metadata = get_model_metadata(MODEL_TYPE)
+metadata_parameter_names = model_metadata.get_parameter_names()
+
 prior_parameter_samples = {}
-for key in ["U_0i", "S_0i", "lambda_j", "T_M_star", 
-            "R_on", "gamma_star", "t_on_star", "delta_star", "t_star"]:
+# Use all parameters from metadata first
+for key in metadata_parameter_names:
     if key in prior_samples:
+        prior_parameter_samples[key] = prior_samples[key]
+
+# Add backward compatibility for any parameters not in metadata
+hardcoded_fallback = ["U_0i", "S_0i", "lambda_j", "T_M_star", 
+                      "R_on", "gamma_star", "t_on_star", "delta_star", "t_star"]
+for key in hardcoded_fallback:
+    if key in prior_samples and key not in prior_parameter_samples:
         prior_parameter_samples[key] = prior_samples[key]
 
 # Store t_star for temporal coordinate validation
