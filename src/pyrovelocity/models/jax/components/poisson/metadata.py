@@ -20,7 +20,7 @@ def create_poisson_prior_metadata() -> ComponentParameterMetadata:
     
     This function defines metadata for all parameters in the Poisson-only
     prior model, which uses a simplified hierarchical structure focusing
-    on library size normalization and basic scaling parameters without
+    on library size normalization and gene-specific rate multipliers without
     temporal dynamics.
     
     Returns:
@@ -62,31 +62,46 @@ def create_poisson_prior_metadata() -> ComponentParameterMetadata:
         "U_0i": ParameterMetadata(
             name="U_0i",
             display_name=r"$U_{0i}$",
-            short_label="Unspliced Scale",
-            description="Gene-specific unspliced RNA concentration scale",
+            short_label="Expression Capacity",
+            description="Gene-specific expression capacity",
             units="concentration scale",
-            typical_range=(0.1, 5.0),
+            typical_range=(1.0, 50.0),
             biological_interpretation=(
-                "Gene-specific baseline unspliced RNA concentration scaling factor. "
-                "Captures gene-specific transcriptional activity and unspliced RNA "
-                "steady-state levels without temporal dynamics."
+                "Gene-specific characteristic expression capacity. "
+                "Represents the baseline scale of expression for each gene, "
+                "combining transcriptional activity and RNA processing efficiency."
             ),
             plot_order=3
         ),
         
-        "S_0i": ParameterMetadata(
-            name="S_0i",
-            display_name=r"$S_{0i}$",
-            short_label="Spliced Scale",
-            description="Gene-specific spliced RNA concentration scale",
-            units="concentration scale",
+        "r_u_i": ParameterMetadata(
+            name="r_u_i",
+            display_name=r"$r_{u,i}$",
+            short_label="Unspliced Rate",
+            description="Gene-specific unspliced rate multiplier",
+            units="dimensionless rate",
             typical_range=(0.1, 5.0),
             biological_interpretation=(
-                "Gene-specific baseline spliced RNA concentration scaling factor. "
-                "Captures gene-specific mature mRNA steady-state levels and "
-                "expression magnitude without temporal dynamics."
+                "Gene-specific unspliced RNA rate multiplier. "
+                "Represents the relative rate of unspliced RNA production "
+                "that would derive from differential equation solutions in the full model."
             ),
             plot_order=4
+        ),
+        
+        "r_s_i": ParameterMetadata(
+            name="r_s_i",
+            display_name=r"$r_{s,i}$",
+            short_label="Spliced Rate",
+            description="Gene-specific spliced rate multiplier",
+            units="dimensionless rate",
+            typical_range=(0.1, 5.0),
+            biological_interpretation=(
+                "Gene-specific spliced RNA rate multiplier. "
+                "Represents the relative rate of spliced RNA production "
+                "that would derive from differential equation solutions in the full model."
+            ),
+            plot_order=5
         ),
     }
     
