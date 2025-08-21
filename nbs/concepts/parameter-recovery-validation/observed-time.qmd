@@ -1,0 +1,361 @@
+---
+title: Piecewise activation with observed time
+toc: true
+number-sections: true
+highlight-style: gruvbox
+csl: ../../bibstyle.csl
+lightbox: auto
+format:
+  html:
+    html-math-method: mathjax
+    include-in-header: ../../mathjax.html
+format-links: [ipynb]
+execute:
+  freeze: true
+  eval: true
+  warning: false
+  error: false
+  cache: true
+author:
+  - name: Pyrovelocity Team
+    email: team@pyrovelocity.net
+abstract: |
+  This document presents the dimensionless analytical dynamics model with observed time coordinates for
+  parameter recovery validation in PyroVelocity. This model incorporates full transcription-splicing-degradation
+  dynamics using analytical solutions where temporal coordinates are treated as observed variables.
+  The dimensionless parameterization naturally avoids identifiability issues while maintaining biological
+  interpretability through relative degradation rates, characteristic scales, and lumped capture efficiency.
+  This model represents the middle complexity tier, bridging simple Poisson fitting and complex latent time models.
+keywords: [single-cell transcriptomics, probabilistic modeling, model calibration, model validation, RNA velocity]
+bibliography: ../../references.bib
+jupyter:
+  jupytext:
+    cell_metadata_filter: all
+    cell_metadata_json: true
+    notebook_metadata_filter: all
+    text_representation:
+      extension: .qmd
+      format_name: quarto
+      format_version: 1.0
+      jupytext_version: 1.16.0
+  kernelspec:
+    display_name: Python 3
+    language: python
+    name: python3
+  language_info:
+    name: python
+  rise:
+    scroll: true
+    theme: black
+  toc-autonumbering: true
+  toc-showcode: false
+  toc-showmarkdowntxt: false
+---
+
+## Dimensionless analytical dynamics with observed time {#sec-dimless-observed-time}
+
+This validation study focuses on the **direct dimensionless approach** that naturally avoids identifiability issues while maintaining biological interpretability. We follow the theoretical foundation from our [Probabilistic inference in dynamical systems](../inferenceindynamicalsystems/index.qmd) concept guide, implementing hierarchical priors on characteristic scales and lumped effective capture efficiency.
+
+### Model Description
+
+We model the transcription-splicing-degradation system using the **direct dimensionless approach** that naturally avoids identifiability issues while maintaining biological interpretability. This approach fits the dimensionless model directly with hierarchical priors on characteristic scales, eliminating the need for post-estimation rescaling procedures.
+
+The model generates count data for unspliced ($u$) and spliced ($s$) RNA molecules per cell, with dynamics governed by the dimensionless analytical solutions and observation model that scales back to dimensional counts through characteristic scales and effective capture efficiency.
+
+### Probabilistic Graphical Model
+
+The probabilistic graphical model represents the dimensionless transcription-splicing-degradation system with hierarchical priors on characteristic scales and lumped effective capture efficiency. The model directly fits dimensionless parameters while maintaining biological interpretability through characteristic scales.
+
+```{python}
+#| label: fig-count-model-pgm
+#| code-fold: true
+#| fig-cap: Probabilistic graphical model for the dimensionless transcription-splicing-degradation model with hierarchical priors on characteristic scales and lumped effective capture efficiency.
+
+import daft
+import matplotlib.pyplot as plt
+
+plt.rcParams["font.family"] = "serif"
+plt.rcParams["font.size"] = 16
+plt.rcParams["text.usetex"] = True
+
+pgm = daft.PGM(line_width=1.2)
+
+# hyperparameters
+pgm.add_node("mu_init", r"$\mu_{0}$", 0.5, 6, fixed=True)
+pgm.add_node("sigma_init", r"$\sigma_{0}^2$", 1.5, 6, fixed=True)
+pgm.add_node("mu_gamma", r"$\mu_{\gamma^*}$", 2.5, 6, fixed=True)
+pgm.add_node("sigma_gamma", r"$\sigma_{\gamma^*}^2$", 3.5, 6, fixed=True)
+pgm.add_node("mu_U0", r"$\mu_{U_0}$", 4.5, 6, fixed=True)
+pgm.add_node("sigma_U0", r"$\sigma_{U_0}^2$", 5, 6, fixed=True)
+pgm.add_node("mu_lambda", r"$\mu_{\lambda}$", 5.5, 5, fixed=True)
+pgm.add_node("sigma_lambda", r"$\sigma_{\lambda}^2$", 6, 5, fixed=True)
+
+# latent variables for gene-specific parameters
+pgm.add_node("u_star_0i", r"$u^{\ast}_{0i}$", 1, 5)
+pgm.add_node("s_star_0i", r"$s^{\ast}_{0i}$", 2, 5)
+pgm.add_node("gamma_star_i", r"$\gamma^{\ast}_i$", 3, 5)
+pgm.add_node("U_0i", r"$U_{0i}$", 4.5, 5)
+
+# cell-specific parameters (moved inside cell plate)
+pgm.add_node("lambda_j", r"$\lambda_j$", 5.5, 4)
+
+# latent variables for cell-specific outcomes
+pgm.add_node(
+    "u_star_ij",
+    r"$u^{\ast}_{ij}$",
+    2,
+    4,
+    scale=1.0,
+    shape="rectangle",
+)
+pgm.add_node(
+    "s_star_ij",
+    r"$s^{\ast}_{ij}$",
+    4,
+    4,
+    scale=1.0,
+    shape="rectangle",
+)
+
+# observed data
+pgm.add_node(
+    "t_star_j",
+    r"$t^{\ast}_j$",
+    5.5,
+    3.0,
+    observed=True,
+    shape="rectangle",
+)
+pgm.add_node(
+    "u_obs_ij",
+    r"$u_{ij}$",
+    2,
+    2.5,
+    scale=1.0,
+    observed=True,
+)
+pgm.add_node(
+    "s_obs_ij",
+    r"$s_{ij}$",
+    4,
+    2.5,
+    scale=1.0,
+    observed=True,
+)
+
+# edges
+edge_params = {"head_length": 0.3, "head_width": 0.25, "lw": 0.7}
+pgm.add_edge("mu_init", "u_star_0i", plot_params=edge_params)
+pgm.add_edge("sigma_init", "u_star_0i", plot_params=edge_params)
+pgm.add_edge("mu_init", "s_star_0i", plot_params=edge_params)
+pgm.add_edge("sigma_init", "s_star_0i", plot_params=edge_params)
+pgm.add_edge("mu_gamma", "gamma_star_i", plot_params=edge_params)
+pgm.add_edge("sigma_gamma", "gamma_star_i", plot_params=edge_params)
+pgm.add_edge("mu_U0", "U_0i", plot_params=edge_params)
+pgm.add_edge("sigma_U0", "U_0i", plot_params=edge_params)
+pgm.add_edge("mu_lambda", "lambda_j", plot_params=edge_params)
+pgm.add_edge("sigma_lambda", "lambda_j", plot_params=edge_params)
+
+pgm.add_edge("u_star_0i", "u_star_ij", plot_params=edge_params)
+pgm.add_edge("s_star_0i", "s_star_ij", plot_params=edge_params)
+pgm.add_edge("u_star_0i", "s_star_ij", plot_params=edge_params)
+pgm.add_edge("gamma_star_i", "s_star_ij", plot_params=edge_params)
+
+pgm.add_edge("u_star_ij", "u_obs_ij", plot_params=edge_params)
+pgm.add_edge("s_star_ij", "s_obs_ij", plot_params=edge_params)
+pgm.add_edge("U_0i", "u_obs_ij", plot_params=edge_params)
+pgm.add_edge("U_0i", "s_obs_ij", plot_params=edge_params)
+pgm.add_edge("lambda_j", "u_obs_ij", plot_params=edge_params)
+pgm.add_edge("lambda_j", "s_obs_ij", plot_params=edge_params)
+
+pgm.add_edge("t_star_j", "u_star_ij", plot_params=edge_params)
+pgm.add_edge("t_star_j", "s_star_ij", plot_params=edge_params)
+
+# plates
+pgm.add_plate(
+    [0.5, 1.4, 4.5, 4.2],
+    label=r"$i \in \{1, \ldots, G\}$",
+    shift=-0.1,
+    fontsize=12,
+)
+pgm.add_plate(
+    [1.0, 1.9, 5.0, 2.6],
+    label=r"$j \in \{1, \ldots, N\}$",
+    shift=-0.1,
+    fontsize=12,
+)
+
+pgm.render()
+```
+
+### Mathematical Description
+
+The model is defined by the following hierarchical structure using the **direct dimensionless approach**:
+
+**Priors for dimensionless initial conditions:**
+\begin{align}
+    u^*_{0i}, s^*_{0i} &\sim \text{LogNormal}(\mu_{0}, \sigma_{0}^2) \label{eq-dimless-init-conds-priors}
+\end{align}
+
+**Priors for dimensionless kinetic parameters:**
+\begin{align}
+    \gamma^*_i &\sim \text{LogNormal}(\mu_{\gamma^*}, \sigma_{\gamma^*}^2) \label{eq-gamma-star-prior}
+\end{align}
+
+where $\gamma^*_i = \gamma_i / \beta_i$ is the relative degradation rate for gene $i$.
+
+**Priors for characteristic scales:**
+\begin{align}
+    U_{0i} &\sim \text{LogNormal}(\mu_{U_0}, \sigma_{U_0}^2) \label{eq-U0-prior}
+\end{align}
+
+where $U_{0i} = \alpha_i / \beta_i$ is the characteristic concentration scale for gene $i$.
+
+**Priors for effective capture efficiency:**
+\begin{align}
+    \lambda_j &\sim \text{LogNormal}(\mu_{\lambda}, \sigma_{\lambda}^2) \label{eq-lambda-prior}
+\end{align}
+
+where $\lambda_j$ represents the **lumped effective capture efficiency** for cell $j$.
+
+**Dimensionless differential equations:**
+The system is governed by the dimensionless equations:
+\begin{align}
+    \frac{du^*}{dt^*} &= 1 - u^* \label{eq-dimless-u-ode}, \\
+    \frac{ds^*}{dt^*} &= u^* - \gamma^* s^* \label{eq-dimless-s-ode}
+\end{align}
+
+where $t^* = \beta t$, $u^* = u/U_0$, $s^* = s/U_0$, and $\gamma^* = \gamma/\beta$.
+
+**Analytical solutions:**
+Given dimensionless initial conditions $u^*_{0i}, s^*_{0i}$ at time $t^*_0 = 0$, we define the helper variable:
+\begin{align}
+    \xi_i &= \frac{u^*_{0i} - 1}{\gamma^*_i - 1} \label{eq-xi-helper}
+\end{align}
+
+The complete solutions are:
+
+\begin{align}
+    u^*_{ij} &= 1 + (u^*_{0i} - 1) e^{-t^*_j} \\
+    {s^{\ast}}^{k}_{ij} &=
+      \begin{cases}
+        \frac{1}{\gamma^{\ast}_i} +
+        \left( s^{\ast}_{0i} - \xi_i - \frac{1}{\gamma^{\ast}_i} \right) \cdot e^{-\gamma^{\ast}_i {t^{\ast}}^k_j} +
+        \xi_i \cdot e^{-{t^{\ast}}^k_j},& \gamma^{\ast}_i \neq 1 \\
+
+        1 + (s^{\ast}_{0i} - 1) e^{-{t^{\ast}}^k_j} +
+          (u^{\ast}_{0i} - 1) {t^{\ast}}^k_j e^{-{t^{\ast}}^k_j},& \gamma^{\ast}_i = 1 \\
+      \end{cases}, \label{eq-s-star-model-cell}
+\end{align}
+
+**Poisson observation model with characteristic scaling:**
+\begin{align}
+    u_{ij} &\sim \text{Poisson}(\lambda_j \cdot U_{0i} \cdot u^*_{ij}) \label{eq-dimless-u-obs-poisson}, \\
+    s_{ij} &\sim \text{Poisson}(\lambda_j \cdot U_{0i} \cdot s^*_{ij}) \label{eq-dimless-s-obs-poisson}
+\end{align}
+
+where:
+
+- $i \in \{1, \ldots, G\}$ indexes genes
+- $j \in \{1, \ldots, N\}$ indexes cells
+- $t^*_j$ are observed dimensionless time coordinates for each cell
+- $u^*_{0i}, s^*_{0i}$ are dimensionless initial conditions for each gene
+- $u^*_{ij}, s^*_{ij}$ are the latent dimensionless RNA concentrations
+- $U_{0i}$ is the characteristic concentration scale for gene $i$
+- $\lambda_j$ is the lumped effective capture efficiency for cell $j$
+
+### Parameter Interpretability
+
+The dimensionless approach provides **natural identifiability** and **clear biological interpretation** for all inferred parameters:
+
+#### **Core Dimensionless Parameters (Gene-Specific)**
+
+**$\gamma^*_i$ (Relative degradation rate)**
+
+- **Definition**: $\gamma^*_i = \gamma_i / \beta_i$
+- **Interpretation**: How fast mRNA degrades relative to how fast pre-mRNA gets spliced
+- **Biological meaning**:
+  - $\gamma^*_i < 1$: mRNA is more stable than pre-mRNA processing time
+  - $\gamma^*_i = 1$: mRNA degradation matches splicing timescale (special case)
+  - $\gamma^*_i > 1$: mRNA degrades faster than splicing occurs
+- **Special case**: When $\gamma^*_i = 1$, the analytical solution has a different form with a $t^*_j e^{-t^*_j}$ term
+- **Helper variable**: $\xi_i = \frac{u^*_{0i} - 1}{\gamma^*_i - 1}$ (undefined when $\gamma^*_i = 1$)
+- **Example**: $\gamma^*_i = 0.5$ means mRNA half-life is twice as long as the characteristic splicing time
+
+#### **Characteristic Scales (Gene-Specific)**
+
+**$U_{0i}$ (Characteristic concentration scale)**
+
+- **Definition**: $U_{0i} = \alpha_i / \beta_i$
+- **Units**: molecules/cell
+- **Interpretation**: The steady-state pre-mRNA level that would be reached if there were no degradation
+- **Biological meaning**: Represents the gene's "expression capacity" - how many molecules it can produce per splicing timescale
+- **Example**: $U_{0i} = 100$ molecules/cell means this gene's transcription-splicing balance produces ~100 molecules per characteristic time
+
+#### **Effective Capture Efficiency (Cell-Specific)**
+
+**$\lambda_j$ (Lumped effective capture efficiency)**
+
+- **Definition**: Cell-specific composite technical efficiency
+- **Units**: Dimensionless (positive real number)
+- **Interpretation**: Overall efficiency of detecting RNA molecules in cell $j$
+- **Technical factors lumped together**:
+  1. **True capture efficiency**: Fraction of molecules actually captured during library prep
+  2. **Library size effects**: Total sequencing depth for this cell
+  3. **Batch effects**: Systematic differences between experimental batches
+  4. **Cell quality**: Cell viability, membrane integrity, RNA degradation
+  5. **Ambient RNA**: Background contamination (modeled as scaling factor)
+  6. **Technical dropout**: Stochastic detection failures
+- **Example**: $\lambda_j = 0.5$ indicates this cell has 50% of the expected detection efficiency compared to a "reference" cell
+
+#### **Derived Biological Quantities**
+
+From the inferred parameters, you can reconstruct the original dimensional parameters:
+
+**$\alpha_i$ (Transcription rate)**
+
+- **Formula**: $\alpha_i = U_{0i} / T_{0i}$ (where $T_{0i} = 1/\beta_i$ is inferred from time scale)
+- **Units**: molecules/(cell·hour)
+- **Interpretation**: How many pre-mRNA molecules are transcribed per hour
+
+**$\beta_i$ (Splicing rate)**
+
+- **Formula**: $\beta_i = 1 / T_{0i}$ (from dimensionless time scale)
+- **Units**: hour⁻¹
+- **Interpretation**: Splicing rate constant
+
+**$\gamma_i$ (Degradation rate)**
+
+- **Formula**: $\gamma_i = \gamma^*_i \cdot \beta_i$
+- **Units**: hour⁻¹
+- **Interpretation**: mRNA degradation rate constant
+
+### Justification for Parameterization
+
+This parameterization is designed to optimally account for identifiability and known biological/technical considerations:
+
+#### **Natural Identifiability**
+
+- **Dimensionless approach**: Eliminates scaling symmetries inherent in dimensional models
+- **No post-estimation rescaling**: Parameters are naturally identifiable during inference
+- **Hierarchical priors**: Provide regularization without breaking identifiability
+
+#### **Biological Interpretability**
+
+- **$\gamma^*_i$**: Directly interpretable relative degradation rate
+- **$U_{0i}$**: Gene expression capacity with clear biological meaning
+- **Dimensionless solutions**: Universal dynamics independent of absolute scales
+
+#### **Technical Factor Management**
+
+- **Strategic lumping**: $\lambda_j$ captures multiple technical effects without overparameterization
+- **Computational efficiency**: Fewer parameters than separate modeling of each technical factor
+- **Robustness**: Works across different experimental protocols and platforms
+
+#### **Connection to Established Theory**
+
+- **Dimensional analysis**: Follows Buckingham π theorem for parameter reduction
+- **RNA velocity theory**: Maintains connection to established dynamical systems approach
+- **Single-cell best practices**: Accounts for known technical factors in scRNA-seq data
+
+This approach attempts to balance **biological interpretability**, **statistical identifiability**, and **practical implementation**.
