@@ -6,7 +6,7 @@ models and using it to enhance plotting functions with meaningful parameter labe
 display names, and other metadata.
 """
 
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from beartype import beartype
 
@@ -15,6 +15,8 @@ from pyrovelocity.models.metadata import (
     get_parameter_display_names,
     get_parameter_short_labels,
 )
+from pyrovelocity.models.jax.components.poisson.metadata import create_poisson_prior_metadata
+from pyrovelocity.models.jax.components.piecewise.metadata import create_piecewise_activation_prior_metadata
 # ParameterMetadataProvider protocol removed - using static metadata registry instead
 
 
@@ -209,6 +211,57 @@ def get_parameter_labels_for_plotting(
 
 
 @beartype
+def get_parameters_for_plot(
+    model: Optional[Any] = None,
+    category: str = "gene_expression",
+    available_parameters: Optional[Dict[str, Any]] = None,
+    component_name: Optional[str] = None
+) -> List[str]:
+    """
+    Get parameters for plotting based on category and model metadata.
+    
+    Args:
+        model: Model instance with metadata
+        category: Parameter category ("gene_expression", "technical_scaling", "temporal_dynamics")
+        available_parameters: Dict of actual parameters present in data
+        component_name: Override component name detection
+        
+    Returns:
+        List of parameter names to plot, ordered by plot_order
+    """
+    
+    # Strategy 1: Determine component name
+    if component_name is None:
+        if available_parameters is not None:
+            component_name = infer_component_name_from_parameters(available_parameters)
+        elif hasattr(model, 'component_name'):
+            component_name = model.component_name
+    
+    # Strategy 2: Get metadata for the component
+    metadata = None
+    if component_name == "poisson_prior":
+        metadata = create_poisson_prior_metadata()
+    elif component_name == "piecewise_activation_prior":
+        metadata = create_piecewise_activation_prior_metadata()
+    
+    if metadata is None:
+        return []
+    
+    # Strategy 3: Filter parameters by category
+    category_params = metadata.get_parameters_by_category(category)
+    
+    # Strategy 4: Filter by availability if provided
+    if available_parameters is not None:
+        category_params = [p for p in category_params if p in available_parameters]
+    
+    # Strategy 5: Order by plot_order
+    param_metadata = [(name, metadata.parameters[name]) for name in category_params]
+    param_metadata.sort(key=lambda x: x[1].plot_order)
+    
+    return [name for name, _ in param_metadata]
+
+
+@beartype
 def infer_component_name_from_parameters(parameters: Dict[str, Any]) -> Optional[str]:
     """
     Infer the likely component name based on the parameters present.
@@ -225,7 +278,7 @@ def infer_component_name_from_parameters(parameters: Dict[str, Any]) -> Optional
     param_names = set(parameters.keys())
     
     # Check for Poisson-only parameters first (more specific)
-    poisson_params = {'lambda_j', 't_star', 'U_0i', 'S_0i'}
+    poisson_params = {'lambda_j', 't_star', 'U_0i', 'r_u_i', 'r_s_i'}  # Fixed: added r_u_i, r_s_i
     # Must have most Poisson-specific parameters and NOT have piecewise-specific parameters
     piecewise_specific = {'alpha_off', 'alpha_on', 'gamma_star', 't_on_star', 'delta_star', 'T_M_star', 't_loc', 't_scale'}
     if (len(param_names.intersection(poisson_params)) >= 3 and 
