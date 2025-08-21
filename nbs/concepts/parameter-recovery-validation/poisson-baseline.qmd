@@ -16,17 +16,6 @@ execute:
   warning: false
   error: false
   cache: true
-author:
-  - name: Pyrovelocity Team
-    email: team@pyrovelocity.net
-abstract: |
-  This document details the Poisson baseline model for parameter recovery validation in PyroVelocity.
-  This model serves as the simplest approach, fitting Poisson distributions directly to gene expression marginals
-  without incorporating temporal dynamics. It retains key dimensionless parameterization concepts including
-  hierarchical priors on characteristic scales and effective capture efficiency parameters, providing a
-  foundation for understanding more complex dynamical models. The model is useful for validating basic
-  parameter recovery concepts and serving as a performance baseline for comparison with dynamical approaches.
-keywords: [single-cell transcriptomics, probabilistic modeling, model calibration, model validation, RNA velocity]
 bibliography: ../../references.bib
 jupyter:
   jupytext:
@@ -51,6 +40,8 @@ jupyter:
   toc-showcode: false
   toc-showmarkdowntxt: false
 ---
+
+This document details the Poisson baseline model for parameter recovery validation in PyroVelocity. This model serves as the simplest approach, fitting Poisson distributions directly to gene expression marginals without incorporating temporal dynamics. It retains key dimensionless parameterization concepts including hierarchical priors on characteristic scales and effective capture efficiency parameters, providing a foundation for understanding more complex dynamical models. The model is useful for validating basic parameter recovery concepts and serving as a performance baseline for comparison with dynamical approaches.
 
 ## Dimensionless Poisson Baseline Model {#sec-poisson-likelihood-only}
 
