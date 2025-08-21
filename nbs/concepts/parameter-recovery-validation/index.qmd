@@ -16,18 +16,6 @@ execute:
   warning: false
   error: false
   cache: true
-# author:
-#   - name: Pyrovelocity Team
-#     email: team@pyrovelocity.net
-# abstract: |
-#   This notebook demonstrates parameter recovery validation for PyroVelocity models using dimensionless models.
-#   We progress from analytically tractable models where the temporal coordinate is an observed variable toward the more complicated situation of models with latent variables that represent temporal ordering and must therefore be inferred.
-#   We focus on constructing models that naturally avoid identifiability issues while maintaining biological interpretability,
-#   using hierarchical priors on characteristic scales and simple accounting of technical artifacts through effective parameters that aggregate sources of error.
-#   We illustrate how to systematically validate that probabilistic models can recover
-#   known parameters from synthetic data, which is essential before applying models
-#   to real-world data where true parameter values are unknown.
-# keywords: [single-cell transcriptomics, probabilistic modeling, model calibration, model validation, RNA velocity]
 bibliography: ../../references.bib
 jupyter:
   jupytext:
