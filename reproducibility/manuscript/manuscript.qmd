@@ -238,7 +238,7 @@ sample from the posterior distributions of the latent and dependent variables,
 allowing uncertainty estimation of phase portraits, high dimensional velocity
 vector field, and shared latent tim, and visualizations of phase portraits and low dimensional vector fields. 
 
-Furthermore, to better recapitulate some dynamic patterns we observed for certain families of genes and  as described in detail later, we extended the original kinetic model by allowing each gene a time lag $(t_{(0,g)}^((0) ), t_{(0,g)}^((1) ))$ for a  baseline expression level potentially different than 0 and the transcriptional activation for spliced and unspliced count $((u_{cg} ) ̂, (s_{cg} ) ̂)$  (Model 2, Methods Section Model formulation) (Fig. 1b). By evaluating these two models together with scvelo on X10 datasets, including  differentincluding different tissues and developmental conditions in pancreas, bone marrow, brain pons and peripheral blood cells (see Methods Section Single-cell dataMethods). We discovered consistently better gene expression reconstruction (mean absolute error, Fig. 1d left ) and Cross-boundary directional (CBDir) correctness (Fig. 1d right) for Model 2. The CBDir metric, adapted from the UniTVelo  package [@gao_unitvelo_2022], measures the accuracy of transitions between source and target clusters using boundary cells, reflecting short-term biological development. This metric provides a quantitative assessment of the velocity graph's ability to capture true developmental trajectories. For the remainder of the manuscript we will refer Model 2 as Pyro-Velocity.
+Furthermore, to better recapitulate some dynamic patterns we observed for certain families of genes and  as described in detail later, we extended the original kinetic model by allowing each gene a time lag $(t_{(0,g)}^(0), t_{(0,g)}^(1))$ for a  baseline expression level potentially different than 0 and the transcriptional activation for spliced and unspliced count $((u_{cg} ) ̂, (s_{cg} ) ̂)$  (Model 2, Methods Section Model formulation) (Fig. 1b). By evaluating these two models together with scvelo on X10 datasets, including  differentincluding different tissues and developmental conditions in pancreas, bone marrow, brain pons and peripheral blood cells (see Methods Section Single-cell dataMethods). We discovered consistently better gene expression reconstruction (mean absolute error, Fig. 1d left ) and Cross-boundary directional (CBDir) correctness (Fig. 1d right) for Model 2. The CBDir metric, adapted from the UniTVelo  package [@gao_unitvelo_2022], measures the accuracy of transitions between source and target clusters using boundary cells, reflecting short-term biological development. This metric provides a quantitative assessment of the velocity graph's ability to capture true developmental trajectories. For the remainder of the manuscript we will refer Model 2 as Pyro-Velocity.
 
 Around this model, we built several visualizations to assess uncertainty and functions to recover putative cell fate priming genes and to investigate how the denoised gene expression recapitulates known cell-type annotations and their developmental order (Fig. 1, Methods).
 
@@ -251,7 +251,7 @@ Though the scVelo and Pyro-Velocity models both depend on the kinetics parameter
 In fact, the Bayesian nature of Pyro -Velocity enabled the generation of uncertainty estimates that can be easily visualized on the cell embedding. Uncertainty can be estimated for the shared latent time for each cell and for the angle of each vector (based on a 30 dimensional PCA space) (Figure 2 X,Y) [TODO: add MCMC].  These visualizations uncovered that differentiated cells had a larger vector field and latent time uncertainty than stem and progenitor cells, as would be expected for terminally differentiated cell states where progression and lineage trajectories would not be anticipated.
 
 Furthermore, to better recapitulate some dynamic patterns we observed for certain families of genes and 
-as described in detail later, we extended the original kinetic model by allowing each gene a time lag $(t_(0,g)^((0) )$, $t_(0,g)^((1) )$) 
+as described in detail later, we extended the original kinetic model by allowing each gene a time lag $(t_{(0,g)}^((0))$, $t_{(0,g)}^((1))$) 
 for a  baseline expression level potentially different than 0 and the transcriptional activation for spliced and unspliced count $((u_cg ) ̂, (s_cg ) ̂)$  
 (Model 2, Methods Section Model formulation(#sec-methods)) ([@fig-model]b). By evaluating these two models together with scvelo on 10 datasets, 
 including  differentincluding different tissues and developmental conditions in pancreas, bone marrow, brain pons and peripheral blood cells (see Methods Section Single-cell dataMethods). 
@@ -388,12 +388,12 @@ methods like Cytotrace and scVelo ([@extfig-lineage-tracing]a).
 # Figures
 
 ::: {#fig-model}
-![](figures/v2/Figure1.pdf){width=98%}
+![](figures/v2/Figure1.png){width=98%}
 
 Pyro&thinsp;-Velocity is a fully generative Bayesian method with uncertainty
 estimation of velocity vector fields and shared latent time, based on raw counts
 and without ad-hoc preprocessing steps. **a**, Schematic comparing current RNA
-Velocity and Pyro&thinsp;-Velocity workflows. Both methods take in input spliced
+Velocity and Pyro&thinsp;-Velocity workflows. Both methods take as input spliced
 and unspliced read count tables and output RNA velocity vector fields and latent
 (shared) time. Previous methods require ad-hoc preprocessing steps, including
 the arbitrary selection of top variable genes, number of principal components,
@@ -423,7 +423,7 @@ field defined by scVelo; 3. Stream plot of the posterior mean vector field from
 Pyro&thinsp;-Velocity; 4. Pyro&thinsp;-Velocity visualization of cell dynamics
 for 3 arbitrarily selected single cells; 5. Single-cell vector field uncertainty
 where each cell is colored based on the scaled angular standard deviation to
-visualize uncertainty based on n=30 iterated, posterior samples depicted as
+visualize uncertainty based on n=30 iterations, posterior samples depicted as
 arrows noted throughout our analysis; 6. Averaged vector field uncertainty where
 each vector is colored by the averaged vector field uncertainty. The scaled
 angular standard deviation range is [0 360], where 0 corresponds to the highest
