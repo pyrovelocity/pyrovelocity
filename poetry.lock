@@ -3355,19 +3355,17 @@ cuda12-pip = ["nvidia-cublas-cu12", "nvidia-cuda-cupti-cu12", "nvidia-cuda-nvcc-
 
 [[package]]
 name = "jaxtyping"
-version = "0.2.25"
-description = "Type annotations and runtime checking for shape and dtype of JAX arrays, and PyTrees."
+version = "0.3.11"
+description = "Type annotations and runtime checking for shape and dtype of JAX/NumPy/PyTorch/etc. arrays."
 optional = false
-python-versions = "~=3.9"
+python-versions = ">=3.11"
 files = [
-    {file = "jaxtyping-0.2.25-py3-none-any.whl", hash = "sha256:503772cf985ff50bd160d0661266e1628da47cc8b9a302de16f230e07f5ac119"},
-    {file = "jaxtyping-0.2.25.tar.gz", hash = "sha256:4ec4bdb6839a67c062e48c27d62d44bf353099d7ff6cd3628b5a511c097ab922"},
+    {file = "jaxtyping-0.3.11-py3-none-any.whl", hash = "sha256:8a4bedc4e3f963fa82df41bd13c7ebc2bad925601eb48614c65798f21329d4e3"},
+    {file = "jaxtyping-0.3.11.tar.gz", hash = "sha256:b09c14acf6686feb9e0df5b0d8c6e7c5b6f8d36bf059ee54cd522a186c2ef050"},
 ]
 
 [package.dependencies]
-numpy = ">=1.20.0"
-typeguard = ">=2.13.3,<3"
-typing-extensions = ">=3.7.4.1"
+wadler-lindig = ">=0.1.3"
 
 [[package]]
 name = "jedi"
@@ -8691,21 +8689,6 @@ files = [
 ]
 
 [[package]]
-name = "typeguard"
-version = "2.13.3"
-description = "Run-time type checker for Python"
-optional = false
-python-versions = ">=3.5.3"
-files = [
-    {file = "typeguard-2.13.3-py3-none-any.whl", hash = "sha256:5e3e3be01e887e7eafae5af63d1f36c849aaa94e3a0112097312aabfa16284f1"},
-    {file = "typeguard-2.13.3.tar.gz", hash = "sha256:00edaa8da3a133674796cf5ea87d9f4b4c367d77476e185e80251cc13dfbb8c4"},
-]
-
-[package.extras]
-doc = ["sphinx-autodoc-typehints (>=1.2.0)", "sphinx-rtd-theme"]
-test = ["mypy", "pytest", "typing-extensions"]
-
-[[package]]
 name = "types-python-dateutil"
 version = "2.8.19.14"
 description = "Typing stubs for python-dateutil"
@@ -8910,6 +8893,21 @@ files = [
     {file = "vl_convert_python-1.6.0-cp37-abi3-win_amd64.whl", hash = "sha256:2167d762f77991a36ce11d47d03d399219e80a1f19340ed1f6125713f8b31e87"},
     {file = "vl_convert_python-1.6.0.tar.gz", hash = "sha256:f7539c5558026d41d870df3ea92546ef87956c7b62ca99426906e941115bfd41"},
 ]
+
+[[package]]
+name = "wadler-lindig"
+version = "0.1.7"
+description = "A Wadler–Lindig pretty-printer for Python."
+optional = false
+python-versions = ">=3.10"
+files = [
+    {file = "wadler_lindig-0.1.7-py3-none-any.whl", hash = "sha256:e3ec83835570fd0a9509f969162aeb9c65618f998b1f42918cfc8d45122fe953"},
+    {file = "wadler_lindig-0.1.7.tar.gz", hash = "sha256:81d14d3fe77d441acf3ebd7f4aefac20c74128bf460e84b512806dccf7b2cd55"},
+]
+
+[package.extras]
+dev = ["numpy", "pre-commit", "pytest"]
+docs = ["hippogriffe (==0.1.0)", "mkdocs (==1.6.1)", "mkdocs-include-exclude-files (==0.1.0)", "mkdocs-ipynb (==0.1.0)", "mkdocs-material (==9.6.7)", "mkdocstrings[python] (==0.28.3)", "pymdown-extensions (==10.14.3)"]
 
 [[package]]
 name = "waitress"
@@ -9421,10 +9419,10 @@ bioinformatics = ["pyensembl", "pyfaidx"]
 docs = ["furo", "jupyter-cache", "jupyterlab", "jupytext", "myst-parser", "nbsphinx", "quartodoc", "sphinx", "sphinx-autobuild", "sphinx-autodoc-typehints", "sphinx-click", "sphinx-copybutton", "sphinx-markdown-builder"]
 lint = ["black", "mypy", "pre-commit", "pre-commit-hooks", "pygments", "ruff"]
 plotting = ["matplotlib-venn"]
-test = ["coverage", "hypothesis", "ipython", "pygments", "pytest", "pytest-asyncio", "pytest-cov", "pytest-mock", "pytest-xdist", "xdoctest"]
+test = ["coverage", "hypothesis", "ipdb", "ipython", "pygments", "pytest", "pytest-asyncio", "pytest-cov", "pytest-mock", "pytest-xdist", "xdoctest"]
 workflows = ["dataclasses-json", "dulwich", "flytekit", "google-api-python-client", "hydra-core", "hydra-zen", "ipywidgets", "jupytext", "mashumaro", "nbconvert", "nbformat", "omegaconf", "papermill", "python-dotenv", "rich-click"]
 
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11, <3.13"
-content-hash = "f0210897e67426de13accca67d50992c3df6db6cf7017c013997fe155241bef4"
+content-hash = "300056b984ed2e263cbab7259e1360c3492c9ba6fb8d79896be6cb00905a111c"
